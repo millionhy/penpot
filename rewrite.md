@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0/F1.1/F1.3/F1.4 已完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0/F1 契约与会话全部完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
@@ -32,7 +32,7 @@
 | F0 | Next.js 脚手架 + RPC 传输层 | ✅ | `frontend-nextjs/`：App Router 路由树、`lib/rpc.ts`（移植 `repo.cljs` 的 `send!/cmd!`）、`lib/{transit,errors,config,routes,types}.ts`、登录页 P0 样板、`next.config.mjs` 后端反代 |
 | F0.1 | 安装依赖并跑通构建 | ✅ | `pnpm install` / `pnpm typecheck` / `pnpm build` 全部通过；登录页经 3450 代理对 docker 后端端到端验证 |
 | F1.1 | 移植 Transit 自定义 handler | ✅ | `lib/transit.ts`：u/m/:/n/duration/uri/ordered-map/ordered-set/set/penpot/pointer 读取 handler + mapBuilder 规范化为普通 JS，12 项编解码单测通过；file-data 写入 handler（point/matrix 等）随 F6/F9 移植 |
-| F1.2 | `packages/api-types` 生成器 | ⬜ | 输入已就绪：`packages/api-types/rpc-inventory.json`（S1 产物，189 条命令）；下一步实现 malli schema → TS 类型生成（只读后端） |
+| F1.2 | `packages/api-types` 生成器 | ✅ | `scripts/generate-types.mjs`：解析 backend/src + common/src 的 malli schema（含 ns 别名/:as-alias/:refer/限定符号/基础类型表）→ `src/index.ts`（RpcCommandName/RpcParams/RpcResults）；186 命令，params 184、results 51；file-data 域动态 schema 降级 unknown（F6/F9 收口）；已接线 app（workspace 依赖 + transpilePackages + lib/types.ts） |
 | F1.3 | URL 兼容层 | ✅ | `lib/legacy-routes.ts` + `components/url-compat.tsx`：`?screen=<name>` 与 legacy `#/<path>`（含 `:file-id` 路径参数）客户端 replace 到 App Router 路径，14 项解析器单测通过 |
 | F1.4 | 会话与引导 | ✅ | `lib/session.tsx`（SessionProvider：get-profile 引导，zero-uuid=匿名）+ `components/auth-guard.tsx`；dashboard/settings 布局与 workspace/view 页加守卫；根路径复刻空 token 分支；登录页接入 `session.refresh` |
 | F2 | 设计系统基线 | ⬜ | 复用 `@penpot/ui`（现有 menu/modal）+ 把 `frontend/src/app/main/ui/ds/*.scss` 令牌移植为 CSS 变量 |
@@ -321,7 +321,24 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - 下一步：F1.2（malli schema → TS 类型生成器，输入已就绪）、F3 auth 路由组
   （register/recovery/verify-token）。
 
-### 7.3 阶段 B
+### 7.3 本轮（2026-10-02，第三批：F1.2 契约类型生成）
+
+- F1.2 完成：`packages/api-types/scripts/generate-types.mjs` 以 S1 清单为输入，静态解析
+  `backend/src` + `common/src` 的 malli schema（Clojure 形式读取器 + ns 别名/`:as-alias`/
+  `:refer`（含逗号）/别名限定符号解析、`register!` 与 `(-> (reduce mu/union …))` 展开、
+  `:=` 等值类型、参数化 `::sm/set`/`::sm/one-of`、几何/颜色等 register! 类型精确映射），
+  生成 `src/index.ts`：186 条命令（按名去重，公共 API 优先），params 184 条、results 51 条。
+- 残余 8 类未解析引用全部为 file-data 域动态 schema（path content、changes set-*-change、
+  tokens-lib、profile props-writeable），按门禁留给 F5/F6/F9；生成器会持续报告。
+- 接线：`frontend-nextjs` 增加 `@penpot/api-types` workspace 依赖 + `transpilePackages`；
+  `lib/types.ts` 的 `Profile`/`LoginWithPasswordParams` 切换为生成类型
+  （`RpcResults["get-profile"]`/`RpcParams["login-with-password"]`）。
+- 修复 `pnpm-workspace.yaml` 中 pnpm 自动写入的 `allowBuilds` 占位文本（unrs-resolver: true），
+  否则 `pnpm install` 直接失败。
+- 验证：`pnpm install` / `pnpm typecheck` / `pnpm build` 全部通过。
+- 下一步：F2 设计系统基线（ds 令牌 → CSS 变量）、F3 auth 路由组（register/recovery/verify-token）。
+
+### 7.4 阶段 B
 
 未开始（🔒 受门禁）。
 
