@@ -1,3 +1,11 @@
 {
-  "extends": ["next/core-web-vitals", "next/typescript"]
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "rules": {
+    // The shell serves the same static assets as the CLJS frontend (svg logo
+    // and spinner, the registration illustration) straight from public/.
+    // next/image would need an image optimizer in the deployment target and
+    // dangerouslyAllowSVG for the svg assets; neither is decided yet. Revisit
+    // together with the asset pipeline.
+    "@next/next/no-img-element": "off"
+  }
 }

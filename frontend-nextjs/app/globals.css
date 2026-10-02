@@ -4,6 +4,8 @@
    (worksans/vazirmatn variable fonts + robotomono). */
 
 @import "../styles/tokens.css";
+@import "../styles/forms.css";
+@import "../styles/auth.css";
 
 @font-face {
   font-family: "worksans";

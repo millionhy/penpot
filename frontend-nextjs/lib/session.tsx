@@ -37,7 +37,9 @@ const defaultValue: SessionState = {
 
 const SessionContext = createContext<SessionState>(defaultValue);
 
-export function isAuthenticatedProfile(profile: Profile | null): boolean {
+// Type predicate so callers can use the profile right after the check; the
+// zero-uuid anonymous profile is excluded at runtime but keeps the Profile type.
+export function isAuthenticatedProfile(profile: Profile | null): profile is Profile {
   return profile !== null && profile !== undefined && profile.id !== ZERO_UUID;
 }
 

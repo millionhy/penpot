@@ -1,0 +1,192 @@
+/* Form field, submit button and toast styles for the shell (F3).
+
+   The CLJS forms render the ds input/button components, which live in the
+   @penpot/ui package (React + react-aria-components + SCSS modules, exports
+   pointing at an unbuilt dist). Wiring that package is tracked as part of
+   F4/F5; until then these classes give the migrated forms the same visual
+   contract (40px fields, accent submit, headline-small button label) using
+   the tokens from styles/tokens.css. */
+
+.pp-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  inline-size: 100%;
+}
+
+.pp-field-label {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-dense);
+  margin: 0;
+}
+
+.pp-field-input {
+  background: var(--color-background-primary);
+  block-size: var(--sz-40);
+  border: var(--b-1) solid var(--color-icon-default);
+  border-radius: var(--br-6);
+  color: var(--color-foreground-primary);
+  font-family: inherit;
+  font-size: var(--fs-14);
+  inline-size: 100%;
+  padding: 0 var(--sp-m);
+}
+
+.pp-field-input::placeholder {
+  color: var(--color-foreground-secondary);
+}
+
+.pp-field-input:focus-visible {
+  border-color: transparent;
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: 0;
+}
+
+.pp-field-input[aria-invalid="true"] {
+  border-color: var(--color-accent-error);
+}
+
+.pp-field-input[data-valid="true"] {
+  border-color: var(--color-accent-success);
+}
+
+.pp-field-hint {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  line-height: var(--lh-compact);
+}
+
+.pp-field-error {
+  color: var(--color-foreground-error);
+  font-size: var(--fs-12);
+  line-height: var(--lh-compact);
+  white-space: pre-line;
+}
+
+.pp-checkbox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  inline-size: 100%;
+}
+
+.pp-checkbox-label {
+  align-items: flex-start;
+  color: var(--color-foreground-primary);
+  display: flex;
+  font-size: var(--fs-12);
+  gap: var(--sp-s);
+  line-height: var(--lh-compact);
+  margin: 0;
+}
+
+.pp-checkbox-label input {
+  block-size: var(--sz-16);
+  flex: 0 0 auto;
+  inline-size: var(--sz-16);
+  margin: 0;
+  margin-block-start: 0.125rem;
+}
+
+.pp-checkbox-text a {
+  color: var(--color-accent-primary);
+}
+
+.pp-checkbox-text a:hover {
+  text-decoration: underline;
+}
+
+.pp-submit {
+  align-items: center;
+  background-color: var(--color-accent-primary);
+  block-size: var(--sz-40);
+  border: var(--b-1) solid var(--color-accent-primary);
+  border-radius: var(--br-8);
+  color: var(--color-background-secondary);
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  inline-size: 100%;
+  justify-content: center;
+  line-height: var(--lh-dense);
+  min-block-size: var(--sz-32);
+  text-transform: uppercase;
+}
+
+.pp-submit:hover:not(:disabled) {
+  background-color: var(--color-accent-tertiary);
+  border-color: var(--color-accent-tertiary);
+  text-decoration: none;
+}
+
+.pp-submit:disabled {
+  background-color: var(--color-background-quaternary);
+  border-color: var(--color-background-quaternary);
+  color: var(--color-foreground-secondary);
+  cursor: default;
+}
+
+/* --- notifications --- */
+
+.pp-toast-region {
+  display: flex;
+  inset-block-end: var(--sp-l);
+  inset-inline: 0;
+  justify-content: center;
+  pointer-events: none;
+  position: fixed;
+  z-index: var(--z-index-notifications);
+}
+
+.pp-toast {
+  align-items: center;
+  border-radius: var(--br-8);
+  box-shadow: 0 var(--b-2) var(--sp-s) var(--color-shadow-dark);
+  display: flex;
+  font-size: var(--fs-14);
+  gap: var(--sp-m);
+  line-height: var(--lh-normal);
+  max-inline-size: 30rem;
+  padding: var(--sp-m) var(--sp-l);
+  pointer-events: auto;
+}
+
+.pp-toast-content {
+  flex: 1 1 auto;
+  white-space: pre-line;
+}
+
+.pp-toast-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: var(--fs-18);
+  line-height: 1;
+  padding: 0;
+}
+
+.pp-toast-success {
+  background: var(--color-background-success);
+  color: var(--color-foreground-primary);
+}
+
+.pp-toast-info {
+  background: var(--color-background-info);
+  color: var(--color-foreground-primary);
+}
+
+.pp-toast-warning {
+  background: var(--color-background-warning);
+  color: var(--color-foreground-primary);
+}
+
+.pp-toast-error {
+  background: var(--color-background-error);
+  color: var(--color-foreground-error);
+}

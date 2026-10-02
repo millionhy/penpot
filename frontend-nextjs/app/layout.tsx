@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { SessionProvider } from "@/lib/session";
 import { UrlCompat } from "@/components/url-compat";
+import { NotificationsProvider } from "@/components/notifications";
 
 export const metadata: Metadata = {
   title: "Penpot",
@@ -18,8 +19,10 @@ export default function RootLayout({
     <html lang="en" className="light">
       <body>
         <SessionProvider>
-          <UrlCompat />
-          {children}
+          <NotificationsProvider>
+            <UrlCompat />
+            {children}
+          </NotificationsProvider>
         </SessionProvider>
       </body>
     </html>

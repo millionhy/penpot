@@ -14,7 +14,10 @@
     "build": "next build",
     "start": "next start -p 3450",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "translations": "node scripts/extract-translations.mjs"
   },
   "dependencies": {
     "@penpot/api-types": "workspace:*",
@@ -29,6 +32,7 @@
     "@types/react-dom": "^19.3.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.5.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.3"
   }
 }

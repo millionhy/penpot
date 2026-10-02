@@ -1,0 +1,312 @@
+/* Auth route group layout (F3). Port of frontend/src/app/main/ui/auth.scss,
+   auth/common.scss and auth/register.scss onto the tokens in
+   styles/tokens.css. Class names are plain (no CSS modules) because the shell
+   has no sass pipeline yet; the SCSS-module -> class mapping is 1:1.
+
+   Deviation: auth/common.scss sets --button-fg-color to
+   var(--color-foreground-disabled) for the disabled submit button, but that
+   custom property is not defined anywhere in ds/colors.scss, so it resolves to
+   nothing upstream. The shell uses --color-foreground-secondary instead. */
+
+.auth-section {
+  background: var(--color-background-primary);
+  block-size: 100%;
+  display: grid;
+  align-items: center;
+  gap: var(--sp-xxxl);
+  grid-template-columns: repeat(5, 1fr);
+  inline-size: 100%;
+  overflow: auto;
+  padding: var(--sp-xxxl);
+  position: relative;
+}
+
+.auth-section-register {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  scrollbar-width: thin;
+}
+
+.auth-section-register .auth-illustration {
+  display: none;
+}
+
+.auth-logo-container {
+  block-size: var(--sz-96);
+  display: flex;
+  inline-size: var(--sz-120);
+  inset-block-start: var(--sp-xl);
+  inset-inline-start: var(--sp-xl);
+  justify-content: flex-start;
+  margin: 0;
+  margin-block-end: 3.25rem;
+  position: absolute;
+}
+
+.auth-logo {
+  block-size: var(--sz-40);
+  display: block;
+  inline-size: var(--sz-120);
+}
+
+.auth-illustration {
+  block-size: auto;
+  display: flex;
+  grid-column: 1 / 4;
+  inline-size: 40vw;
+  justify-content: center;
+  justify-self: center;
+}
+
+.auth-illustration img {
+  block-size: auto;
+  inline-size: 100%;
+}
+
+.auth-content {
+  block-size: fit-content;
+  display: grid;
+  gap: var(--sp-xxl);
+  grid-column: 4 / 6;
+  grid-template-rows: 1fr auto;
+  inline-size: 100%;
+  max-inline-size: 25.75rem;
+  padding-block-end: var(--sp-s);
+  position: relative;
+}
+
+.auth-section-register .auth-content {
+  grid-column: auto;
+}
+
+@media (width <= 992px) {
+  .auth-section {
+    display: flex;
+    justify-content: center;
+  }
+  .auth-illustration {
+    display: none;
+  }
+  .auth-content {
+    grid-column: auto;
+  }
+}
+
+/* --- auth/common.scss --- */
+
+.auth-wrapper {
+  display: grid;
+  gap: var(--sp-m);
+  inline-size: 100%;
+  padding-block-end: 0;
+}
+
+.auth-wrapper-register {
+  gap: var(--sp-xxl);
+}
+
+.auth-wrapper-success {
+  gap: var(--sp-xxl);
+}
+
+.auth-title-wrapper {
+  display: grid;
+  gap: var(--sp-s);
+  inline-size: 100%;
+  padding-block-end: 0;
+}
+
+.auth-title {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-24);
+  font-weight: var(--fw-regular);
+  line-height: 1.2;
+  margin: 0;
+}
+
+.auth-subtitle,
+.auth-tagline {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-dense);
+  margin: 0;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-m);
+  margin: var(--sp-m) 0;
+}
+
+.auth-separator {
+  border: none;
+  border-block-start: var(--b-1) solid var(--color-background-quaternary);
+  margin: 0;
+}
+
+.auth-links {
+  display: grid;
+  gap: var(--sp-xxl);
+}
+
+.auth-row {
+  display: flex;
+  gap: var(--sp-s);
+  justify-content: center;
+  padding: 0;
+}
+
+.auth-row-text {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  line-height: var(--lh-dense);
+  text-align: right;
+}
+
+.auth-row-link {
+  background-color: transparent;
+  border: none;
+  color: var(--color-accent-primary);
+  display: inline;
+  font-size: var(--fs-14);
+  line-height: var(--lh-dense);
+  padding: 0;
+  text-align: left;
+}
+
+.auth-row-link:hover {
+  text-decoration: underline;
+}
+
+.auth-go-back-row {
+  border-block-start: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-m);
+  padding: 0;
+}
+
+.auth-go-back {
+  background-color: var(--color-background-tertiary);
+  block-size: var(--sz-40);
+  border: var(--b-1) solid var(--color-background-tertiary);
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  justify-content: center;
+  line-height: var(--lh-dense);
+  text-transform: uppercase;
+}
+
+.auth-go-back:hover {
+  background-color: var(--color-background-quaternary);
+  border-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+  text-decoration: none;
+}
+
+.auth-notification-text {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
+}
+
+.auth-notification-email {
+  color: var(--color-accent-primary);
+  font-size: var(--fs-20);
+  line-height: 1.2;
+  margin-inline: var(--sz-36);
+}
+
+.auth-terms {
+  display: flex;
+  font-size: var(--fs-12);
+  gap: var(--sp-xs);
+  inline-size: 100%;
+  justify-content: center;
+  line-height: var(--lh-compact);
+}
+
+.auth-terms-link {
+  color: var(--color-accent-primary);
+}
+
+.auth-terms-link:hover {
+  text-decoration: underline;
+}
+
+.auth-terms-and {
+  border-block-end: var(--b-1) solid transparent;
+  color: var(--color-foreground-secondary);
+}
+
+/* Inline banner used by the login form for credential errors
+   (context-notification* in app.main.ui.auth.login). */
+.auth-context-notification {
+  border-radius: var(--br-6);
+  font-size: var(--fs-12);
+  line-height: var(--lh-compact);
+  padding: var(--sp-s) var(--sp-m);
+}
+
+.auth-context-notification-error {
+  background: var(--color-background-error);
+  color: var(--color-foreground-error);
+}
+
+/* verify-token loader and the invalid-token error card. */
+.auth-loader {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-m);
+  justify-content: center;
+  padding-block: var(--sp-xxxl);
+}
+
+.auth-loader-spinner {
+  animation: auth-spin 1.2s linear infinite;
+  block-size: var(--sz-36);
+  inline-size: var(--sz-36);
+}
+
+@keyframes auth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.auth-invalid-token {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-l);
+  justify-content: center;
+  text-align: center;
+}
+
+.auth-invalid-token-logo {
+  block-size: var(--sz-96);
+  inline-size: auto;
+}
+
+.auth-invalid-token-main {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-20);
+  line-height: var(--lh-normal);
+}
+
+.auth-invalid-token-desc {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
+  max-inline-size: 30rem;
+}
