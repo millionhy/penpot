@@ -166,6 +166,9 @@ importers:
 
   .:
     dependencies:
+      '@penpot/api-types':
+        specifier: workspace:*
+        version: link:packages/api-types
       next:
         specifier: ^15.5.0
         version: 15.5.27(@types/node@24.19.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

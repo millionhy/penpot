@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@penpot/api-types": "workspace:*",
     "next": "^15.5.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

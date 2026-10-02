@@ -19,6 +19,8 @@ const backendOrigin = process.env.PENPOT_BACKEND_ORIGIN ?? "http://localhost:606
 
 const nextConfig = {
   reactStrictMode: true,
+  // @penpot/api-types ships raw TS sources (generated contract types).
+  transpilePackages: ["@penpot/api-types"],
   // frontend-nextjs is a self-contained workspace with its own lockfile; pin the
   // tracing root here so Next does not infer the monorepo root (silences the
   // "multiple lockfiles" warning and keeps output tracing local).
