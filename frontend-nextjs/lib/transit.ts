@@ -3,14 +3,17 @@
 // the same Cognitect library the CLJS build uses, so keywords, uuids, instants
 // and tagged values round-trip identically.
 //
-// Decoding is normalized to plain JS values at this boundary: keyword-keyed
-// transit maps become ordinary objects with string keys, uuids ("~u") become
-// strings and instants ("~m" millis) become Dates. The CLJS frontend consumes
-// transit Maps directly; TS pages consume plain objects instead.
+// F1.1: ports the read handlers registered in common/src/app/common/transit.cljc
+// (uuid, instant, bigint-ish "n", duration, uri, ordered-map, ordered-set,
+// penpot/pointer), normalized to plain JS values at this boundary: maps become
+// ordinary objects with string keys, uuids become strings, instants ("~m"
+// millis) become Dates, ordered collections become insertion-ordered objects
+// or arrays. The CLJS frontend consumes transit Maps and native types
+// directly; TS pages consume plain JS instead.
 //
-// TODO(Phase-F): port the remaining custom read/write handlers from
-// common/src/app/common/transit.cljc (file/change tags, points, etc.) as the
-// migrated commands start needing them.
+// Still TODO(Phase-F, needed by F6/F9): the file-data write handlers used by
+// the workspace/viewer (points, matrices, change vectors) and "~#with-meta"
+// forms; port them together with the commands that carry them.
 
 import transit from "transit-js";
 
@@ -18,15 +21,57 @@ interface MutableRecord {
   [key: string]: unknown;
 }
 
+// Backend pointer-map marker (tag "penpot/pointer", rep [id metadata]).
+export class Pointer {
+  id: string;
+  meta: unknown;
+  constructor(id: string, meta: unknown) {
+    this.id = id;
+    this.meta = meta;
+  }
+}
+
+export function isPointer(value: unknown): value is Pointer {
+  return value instanceof Pointer;
+}
+
+function pairsToObject(pairs: unknown): MutableRecord {
+  const out: MutableRecord = {};
+  if (Array.isArray(pairs)) {
+    for (const entry of pairs) {
+      if (Array.isArray(entry) && entry.length >= 2) {
+        out[String(entry[0])] = entry[1];
+      }
+    }
+  }
+  return out;
+}
+
 // transit-js reader options: plain-object maps + scalar normalization.
 const readerOptions = {
   handlers: {
-    // "~u<uuid>" -> string
-    u: (rep: string) => rep,
-    // "~m<millis>" -> Date
-    m: (rep: string) => new Date(Number.parseInt(rep, 10)),
     // keyword scalars ("~:foo") -> string
     ":": (rep: string) => rep,
+    // "~u<uuid>" -> string (CLJS uses parse-uuid; TS pages use strings)
+    u: (rep: string) => rep,
+    // "~m<millis>" -> Date (app.common.transit instant handler)
+    m: (rep: string) => new Date(Number.parseInt(rep, 10)),
+    // "~n<int>" big integer strings -> number (cljs "n" handler)
+    n: (rep: string) => Number.parseInt(rep, 10),
+    // java.time.Duration millis -> number
+    duration: (rep: unknown) => Number(rep),
+    // lambdaisland URI -> string
+    uri: (rep: string) => rep,
+    // LinkedMap (vec of [k v] pairs) -> insertion-ordered plain object
+    "ordered-map": (rep: unknown) => pairsToObject(rep),
+    // LinkedSet / transit set -> array (insertion order)
+    "ordered-set": (rep: unknown) => (Array.isArray(rep) ? rep : []),
+    set: (rep: unknown) => (Array.isArray(rep) ? rep : []),
+    // Pointer [id metadata] (backend pointer-map serialization)
+    "penpot/pointer": (rep: unknown) => {
+      const pair = Array.isArray(rep) ? rep : [];
+      return new Pointer(String(pair[0]), pair[1]);
+    },
   },
   mapBuilder: {
     init: () => ({} as MutableRecord),
@@ -70,4 +115,10 @@ export function keyword(name: string): unknown {
 
 export function uuid(value: string): unknown {
   return transit.uuid(value);
+}
+
+// js/Date is written natively as "~m<millis>" by transit-js, matching the
+// instant write handler in app.common.transit.
+export function instant(value: Date): unknown {
+  return value;
 }
