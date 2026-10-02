@@ -1,25 +1,87 @@
-/* Global styles for the Next.js shell.
-   The design-token baseline (colors, spacing, typography, elevations, z-index,
-   borders, sizes) lives in the CLJS design system at
-   frontend/src/app/main/ui/ds/*.scss. Porting those tokens to CSS variables and
-   reusing the @penpot/ui React package is a Phase-F design-system task; only
-   layout primitives are defined here so the scaffold renders. */
-:root {
-  color-scheme: light dark;
-  --pp-bg: #ffffff;
-  --pp-fg: #111317;
-  --pp-accent: #7efff5;
+/* Global styles for the Next.js shell (F2 design-system baseline).
+   Tokens: styles/tokens.css (ported from frontend/src/app/main/ui/ds).
+   Fonts mirror frontend/resources/styles/common/dependencies/fonts.scss
+   (worksans/vazirmatn variable fonts + robotomono). */
+
+@import "../styles/tokens.css";
+
+@font-face {
+  font-family: "worksans";
+  src: url("/fonts/WorkSans-VariableFont.ttf") format("truetype");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD, U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
+@font-face {
+  font-family: "vazirmatn";
+  src: url("/fonts/Vazirmatn-VariableFont.ttf") format("truetype");
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EFD-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1;
+}
+@font-face {
+  font-family: "robotomono";
+  src: url("/fonts/RobotoMono-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD, U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+.light { color-scheme: light; }
+.default { color-scheme: dark; }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
-  background: var(--pp-bg);
-  color: var(--pp-fg);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: var(--color-background-primary);
+  color: var(--color-foreground-primary);
+  font-family: var(--font-family-base);
+  font-optical-sizing: auto;
+  font-size: var(--fs-14);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
 }
 a { color: inherit; }
-.pp-page { padding: 24px; max-width: 960px; margin: 0 auto; }
-.pp-muted { opacity: 0.7; font-size: 14px; }
-form label { display: block; margin: 12px 0; }
-form input { padding: 8px; min-width: 260px; }
-form button { padding: 8px 16px; }
+
+/* Typography utilities: port of the use-typography mixins in
+   ds/typography.scss (family/weight/line-height/size per style). */
+.pp-typ-display        { font-weight: var(--fw-regular); line-height: var(--lh-normal);  font-size: var(--fs-36); }
+.pp-typ-title-large    { font-weight: var(--fw-regular); line-height: var(--lh-normal);  font-size: var(--fs-24); }
+.pp-typ-title-medium   { font-weight: var(--fw-regular); line-height: var(--lh-normal);  font-size: var(--fs-20); }
+.pp-typ-title-small    { font-weight: var(--fw-regular); line-height: var(--lh-dense);   font-size: var(--fs-14); }
+.pp-typ-headline-large { font-weight: var(--fw-regular); line-height: var(--lh-normal);  font-size: var(--fs-18); text-transform: uppercase; }
+.pp-typ-headline-medium{ font-weight: var(--fw-regular); line-height: var(--lh-normal);  font-size: var(--fs-16); text-transform: uppercase; }
+.pp-typ-headline-small { font-weight: var(--fw-medium);  line-height: var(--lh-dense);   font-size: var(--fs-12); text-transform: uppercase; }
+.pp-typ-body-large     { font-weight: var(--fw-regular); line-height: var(--lh-normal);  font-size: var(--fs-16); }
+.pp-typ-body-medium    { font-weight: var(--fw-regular); line-height: var(--lh-normal);  font-size: var(--fs-14); }
+.pp-typ-body-small     { font-weight: var(--fw-regular); line-height: var(--lh-compact); font-size: var(--fs-12); }
+.pp-typ-code-font      { font-family: var(--font-family-code); font-weight: var(--fw-regular); line-height: var(--lh-dense); font-size: var(--fs-12); }
+
+/* Layout primitives styled with tokens. */
+.pp-page { padding: var(--sp-xxl); max-width: var(--sz-1000); margin: 0 auto; }
+.pp-page h1 { font-weight: var(--fw-regular); line-height: var(--lh-normal); font-size: var(--fs-24); }
+.pp-muted { color: var(--color-foreground-secondary); font-size: var(--fs-12); }
+
+form label { display: block; margin: var(--sp-m) 0; }
+form input {
+  padding: var(--sp-s);
+  min-width: var(--sz-252);
+  border: var(--b-1) solid var(--color-icon-default);
+  border-radius: var(--br-6);
+  background: var(--color-background-primary);
+  color: var(--color-foreground-primary);
+  font: inherit;
+}
+form input:focus-visible {
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: 0;
+  border-color: transparent;
+}
+form button {
+  padding: var(--sp-s) var(--sp-l);
+  background: var(--color-accent-primary);
+  color: var(--color-static-white);
+  border: none;
+  border-radius: var(--br-8);
+  font: inherit;
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+form button:hover:not(:disabled) { background: var(--color-accent-tertiary); }
+form button:disabled { background: var(--color-background-disabled); color: var(--color-foreground-secondary); cursor: default; }

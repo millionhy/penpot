@@ -1,0 +1,247 @@
+/* Design tokens (F2). Ported 1:1 from the CLJS design system:
+   frontend/src/app/main/ui/ds/{colors,spacing,typography,elevations,z-index,_borders,_sizes}.scss
+
+   - Semantic color tokens keep the exact ds names (--color-*) and live under
+     the .light / .default (dark) theme classes, mirroring the :global(.light)
+     / :global(.default) blocks in ds/colors.scss. The theme class goes on
+     <html>; profile-driven theme switching arrives with the settings pages.
+   - Raw palette values are exposed as --pp-* for component use; scss-only
+     helpers (px2rem) are pre-resolved to rem (base 16px).
+   - Typography mixins (ds/typography.scss use-typography) become the
+     .pp-typ-* utility classes in app/globals.css. */
+
+:root {
+  /* ---- raw palette (ds/colors.scss) ---- */
+  --pp-mint-150: #7efff5;
+  --pp-mint-250: #00d1b8;
+  --pp-mint-700: #426158;
+  --pp-mint-150-60: #7efff599;
+  --pp-mint-250-10: #00d1b81a;
+  --pp-mint-250-70: #00d1b8b3;
+  --pp-green-200: #a7e8d9;
+  --pp-green-500: #2d9f8f;
+  --pp-green-950: #0a2927;
+  --pp-orange-200: #fedeac;
+  --pp-orange-500: #fe9c07;
+  --pp-orange-950: #3d2501;
+  --pp-red-200: #ffcada;
+  --pp-red-400: #c80857;
+  --pp-red-500: #ff3277;
+  --pp-red-950: #500124;
+  --pp-pink-400: #ff6fe0;
+  --pp-purple-200: #e1d2f5;
+  --pp-purple-400: #bb97d8;
+  --pp-purple-500: #a977d1;
+  --pp-purple-600: #8c33eb;
+  --pp-purple-700: #6911d4;
+  --pp-purple-600-10: #8c33eb1a;
+  --pp-purple-600-70: #8c33ebb3;
+  --pp-purple-700-60: #6911d499;
+  --pp-aqua-200: #ddf7ff;
+  --pp-aqua-400: #77e1f3;
+  --pp-aqua-600: #59acbb;
+  --pp-aqua-800: #1d4464;
+  --pp-violet-300: #a7a9ff;
+  --pp-violet-600: #6c6dad;
+  --pp-violet-700: #484c74;
+  --pp-violet-800: #272941;
+  --pp-blue-200: #bae3fd;
+  --pp-blue-500: #0e9be9;
+  --pp-blue-950: #082c49;
+  --pp-cobalt-700: #1345aa;
+  --pp-black: #000;
+  --pp-gray-950: #18181a;
+  --pp-gray-950-60: #18181a99;
+  --pp-gray-950-90: #18181ae6;
+  --pp-gray-900: #212426;
+  --pp-gray-800: #2e3434;
+  --pp-gray-200: #e8eaee;
+  --pp-gray-100: #eef0f2;
+  --pp-gray-50: #f3f4f6;
+  --pp-white: #fff;
+  --pp-white-60: #fff9;
+  --pp-white-90: #ffffffe6;
+  --pp-blue-teal-700: #495e74;
+  --pp-grayish-blue-500: #8f9da3;
+  --pp-grayish-red: #bfbfbf;
+
+  /* ---- spacing (ds/spacing.scss, px2rem pre-resolved) ---- */
+  --sp-xxs: 0.125rem;  /* 2px */
+  --sp-xs: 0.25rem;    /* 4px */
+  --sp-s: 0.5rem;      /* 8px */
+  --sp-m: 0.75rem;     /* 12px */
+  --sp-l: 1rem;        /* 16px */
+  --sp-xl: 1.25rem;    /* 20px */
+  --sp-xxl: 1.5rem;    /* 24px */
+  --sp-xxxl: 2rem;     /* 32px */
+
+  /* ---- borders (ds/_borders.scss) ---- */
+  --br-4: 0.25rem;
+  --br-6: 0.375rem;
+  --br-8: 0.5rem;
+  --br-12: 0.75rem;
+  --br-circle: 50%;
+  --b-1: 0.0625rem;
+  --b-2: 0.125rem;
+
+  /* ---- sizes (ds/_sizes.scss) ---- */
+  --sz-1: 0.0625rem;
+  --sz-6: 0.375rem;
+  --sz-12: 0.75rem;
+  --sz-14: 0.875rem;
+  --sz-16: 1rem;
+  --sz-24: 1.5rem;
+  --sz-28: 1.75rem;
+  --sz-32: 2rem;
+  --sz-36: 2.25rem;
+  --sz-40: 2.5rem;
+  --sz-48: 3rem;
+  --sz-64: 4rem;
+  --sz-88: 5.5rem;
+  --sz-96: 6rem;
+  --sz-120: 7.5rem;
+  --sz-154: 9.625rem;
+  --sz-160: 10rem;
+  --sz-192: 12rem;
+  --sz-200: 12.5rem;
+  --sz-224: 14rem;
+  --sz-252: 15.75rem;
+  --sz-284: 17.75rem;
+  --sz-352: 22rem;
+  --sz-364: 22.75rem;
+  --sz-384: 24rem;
+  --sz-400: 25rem;
+  --sz-430: 26.875rem;
+  --sz-480: 30rem;
+  --sz-500: 31.25rem;
+  --sz-512: 32rem;
+  --sz-520: 32.5rem;
+  --sz-712: 44.5rem;
+  --sz-964: 60.25rem;
+  --sz-1000: 62.5rem;
+
+  /* ---- z-index (ds/z-index.scss) ---- */
+  --z-index-auto: auto;          /* workspace, rulers ... */
+  --z-index-panels: 100;         /* toolbars, palettes ... */
+  --z-index-guides: 200;         /* guides */
+  --z-index-set: 300;            /* modals, color picker, grid edition */
+  --z-index-dropdown: 400;       /* selects, menus, dropdowns */
+  --z-index-notifications: 500;  /* notifications */
+  --z-index-loaders: 600;        /* loaders */
+
+  /* ---- typography (ds/typography.scss) ---- */
+  --font-family-base: "worksans", "vazirmatn", sans-serif;
+  /* ds/typography.scss says "Roboto Mono"; the app actually registers the
+     family as "robotomono" (dependencies/fonts.scss), so use the real one. */
+  --font-family-code: "robotomono", monospace;
+  --fs-12: 0.75rem;
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-18: 1.125rem;
+  --fs-20: 1.25rem;
+  --fs-24: 1.5rem;
+  --fs-36: 2.25rem;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --lh-dense: 1.2;
+  --lh-compact: 1.3;
+  --lh-normal: 1.4;
+}
+
+/* ---- light theme (ds/colors.scss :global(.light)) ---- */
+.light {
+  --color-accent-primary: #6911d4;
+  --color-accent-primary-muted: #e1d2f5;
+  --color-accent-secondary: #1345aa;
+  --color-accent-tertiary: #8c33eb;
+  --color-accent-quaternary: #ff6fe0;
+  --color-accent-overlay: #6911d499;
+  --color-accent-select: #8c33eb1a;
+  --color-accent-background-select: #8c33ebb3;
+  --color-accent-action: #bb97d8;
+  --color-accent-action-hover: #a977d1;
+  --color-accent-off: #f3f4f6;
+  --color-accent-success: #2d9f8f;
+  --color-background-success: #a7e8d9;
+  --color-accent-warning: #fe9c07;
+  --color-background-warning: #fedeac;
+  --color-accent-error: #c80857;
+  --color-background-error: #ffcada;
+  --color-foreground-error: #ff3277;
+  --color-accent-info: #0e9be9;
+  --color-background-info: #bae3fd;
+  --color-background-default: #fff;
+  --color-accent-default: #eef0f2;
+  --color-icon-default: #495e74;
+  --color-background-disabled: #e8eaee;
+  --color-background-primary: #fff;
+  --color-background-secondary: #e8eaee;
+  --color-background-tertiary: #f3f4f6;
+  --color-background-quaternary: #eef0f2;
+  --color-foreground-primary: #000;
+  --color-foreground-secondary: #495e74;
+  --color-static-white: #fff;
+  --color-static-black: #000;
+  --color-shadow-dark: #e8eaee99;
+  --color-shadow-light: #0000004d;
+  --color-overlay-default: #fff9;
+  --color-overlay-onboarding: #ffffffe6;
+  --color-canvas: #bfbfbf;
+  --color-token-background: #ddf7ff;
+  --color-token-border: #77e1f3;
+  --color-token-accent: #59acbb;
+  --color-token-foreground: #1d4464;
+  --color-badge-premium: #fe9c07;
+}
+
+/* ---- default (dark) theme (ds/colors.scss :global(.default)) ---- */
+.default {
+  --color-accent-primary: #7efff5;
+  --color-accent-primary-muted: #426158;
+  --color-accent-secondary: #bb97d8;
+  --color-accent-tertiary: #00d1b8;
+  --color-accent-quaternary: #ff6fe0;
+  --color-accent-overlay: #7efff599;
+  --color-accent-select: #00d1b81a;
+  --color-accent-background-select: #00d1b8b3;
+  --color-accent-action: #bb97d8;
+  --color-accent-action-hover: #a977d1;
+  --color-accent-off: #f3f4f6;
+  --color-accent-success: #2d9f8f;
+  --color-background-success: #0a2927;
+  --color-accent-warning: #fe9c07;
+  --color-background-warning: #3d2501;
+  --color-accent-error: #c80857;
+  --color-background-error: #500124;
+  --color-foreground-error: #ff3277;
+  --color-accent-info: #0e9be9;
+  --color-background-info: #082c49;
+  --color-background-default: #18181a;
+  --color-accent-default: #2e3434;
+  --color-icon-default: #8f9da3;
+  --color-background-disabled: #2e3434;
+  --color-background-primary: #18181a;
+  --color-background-secondary: #000;
+  --color-background-tertiary: #212426;
+  --color-background-quaternary: #2e3434;
+  --color-foreground-primary: #fff;
+  --color-foreground-secondary: #8f9da3;
+  --color-static-white: #fff;
+  --color-static-black: #000;
+  --color-shadow-dark: #00000099;
+  --color-shadow-light: #0000004d;
+  --color-overlay-default: #18181a99;
+  --color-overlay-onboarding: #18181ae6;
+  --color-canvas: #bfbfbf;
+  --color-token-background: #272941;
+  --color-token-border: #484c74;
+  --color-token-accent: #6c6dad;
+  --color-token-foreground: #a7a9ff;
+  --color-badge-premium: #fedeac;
+}
+
+/* ---- elevations (ds/elevations.scss; theme-dependent via --color-shadow-dark) ---- */
+.light,
+.default {
+  --el-shadow-dark: 0 0 10px 0 var(--color-shadow-dark);
+}
