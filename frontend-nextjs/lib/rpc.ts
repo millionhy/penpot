@@ -148,3 +148,46 @@ export async function cmd<T = unknown>(
   const run = () => once<T>(method, uri, record, opts);
   return method === "get" ? withRetry(run) : run();
 }
+
+// multipart-upload in repo.cljs: the four commands that carry a Blob
+// (update-profile-photo, update-team-photo, upload-file-media-object,
+// upload-chunk) POST a FormData body instead of transit, but the response is
+// still transit-encoded. The content-type header must be left to the browser so
+// the multipart boundary is correct.
+export async function cmdUpload<T = unknown>(
+  id: string,
+  params: Record<string, unknown>,
+  opts: RpcOptions = {},
+): Promise<T> {
+  const uri = joinUrl(config.publicUri, METHODS_BASE + id);
+  const body = new FormData();
+  for (const key of Object.keys(params)) {
+    const value = params[key];
+    if (value === undefined || value === null) continue;
+    if (typeof value === "string" || value instanceof Blob) body.append(key, value);
+    else body.append(key, String(value));
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(uri, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        accept: "application/transit+json,*/*",
+        "x-session-id": config.sessionId,
+      },
+      signal: opts.signal,
+      body,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "network error";
+    throw new RpcError(message, { type: "network", uri });
+  }
+
+  if (res.status === 204) return undefined as T;
+  if (!res.ok) await classifyAndThrow(res, uri);
+  const text = await res.text();
+  if (text.length === 0) return undefined as T;
+  return decodeTransit<T>(text);
+}

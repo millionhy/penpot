@@ -18,7 +18,14 @@ import {
 } from "react";
 import { tr } from "@/lib/i18n";
 
-export type FieldType = "text" | "email" | "password" | "checkbox";
+export type FieldType =
+  | "text"
+  | "email"
+  | "password"
+  | "checkbox"
+  | "select"
+  | "radio"
+  | "textarea";
 
 export interface FieldSpec {
   type: FieldType;
@@ -29,6 +36,8 @@ export interface FieldSpec {
   max?: number;
   // checkbox only: the [:and :boolean [:= true]] shape used by the terms box.
   mustBeTrue?: boolean;
+  // select/radio only: the [::sm/one-of #{...}] membership check.
+  oneOf?: readonly string[];
 }
 
 export type FieldSpecs = Record<string, FieldSpec>;
@@ -67,11 +76,19 @@ export function validateField(spec: FieldSpec, value: unknown): string | null {
     return null;
   }
   const raw = asString(value);
+  const textLike =
+    spec.type === "text" ||
+    spec.type === "textarea" ||
+    spec.type === "select" ||
+    spec.type === "radio";
   if (raw.length === 0) {
     if (spec.optional) return null;
-    return spec.type === "text" ? tr("errors.field-missing") : validateNonEmpty(spec, raw);
+    return textLike ? tr("errors.field-missing") : validateNonEmpty(spec, raw);
   }
-  if (spec.type === "text" && raw.trim().length === 0) {
+  if (spec.oneOf !== undefined && !spec.oneOf.includes(raw)) {
+    return tr("errors.invalid-data");
+  }
+  if ((spec.type === "text" || spec.type === "textarea") && raw.trim().length === 0) {
     return spec.optional ? null : tr("errors.field-not-all-whitespace");
   }
   return validateNonEmpty(spec, raw);
@@ -110,6 +127,12 @@ export function cleanValues(specs: FieldSpecs, values: FormValues): CleanData {
     const spec = specs[name];
     if (spec.type === "checkbox") {
       data[name] = values[name] === true;
+      continue;
+    }
+    // A select or radio group always carries a definite choice, and "" can be a
+    // real option (the "Auto (browser)" locale), so it is kept, not dropped.
+    if (spec.type === "select" || spec.type === "radio") {
+      data[name] = asString(values[name]);
       continue;
     }
     const raw = asString(values[name]);

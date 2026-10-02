@@ -5,8 +5,9 @@
 // The CLJS app ships every translation to the browser and resolves keys at
 // runtime (app.util.i18n). The shell only needs the keys of the pages already
 // migrated, so this script scans the shell sources for static tr("...") call
-// sites plus the RUNTIME_KEYS list (keys the backend sends back for
-// translation) and emits a typed catalog. Re-run after migrating a page:
+// sites, for the key fields of data-driven views (see trFieldRe) and for the
+// RUNTIME_KEYS list (keys the backend sends back for translation), then emits
+// a typed catalog. Re-run after migrating a page:
 //
 //   node scripts/extract-translations.mjs
 //
@@ -134,6 +135,11 @@ function parsePo(text) {
 // because a catalog entry may contain [label](url) link syntax.
 const trCallRe = /\btr\(\s*"([^"\\]+)"/g;
 const trElementRe = /<Tr\b[^>]*\bk="([^"\\]+)"/g;
+// Data-driven call sites: a nav entry keeps the key in a field and the view
+// hands it over as tr(item.labelKey), so trCallRe never sees the literal.
+// settingsNav in lib/settings.ts is the only such view today; a new one has to
+// extend this pattern or its labels render as raw keys.
+const trFieldRe = /\blabelKey:\s*"([^"\\]+)"/g;
 
 function* walk(dir) {
   for (const name of readdirSync(dir)) {
@@ -152,13 +158,11 @@ function collectUsedKeys() {
     if (!statSync(abs, { throwIfNoEntry: false })?.isDirectory()) continue;
     for (const file of walk(abs)) {
       const text = readFileSync(file, "utf8");
-      for (const match of text.matchAll(trCallRe)) {
-        const key = match[1];
-        if (!used.has(key)) used.set(key, path.relative(shellRoot, file));
-      }
-      for (const match of text.matchAll(trElementRe)) {
-        const key = match[1];
-        if (!used.has(key)) used.set(key, path.relative(shellRoot, file));
+      for (const pattern of [trCallRe, trElementRe, trFieldRe]) {
+        for (const match of text.matchAll(pattern)) {
+          const key = match[1];
+          if (!used.has(key)) used.set(key, path.relative(shellRoot, file));
+        }
       }
     }
   }

@@ -147,3 +147,117 @@ describe("cleanValues", () => {
     expect(cleanValues({ email }, { email: "" })).toEqual({ email: "" });
   });
 });
+
+const autoLocale: FieldSpec = { type: "select", optional: true, max: 20 };
+const themeSelect: FieldSpec = {
+  type: "select",
+  optional: true,
+  max: 250,
+  oneOf: ["light", "dark", "system"],
+};
+const feedbackType: FieldSpec = { type: "select", oneOf: ["idea", "issue", "doubt"] };
+const notifyGroup: FieldSpec = { type: "radio", oneOf: ["all", "partial", "none"] };
+const feedbackBody: FieldSpec = { type: "textarea", max: 5000 };
+const optionalBody: FieldSpec = { type: "textarea", optional: true, max: 5000 };
+
+describe("validateField select", () => {
+  it("accepts a listed option", () => {
+    expect(validateField(themeSelect, "light")).toBeNull();
+  });
+
+  it("accepts the browser detect option on an optional select", () => {
+    expect(validateField(autoLocale, "")).toBeNull();
+  });
+
+  it("reports an unlisted option as invalid data", () => {
+    expect(validateField(themeSelect, "solarized")).toBe(tr("errors.invalid-data"));
+  });
+
+  it("reports the membership failure before the length failure", () => {
+    expect(validateField(themeSelect, "a".repeat(251))).toBe(tr("errors.invalid-data"));
+  });
+
+  it("enforces the max length on a select without a closed option list", () => {
+    expect(validateField(autoLocale, "a".repeat(21))).toBe(
+      tr("errors.field-max-length", 20),
+    );
+  });
+
+  it("reports an empty required select as missing", () => {
+    expect(validateField(feedbackType, "")).toBe(tr("errors.field-missing"));
+  });
+});
+
+describe("validateField radio", () => {
+  it("accepts the chosen option", () => {
+    expect(validateField(notifyGroup, "partial")).toBeNull();
+  });
+
+  it("reports a value outside the group", () => {
+    expect(validateField(notifyGroup, "some")).toBe(tr("errors.invalid-data"));
+  });
+
+  it("reports an unanswered required group", () => {
+    expect(validateField(notifyGroup, "")).toBe(tr("errors.field-missing"));
+  });
+});
+
+describe("validateField textarea", () => {
+  it("accepts the body text", () => {
+    expect(validateField(feedbackBody, "Rulers would help me align frames.")).toBeNull();
+  });
+
+  it("reports an empty required body as missing", () => {
+    expect(validateField(feedbackBody, "")).toBe(tr("errors.field-missing"));
+  });
+
+  it("reports a whitespace only body", () => {
+    expect(validateField(feedbackBody, "   ")).toBe(
+      tr("errors.field-not-all-whitespace"),
+    );
+  });
+
+  it("enforces the max length", () => {
+    expect(validateField(feedbackBody, "a".repeat(5001))).toBe(
+      tr("errors.field-max-length", 5000),
+    );
+  });
+
+  it("treats an empty optional body as absent", () => {
+    expect(validateField(optionalBody, "")).toBeNull();
+    expect(validateField(optionalBody, "   ")).toBeNull();
+  });
+});
+
+describe("cleanValues select and radio", () => {
+  const specs: FieldSpecs = {
+    lang: autoLocale,
+    theme: themeSelect,
+    "notify-team-invitation": notifyGroup,
+    content: feedbackBody,
+  };
+
+  it("keeps the empty browser detect locale", () => {
+    expect(cleanValues({ lang: autoLocale }, { lang: "" })).toEqual({ lang: "" });
+  });
+
+  it("keeps every definite choice", () => {
+    expect(
+      cleanValues(specs, {
+        lang: "es",
+        theme: "light",
+        "notify-team-invitation": "all",
+        content: "Thanks",
+      }),
+    ).toEqual({
+      lang: "es",
+      theme: "light",
+      "notify-team-invitation": "all",
+      content: "Thanks",
+    });
+  });
+
+  it("keeps an unanswered radio group so the schema error is not hidden", () => {
+    expect(cleanValues({ theme: themeSelect }, { theme: "" })).toEqual({ theme: "" });
+  });
+});

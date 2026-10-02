@@ -317,3 +317,12 @@ export function classifyVerifyTokenError(err: unknown): VerifyTokenOutcome {
   if (code === "email-already-validated") return { kind: "email-already-validated" };
   return { kind: "error" };
 }
+
+// logout in app.main.data.auth: posts the current profile id and then clears the
+// session. The CLJS event wraps the call in fixed delays and swallows failures
+// (rx/catch -> nil) so a dead backend cannot trap the user in a logged-in UI;
+// the shell keeps the swallow and drops the delays.
+export function logout(profileId?: string): Promise<unknown> {
+  const params = profileId === undefined ? {} : { "profile-id": profileId };
+  return cmd("logout", params).catch(() => null);
+}

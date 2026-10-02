@@ -44,8 +44,10 @@ export interface FieldProps {
   label: string;
   hint?: string;
   type?: "text" | "email" | "password";
+  placeholder?: string;
   autoComplete?: string;
   autoFocus?: boolean;
+  disabled?: boolean;
   testId?: string;
 }
 
@@ -54,8 +56,10 @@ export function Field({
   label,
   hint,
   type = "text",
+  placeholder,
   autoComplete,
   autoFocus,
+  disabled,
   testId,
 }: FieldProps) {
   const form = useFormContext();
@@ -74,8 +78,10 @@ export function Field({
         type={type}
         name={name}
         value={value}
+        placeholder={placeholder}
         autoComplete={autoComplete}
         autoFocus={autoFocus}
+        disabled={disabled}
         aria-invalid={error !== null ? true : undefined}
         aria-describedby={error !== null ? id + "-error" : undefined}
         data-testid={testId}
@@ -148,5 +154,151 @@ export function SubmitButton({ label, disabled, testId, className }: SubmitButto
     >
       {label}
     </button>
+  );
+}
+
+export interface SelectOption {
+  label: string;
+  value: string;
+}
+
+export interface SelectProps {
+  name: string;
+  label: string;
+  options: readonly SelectOption[];
+  testId?: string;
+  className?: string;
+}
+
+// fm/select equivalent. The CLJS ds select is a listbox popover; a native
+// select keeps the same value contract and stays keyboard/AT accessible until
+// @penpot/ui is wired.
+export function Select({ name, label, options, testId, className }: SelectProps) {
+  const form = useFormContext();
+  const value = typeof form.values[name] === "string" ? (form.values[name] as string) : "";
+  const error = fieldError(form, name);
+  const id = "pp-field-" + name;
+  return (
+    <div className={"pp-field" + (className !== undefined ? " " + className : "")}>
+      <label className="pp-field-label" htmlFor={id}>
+        {label}
+      </label>
+      <select
+        id={id}
+        className="pp-field-input"
+        name={name}
+        value={value}
+        data-testid={testId}
+        aria-invalid={error !== null ? true : undefined}
+        aria-describedby={error !== null ? id + "-error" : undefined}
+        onChange={(event) => form.setValue(name, event.target.value)}
+        onBlur={() => form.touch(name)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {error !== null ? (
+        <div className="pp-field-error" id={id + "-error"} role="alert">
+          {error}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export interface RadioGroupProps {
+  name: string;
+  legend?: string;
+  options: readonly SelectOption[];
+  testId?: string;
+  className?: string;
+}
+
+// fm/radio-buttons equivalent.
+export function RadioGroup({ name, legend, options, testId, className }: RadioGroupProps) {
+  const form = useFormContext();
+  const value = typeof form.values[name] === "string" ? (form.values[name] as string) : "";
+  const error = fieldError(form, name);
+  return (
+    <fieldset
+      className={"pp-radio-group" + (className !== undefined ? " " + className : "")}
+      aria-invalid={error !== null ? true : undefined}
+    >
+      {legend !== undefined ? <legend className="pp-field-label">{legend}</legend> : null}
+      {options.map((option) => {
+        const id = "pp-field-" + name + "-" + option.value;
+        return (
+          <label key={option.value} className="pp-radio" htmlFor={id}>
+            <input
+              id={id}
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              data-testid={testId !== undefined ? testId + "-" + option.value : undefined}
+              onChange={() => form.setValue(name, option.value)}
+            />
+            <span className="pp-radio-text">{option.label}</span>
+          </label>
+        );
+      })}
+      {error !== null ? (
+        <div className="pp-field-error" role="alert">
+          {error}
+        </div>
+      ) : null}
+    </fieldset>
+  );
+}
+
+export interface TextareaProps {
+  name: string;
+  label: string;
+  placeholder?: string;
+  rows?: number;
+  testId?: string;
+  className?: string;
+}
+
+// fm/textarea equivalent.
+export function Textarea({
+  name,
+  label,
+  placeholder,
+  rows = 5,
+  testId,
+  className,
+}: TextareaProps) {
+  const form = useFormContext();
+  const value = typeof form.values[name] === "string" ? (form.values[name] as string) : "";
+  const error = fieldError(form, name);
+  const id = "pp-field-" + name;
+  return (
+    <div className={"pp-field" + (className !== undefined ? " " + className : "")}>
+      <label className="pp-field-label" htmlFor={id}>
+        {label}
+      </label>
+      <textarea
+        id={id}
+        className="pp-field-input pp-field-textarea"
+        name={name}
+        rows={rows}
+        value={value}
+        placeholder={placeholder}
+        data-testid={testId}
+        aria-invalid={error !== null ? true : undefined}
+        aria-describedby={error !== null ? id + "-error" : undefined}
+        onChange={(event) => form.setValue(name, event.target.value)}
+        onBlur={() => form.touch(name)}
+      />
+      {error !== null ? (
+        <div className="pp-field-error" id={id + "-error"} role="alert">
+          {error}
+        </div>
+      ) : null}
+    </div>
   );
 }
