@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0/F1 契约与会话全部完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0/F1 完成，F2 令牌基线完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
@@ -35,7 +35,7 @@
 | F1.2 | `packages/api-types` 生成器 | ✅ | `scripts/generate-types.mjs`：解析 backend/src + common/src 的 malli schema（含 ns 别名/:as-alias/:refer/限定符号/基础类型表）→ `src/index.ts`（RpcCommandName/RpcParams/RpcResults）；186 命令，params 184、results 51；file-data 域动态 schema 降级 unknown（F6/F9 收口）；已接线 app（workspace 依赖 + transpilePackages + lib/types.ts） |
 | F1.3 | URL 兼容层 | ✅ | `lib/legacy-routes.ts` + `components/url-compat.tsx`：`?screen=<name>` 与 legacy `#/<path>`（含 `:file-id` 路径参数）客户端 replace 到 App Router 路径，14 项解析器单测通过 |
 | F1.4 | 会话与引导 | ✅ | `lib/session.tsx`（SessionProvider：get-profile 引导，zero-uuid=匿名）+ `components/auth-guard.tsx`；dashboard/settings 布局与 workspace/view 页加守卫；根路径复刻空 token 分支；登录页接入 `session.refresh` |
-| F2 | 设计系统基线 | ⬜ | 复用 `@penpot/ui`（现有 menu/modal）+ 把 `frontend/src/app/main/ui/ds/*.scss` 令牌移植为 CSS 变量 |
+| F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。待办：`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线，随首个需要 menu/modal 的页面（F4/F5）落地 |
 | F3 | auth 路由组（`/auth/*`） | ⬜ | login（样板已通）→ register/recovery/verify-token |
 | F4 | settings 路由组（`/settings/*`） | ⬜ | profile/password/feedback/options/notifications/shortcuts/… |
 | F5 | dashboard 路由组（`/dashboard/*`） | ⬜ | recent/files/libraries/fonts/members/invitations/webhooks/search/deleted |
@@ -338,7 +338,22 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - 验证：`pnpm install` / `pnpm typecheck` / `pnpm build` 全部通过。
 - 下一步：F2 设计系统基线（ds 令牌 → CSS 变量）、F3 auth 路由组（register/recovery/verify-token）。
 
-### 7.4 阶段 B
+### 7.4 本轮（2026-10-02，第四批：F2 设计令牌基线）
+
+- F2（令牌部分）完成：`frontend/src/app/main/ui/ds/*.scss` 全量移植为
+  `frontend-nextjs/styles/tokens.css`——原始调色板（--pp-*）、light/default 双主题语义色
+  （--color-*，与 :global(.light)/:global(.default) 块一一对应，px2rem 与 color.change
+  已预解析）、spacing/borders/sizes/z-index/elevations/typography 变量。
+- `app/globals.css`：@font-face 对齐 `dependencies/fonts.scss`（worksans/vazirmatn 可变字体 +
+  robotomono，含 unicode-range）；`use-typography` 的 11 个 mixin 移植为 `.pp-typ-*` 工具类；
+  基础元素样式全部 token 化。字体资产（3 个 ttf，约 692KB）复制到 `public/fonts/`。
+- `app/layout.tsx` 的 `<html>` 挂 `light` 主题类；profile.theme 驱动切换随 F4 settings 落地。
+- `@penpot/ui`（menu/modal）接线推迟：该包是 React + react-aria-components + SCSS modules，
+  exports 指向未构建的 `dist/`，且 shell 尚无页面消费 menu/modal；随 F4/F5 首个消费页
+  一并落地（link: 依赖 + alias 到 src 或构建 dist，二选一）。
+- 验证：`pnpm typecheck` + `pnpm build` 通过；产物 CSS 确认包含令牌。
+
+### 7.5 阶段 B
 
 未开始（🔒 受门禁）。
 
