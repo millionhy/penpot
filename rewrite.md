@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0/F1 完成，F2 令牌基线完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0/F1 完成，F2 令牌基线完成，F3 auth 路由组完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
@@ -36,7 +36,7 @@
 | F1.3 | URL 兼容层 | ✅ | `lib/legacy-routes.ts` + `components/url-compat.tsx`：`?screen=<name>` 与 legacy `#/<path>`（含 `:file-id` 路径参数）客户端 replace 到 App Router 路径，14 项解析器单测通过 |
 | F1.4 | 会话与引导 | ✅ | `lib/session.tsx`（SessionProvider：get-profile 引导，zero-uuid=匿名）+ `components/auth-guard.tsx`；dashboard/settings 布局与 workspace/view 页加守卫；根路径复刻空 token 分支；登录页接入 `session.refresh` |
 | F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。待办：`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线，随首个需要 menu/modal 的页面（F4/F5）落地 |
-| F3 | auth 路由组（`/auth/*`） | ⬜ | login（样板已通）→ register/recovery/verify-token |
+| F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ⬜ | profile/password/feedback/options/notifications/shortcuts/… |
 | F5 | dashboard 路由组（`/dashboard/*`） | ⬜ | recent/files/libraries/fonts/members/invitations/webhooks/search/deleted |
 | F6 | viewer（`/view`） | ⬜ | 集成 `render-wasm`（已是 Rust→WASM，可直接复用） |
@@ -353,7 +353,54 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   一并落地（link: 依赖 + alias 到 src 或构建 dist，二选一）。
 - 验证：`pnpm typecheck` + `pnpm build` 通过；产物 CSS 确认包含令牌。
 
-### 7.5 阶段 B
+### 7.5 本轮（2026-10-02，第五批：F3 auth 路由组）
+
+- F3 完成：`app/auth/*` 七个路由全部从 CLJS 移植——login、register、
+  register/validate、register/success、recovery/request、recovery、verify-token，
+  外加 `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`：logo、注册插图、
+  `?error=` 的 OIDC 重定向横幅、注册页专属条款页脚、html title）。
+- 命令链路（后端未改动）：`login-with-password`、`prepare-register-profile` →
+  `register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、
+  `create-demo-profile`、`get-profile`。`lib/auth.ts` 封装命令并把 CLJS 的错误分支
+  逐条映射到字段错误或 toast；`verify-token` 的 `handle-token` 多方法与错误分支抽成
+  纯函数 `classifyVerifyToken` / `classifyVerifyTokenError`，登录后的跳转（邀请 token
+  → login-redirect → dashboard）抽成 `postLoginTarget`，团队 id 解析留给 F5。
+- 公共件（后续每个路由组都要用，随 auth 一起落地）：
+  - 词条：`scripts/extract-translations.mjs` 扫描 `tr("k")` 与 `<Tr k="k">` 调用点，
+    从 `frontend/translations/en.po` 生成 `lib/translations/en.ts`（本轮 77 条），
+    缺 key 直接失败；后端在 `:details` 里回传的动态 key 登记在 `runtimeKeys`。
+    `[label](url)` 由 `components/tr.tsx` 解析成真链接，不用 dangerouslySetInnerHTML。
+  - 表单：`lib/forms.ts`（无头）+ `components/form.tsx`（视图），校验规则与文案对齐
+    CLJS 表单声明的 malli schema 与 `common/src/app/common/schema/messages.cljc`；
+    与 `fm/submit-button*` 一致，表单不合法时提交按钮禁用。
+  - 通知：`components/notifications.tsx` 复刻 `app.main.data.notifications`
+    （单条通知槽、success/info/warning 7s 自动消失、error 常驻、路由切换即隐藏）。
+  - 存储：`lib/storage.ts` 复刻 `app.util.storage` 的键布局（`<prefix>:<ns>/<name>`）
+    与 transit 值编码，承载 login-redirect 与注册邮箱回传。
+  - 配置：`lib/config.ts` 补 `parseFlags`（`enable-x`/`disable-x` 叠加在
+    `common/src/app/common/flags.cljc` 默认集之上）与条款/隐私链接，修掉
+    「flags 为空导致 auth 页面什么都不渲染」的隐患。
+- 样式：`styles/auth.css`（auth.scss + auth/common.scss + register.scss 的移植，
+  SCSS module 类名 1:1 改成普通类）与 `styles/forms.css`（ds input/button 的临时替身，
+  `@penpot/ui` 接线后退场）。字体与图片资产复制到 `public/fonts`、`public/images`。
+- 测试：引入 vitest（`pnpm test`，91 例），覆盖 i18n 格式化与链接解析、表单校验、
+  auth 错误映射、verify-token 派发、flags 解析、legacy URL 解析器（F1.3 此前只有
+  临时验证，这次入库）。为让无头逻辑跑在 node 环境，`lib/i18n.tsx`/`lib/forms.tsx`
+  拆成 `lib/*.ts`（逻辑）+ `components/*.tsx`（视图）。
+- 端到端验证（docker 后端 2.18 + Next dev 反代 :3451）：匿名 `get-profile` 返回
+  zero-uuid；`login-with-password` 200 且随后 `get-profile` 已认证；`verify-token`
+  传坏 token 返回 `400 {type: validation, cause: signature}` → 落到 invalid-token
+  卡片；`request-profile-recovery` 对存在与不存在的地址都返回 204（不泄露账号）；
+  `prepare-register-profile` → `register-profile` 返回 `is-active: true` 且会话已建立；
+  `recover-profile` 坏 token 同样 400。七个页面 HTTP 200，HTML 含正确词条与令牌类名。
+- 有意未做：SSO 按钮（`sso-buttons*` + `login-with-oidc` + `get-sso-provider`）与
+  `login-with-ldap`，两者都需要 OIDC/LDAP 配置项，另立任务；因此登录页的密码字段在
+  本外壳里是必填（CLJS 里为了 SSO 优先流程才标 optional）。
+- 验证：`pnpm typecheck`、`pnpm lint`、`pnpm build`、`pnpm test` 全部通过。
+- 下一步：F4 settings 路由组（profile/password/feedback/options/notifications/
+  shortcuts），并在那里接入 `@penpot/ui` 的 menu/modal 与 profile 驱动的主题切换。
+
+### 7.6 阶段 B
 
 未开始（🔒 受门禁）。
 
@@ -367,7 +414,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 | pnpm | 12.6.0 | 可用；`frontend-nextjs` 用独立工作区，`storeDir: ../.pnpm-store` |
 | 网络 | 可达 | 本轮 `pnpm install` 正常下载 `next@15.5.27` 等（早期修订的 40kB/s 限制不再适用） |
 | Clojure CLI / JVM | 未确认 | S2（OpenAPI 快照）需要；解锁见下 |
-| PowerShell | 5.1 | 写文件用 .NET `WriteAllText` + 单引号 here-string（LF、无 BOM），规避 `apply_patch` 对 `"` 的破坏 |
+| PowerShell | 5.1 | 5.1 直接调 `apply_patch` 会吞掉参数里的换行与引号（报 "last line must be '*** End Patch'"）。可用做法：把补丁写进临时文件（`WriteAllText` + 单引号 here-string，LF、无 BOM），再用一个 node 小脚本 `spawnSync(codex.exe, ["--codex-run-as-apply-patch", patch])` 传参 |
 
 - 行尾/编码：`.editorconfig` 要求 LF + UTF-8 + 末尾换行；本轮所有新文件遵循。
 - `rewrite.md` 被 `.gitignore` 的 `/*.md` 规则忽略（根级 md 不入库），可自由编辑。
