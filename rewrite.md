@@ -35,9 +35,9 @@
 | F1.2 | `packages/api-types` 生成器 | ✅ | `scripts/generate-types.mjs`：解析 backend/src + common/src 的 malli schema（含 ns 别名/:as-alias/:refer/限定符号/基础类型表）→ `src/index.ts`（RpcCommandName/RpcParams/RpcResults）；186 命令，params 184、results 51；file-data 域动态 schema 降级 unknown（F6/F9 收口）；已接线 app（workspace 依赖 + transpilePackages + lib/types.ts） |
 | F1.3 | URL 兼容层 | ✅ | `lib/legacy-routes.ts` + `components/url-compat.tsx`：`?screen=<name>` 与 legacy `#/<path>`（含 `:file-id` 路径参数）客户端 replace 到 App Router 路径，14 项解析器单测通过 |
 | F1.4 | 会话与引导 | ✅ | `lib/session.tsx`（SessionProvider：get-profile 引导，zero-uuid=匿名）+ `components/auth-guard.tsx`；dashboard/settings 布局与 workspace/view 页加守卫；根路径复刻空 token 分支；登录页接入 `session.refresh` |
-| F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。待办：`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线，随首个需要 menu/modal 的页面（F4/F5）落地 |
+| F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。F4 的 modal 需求由外壳自带的 `components/modal.tsx`（ModalProvider/ConfirmDialog）满足，profile 驱动的主题切换也已接上令牌；`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线推到 F5 dashboard（首个需要 menu/dropdown 的路由组） |
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
-| F4 | settings 路由组（`/settings/*`） | ⬜ | profile/password/feedback/options/notifications/shortcuts/… |
+| F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 为占位）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes/shortcuts 未做（见 7.6） |
 | F5 | dashboard 路由组（`/dashboard/*`） | ⬜ | recent/files/libraries/fonts/members/invitations/webhooks/search/deleted |
 | F6 | viewer（`/view`） | ⬜ | 集成 `render-wasm`（已是 Rust→WASM，可直接复用） |
 | F7 | 插件运行时 | ⬜ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`） |
@@ -221,8 +221,10 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - **F3 auth**：login（样板已通）→ register/register-validate/register-success → recovery-request/
   recovery → verify-token。命令：`login-with-password`、`create-profile`、`request-profile-recovery`、
   `update-profile-password` 等。
-- **F4 settings**：profile/password/feedback/options/notifications/shortcuts（+ subscription/integrations
-  视 flag）。命令：`update-profile-password`、`update-profile` 等。
+- **F4 settings（本轮已完成）**：profile/password/notifications/options/feedback 已移植，shortcuts 为占位，
+  subscription/integrations 未建路由（`settingsNav` 已按 flag 门控留位）。命令：`update-profile`、
+  `update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、
+  `delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`。详见 7.6。
 - **F5 dashboard**：recent/files/libraries/fonts/font-providers/members/invitations/webhooks/search/
   deleted/settings。命令：`get-teams`、`get-projects`、`get-project-files`、`get-team-members` 等。
 - **F6 viewer**：`/view` + `frame-preview` + `render-sprite`；集成 render-wasm 渲染画布（复用
@@ -259,7 +261,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ██████████████████████████████████████████████  (F0 已完成 → F1..F9)
+阶段 F  ██████████████████████████████████████████████  (F0–F4 已完成 → F5..F9)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -400,7 +402,77 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - 下一步：F4 settings 路由组（profile/password/feedback/options/notifications/
   shortcuts），并在那里接入 `@penpot/ui` 的 menu/modal 与 profile 驱动的主题切换。
 
-### 7.6 阶段 B
+### 7.6 本轮（2026-10-02，第六批：F4 settings 路由组）
+
+- F4 完成：`app/settings/*` 六个路由从 CLJS 移植——profile、password、notifications、
+  options、feedback、shortcuts（占位），外加 `app/settings/layout.tsx`（AuthGuard +
+  侧边栏 + 「你的账户」页头，对应 `app.main.ui.settings/settings*`）。
+- 命令链路（后端未改动）：`update-profile`、`update-profile-password`、
+  `update-profile-notifications`、`update-profile-props`、`update-profile-photo`、
+  `delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`、
+  `get-profile`。`lib/settings.ts` 承载无头逻辑：主题解析、语言清单、参数映射
+  （`profileUpdateParams`/`passwordParams`）、错误分类（`passwordError`/`feedbackError`）、
+  按 flag 门控的侧边栏清单（`settingsNav`）与命令封装；`app/settings/*` 只是视图。
+- 新增公共件（后续路由组共用）：
+  - `cmdUpload`（`lib/rpc.ts`）：repo.cljs `multipart-upload` 的移植。Blob 字段转成
+    FormData 分片，请求**不设** `content-type`（boundary 交给浏览器生成），响应仍按
+    Transit 解码。首个用例是头像上传。
+  - 弹窗：`components/modal.tsx` 的 `ModalProvider`/`useModal`/`ModalShell`/`ConfirmDialog`
+    对应 `app.main.data.modal` 的单槽 modal；Provider 挂在根布局，所以任何页面打开的弹窗
+    都渲染在同一处。改邮箱与删号弹窗分别是 `components/change-email-modal.tsx`、
+    `components/delete-account-modal.tsx`。
+  - 主题：`components/theme.tsx` 复刻 `app.util.theme/activate-theme`，把
+    `resolveTheme(profile.theme, 系统偏好)` 写成 `<html>` 的 class（暗色 = `default`，
+    正是 `styles/tokens.css` 里语义色令牌的作用域）。F2 的令牌到这里才真正被切换。
+  - 头像：`lib/avatars.ts` 用 canvas 生成首字母头像（仅客户端），对应
+    `resolve-profile-photo-url` 在没有存储照片时的回退。
+  - 表单：`lib/forms.ts` 补 `select`/`radio`/`textarea` 与 `oneOf` 成员校验
+    （`::sm/one-of`），`components/form.tsx` 补 `Select`/`RadioGroup`/`Textarea`。
+    `cleanValues` 对 select/radio 保留空串——「Auto (browser)」语言项的值就是 `""`，
+    丢掉它等于丢掉一个合法选择。成员校验先于长度校验，与 malli 的报错优先级一致。
+- 修掉一个会让标签渲染成裸 key 的缺陷：`settingsNav` 把词条 key 放在 `labelKey` 数据字段
+  里、视图再 `tr(item.labelKey)`，而抽取脚本只扫 `tr("...")` 字面量，于是
+  `labels.password`、`labels.notifications`、`label.shortcuts` 没进目录，侧边栏直接显示
+  key 本身。`scripts/extract-translations.mjs` 增加 `trFieldRe` 扫 `labelKey:`，词条从
+  169 条增至 174 条，并加一例「每个 labelKey 都能解析」的回归测试守住它。
+- 修掉一个 dev 下头像必坏图的问题：存储后端为 `fs` 时，后端对 `/assets/*` 返回空 204 +
+  `x-accel-redirect`（`serve-object-from-fs`），只有 nginx 那个 `internal` 的
+  `/internal/assets` location 会把它换成文件，Next rewrite 不认识这个头。
+  `next.config.mjs` 把 `/assets` 的反代目标拆成 `PENPOT_ASSETS_ORIGIN`（默认仍等于后端
+  源，行为不变），dev 指向 compose 里的 frontend nginx（`http://localhost:9001`）即可拿到
+  真字节；生产由既有 nginx 前置，无需设置。
+- 测试：vitest 137 例（新增 `lib/settings.test.ts` 覆盖主题解析、语言清单、通知默认值与
+  profile 回读、参数映射、password/feedback 错误分类、侧边栏 flag 门控；`lib/forms.test.ts`
+  补 select/radio/textarea 校验与 cleanValues 分支）。
+- 端到端验证（docker 后端 2.18 + Next dev `:3451`，全程用一次性账号，不动既有资料）：
+  - headless Chrome 逐页 dump DOM：六个 settings 路由都渲染出正确的 html title、表单控件、
+    侧边栏与身份块；匿名访问 `/` 与 `/settings/profile` 都跳登录页。
+  - CDP 驱动 20 项断言：options 的 lang/theme select 回显 profile 存储值；`<html>` 的 class
+    随 theme 在 `light`/`default` 间切换；在 UI 里改主题并提交后 `<html>` 与后端同时更新、
+    未改动时提交按钮禁用；notifications 三组单选往返一致；profile 的 fullname/email 回显、
+    侧边栏标签已翻译；password 三个字段初始为空且提交禁用；feedback 的 type 预选 idea。
+  - 头像 13 项断言：无照片时是生成的 data URL 且删除按钮隐藏；经真实 file input 上传
+    64×64 PNG 后后端存下 `photo-id`，页面与侧边栏都换成 `assets/by-id/<id>`，`<img>`
+    实际解码出 256×256（后端缩略图尺寸），资源 HTTP 200 `image/jpeg`；点删除弹出
+    ConfirmDialog，确认后后端清空、界面回退到生成头像、弹窗关闭。
+- 有意未做（README 与代码注释均已登记）：
+  - shortcuts 仍是 `RouteStub`：它要读 workspace/viewer/dashboard/path 四套快捷键注册表，
+    那些随 F5（dashboard）与 F9（workspace）才到位；导航项因 `:custom-shortcuts` 默认开而可见。
+  - subscription、integrations 两个路由未建：分别要支付与 access-token/MCP 基础设施，
+    `settingsNav` 已按 `:subscriptions`/`:admin-console`/`:access-tokens`/`:mcp` 门控留位。
+  - 侧边栏的 release-notes 项与 `profile-section*`（团队切换、评论、版本号、退出菜单）属于
+    dashboard store，随 F5 落地；当前只渲染身份块加一个直接退出。
+  - 改邮箱与删号弹窗的「多组织」分支（`:admin-console`）未做，本机该 flag 关着。
+  - `@penpot/ui` 仍未接线，settings 视图用 `styles/settings.css` 的临时样式。
+- 一处与 CLJS 的有意偏差：feedback 的 type 预选 `idea`，CLJS 起始为空——原生 `<select>`
+  不额外加一个空 option 就没法显示空白行。
+- 验证：`pnpm typecheck`、`pnpm lint`、`pnpm build`（20 个路由全部预渲染）、`pnpm test`
+  全部通过。
+- 下一步：F5 dashboard 路由组（recent/files/libraries/fonts/members/invitations/webhooks/
+  search/deleted），一并接入 `@penpot/ui` 的 menu/modal，补齐 settings 侧边栏缺的团队切换
+  与 profile-section，并把 shortcuts 的 dashboard 那一套注册表接上。
+
+### 7.7 阶段 B
 
 未开始（🔒 受门禁）。
 
@@ -417,6 +489,10 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 | PowerShell | 5.1 | 5.1 直接调 `apply_patch` 会吞掉参数里的换行与引号（报 "last line must be '*** End Patch'"）。可用做法：把补丁写进临时文件（`WriteAllText` + 单引号 here-string，LF、无 BOM），再用一个 node 小脚本 `spawnSync(codex.exe, ["--codex-run-as-apply-patch", patch])` 传参 |
 
 - 行尾/编码：`.editorconfig` 要求 LF + UTF-8 + 末尾换行；本轮所有新文件遵循。
+- `/assets` 反代：`fs` 存储下后端只回空 204 + `x-accel-redirect`，dev 要设
+  `PENPOT_ASSETS_ORIGIN=http://localhost:9001`（compose 里的 frontend nginx）才看得到头像与缩略图。
+- 本机 docker 端口：backend `:6060`、frontend nginx `:9001`、postgres `:5433`、mailcatch `:1080`；
+  外壳 dev server 跑在 `:3451`（`pnpm dev` 默认 `:3450`）。
 - `rewrite.md` 被 `.gitignore` 的 `/*.md` 规则忽略（根级 md 不入库），可自由编辑。
 - S2 解锁：装好 Clojure CLI 后用 `enable-backend-openapi-doc` flag 起后端抓 `GET /api/rpc/openapi.json`，
   或用 devenv 容器；S1/S3 走静态扫描，不依赖运行时。

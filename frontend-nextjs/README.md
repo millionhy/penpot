@@ -26,7 +26,7 @@ Penpot 的 Next.js 前端外壳，采用绞杀者模式（Strangler Fig）逐步
 ```
 frontend-nextjs/
 ├── app/                  Next.js App Router 路由树（对应 CLJS 路由）
-│   ├── layout.tsx        根布局 + 全局样式
+│   ├── layout.tsx        根布局 + 全局样式 + ThemeManager + ModalProvider
 │   ├── page.tsx          引导页（重定向到 /auth/login）
 │   ├── auth/layout.tsx   auth 路由组容器（logo/插图/条款页脚，对应 app.main.ui.auth）
 │   ├── auth/login/       login-with-password + get-profile
@@ -36,7 +36,13 @@ frontend-nextjs/
 │   ├── auth/recovery/    recover-profile（改密）
 │   │   └── request/      request-profile-recovery（发信）
 │   ├── auth/verify-token/ verify-token 多分支派发（邮箱验证/改邮箱/邀请）
-│   ├── settings/profile/ 占位（待迁移）
+│   ├── settings/layout.tsx AuthGuard + 侧边栏 + 「你的账户」页头
+│   ├── settings/profile/ update-profile、头像上传/删除、改邮箱与删号弹窗
+│   ├── settings/password/ update-profile-password（含后端错误映射）
+│   ├── settings/notifications/ update-profile-notifications（三组单选）
+│   ├── settings/options/ 语言与主题 select + `:render-switch` 的 webgl 开关
+│   ├── settings/feedback/ send-user-feedback（受 `:user-feedback` 开关控制）
+│   ├── settings/shortcuts/ 占位（依赖 dashboard/workspace 的快捷键注册表）
 │   ├── dashboard/recent/ 占位（待迁移）
 │   ├── view/             占位（Viewer，后续集成 WASM 渲染）
 │   └── workspace/        占位（编辑器，最后迁移）
@@ -54,15 +60,18 @@ frontend-nextjs/
 │   ├── auth.ts           auth 命令封装 + 错误映射 + verify-token 派发
 │   ├── auth-flow.ts      登录/注册后的跳转（对应 logged-in、login-from-register）
 │   ├── storage.ts        localStorage/sessionStorage（对应 app.util.storage 键布局）
+│   ├── settings.ts       设置页无头逻辑（主题/语言、参数映射、错误分类、侧边栏清单）
+│   ├── avatars.ts        canvas 首字母头像（仅客户端，对应 app.util.profile）
+│   ├── dom.ts            useDocumentTitle（对应 router.cljs 的页面标题副作用）
 │   └── types.ts          api-types 生成类型的桥接与别名
-├── components/           视图组件（form/tr/notifications/query-params/invalid-token…）
-├── styles/               tokens.css（ds 令牌）+ forms.css + auth.css
+├── components/           视图组件（form/tr/notifications/modal/theme/settings-sidebar…）
+├── styles/               tokens.css（ds 令牌）+ forms.css + auth.css + settings.css
 ├── scripts/              extract-translations.mjs（词条抽取生成器）
 ├── public/               fonts/（worksans、vazirmatn、robotomono）+ images/
 ├── packages/api-types/   生成的 RPC 类型（占位）
 ├── types/transit-js.d.ts transit-js 的类型垫片
 ├── vitest.config.ts      无头逻辑单测（lib/**）
-├── next.config.mjs       开发期把 /api、/assets 反代到 backend:6060
+├── next.config.mjs       开发期反代 /api 到 backend、/assets 到 assets 源
 └── pnpm-workspace.yaml   独立工作区（与 frontend/ 隔离，共享 ../.pnpm-store）
 ```
 
@@ -75,29 +84,40 @@ CLJS 用查询串路由（`?screen=<name>`）并保留一段 `#/...` 兼容期�
 | 路由组 | 路径示例 | CLJS 参考 | 状态 |
 | --- | --- | --- | --- |
 | auth | `/auth/login`、`/auth/register`、`/auth/recovery`、`/auth/verify-token` | `app.main.ui.auth` | 已迁移（SSO/OIDC 按钮除外） |
-| settings | `/settings/profile` | `app.main.ui.settings` | 占位 |
+| settings | `/settings/profile`、`/settings/password`、`/settings/notifications`、`/settings/options`、`/settings/feedback` | `app.main.ui.settings` | 已迁移（shortcuts 为占位，subscription/integrations 未建路由） |
 | dashboard | `/dashboard/recent` | `app.main.ui.dashboard` | 占位 |
 | viewer | `/view` | `app.main.ui.viewer` | 占位 |
 | workspace | `/workspace` | `app.main.ui.workspace` | 占位（最后迁移） |
 
-## 表单、词条与通知（F3 引入的基础设施）
+## 表单、词条与通知（F3 引入、F4 扩展的公共设施）
 
-这三块是后续每个路由组都要用的公共件，随 auth 一起落地：
+这三块是后续每个路由组都要用的公共件：
 
 - **词条**：`pnpm translations` 跑 `scripts/extract-translations.mjs`，扫描外壳里的
-  `tr("key")` 与 `<Tr k="key">` 调用点，从 `frontend/translations/en.po` 抽出用到的
-  条目生成 `lib/translations/en.ts`。缺失的 key 直接让脚本失败，避免页面上出现裸 key。
-  后端在 `:details` 里回传的动态 key（弱密码原因）登记在脚本的 `runtimeKeys`。
+  `tr("key")`、`<Tr k="key">` 调用点和 `labelKey: "key"` 数据字段，从
+  `frontend/translations/en.po` 抽出用到的条目生成 `lib/translations/en.ts`。缺失的
+  key 直接让脚本失败，避免页面上出现裸 key。两类扫描不到的 key 要手工登记：后端在
+  `:details` 里回传的动态 key（弱密码原因）进 `runtimeKeys`；新引入的「key 存在数据
+  字段里」的视图要扩展 `trFieldRe`，否则 `tr()` 会把 key 原样渲染出来（F4 的
+  `settingsNav` 就是这么踩到的）。
 - **表单**：`lib/forms.ts`（无头）按 CLJS 表单声明的 malli schema 复刻校验规则与报错
   文案，取文案的规则来自 `common/src/app/common/schema/messages.cljc`；
-  `components/form.tsx` 是对应的视图层。与 `fm/submit-button*` 一致：表单不合法时提交
-  按钮禁用，`onSubmit` 只会拿到干净数据。
+  `components/form.tsx` 是对应的视图层，F4 补齐了 `select`/`radio`/`textarea`。与
+  `fm/submit-button*` 一致：表单不合法时提交按钮禁用，`onSubmit` 只会拿到干净数据。
+  注意 `oneOf` 的成员校验先于长度校验，和 malli 的报错优先级一致。
 - **通知**：`components/notifications.tsx` 复刻 `app.main.data.notifications` 的语义 ——
   单条通知槽、success/info/warning 7 秒自动消失、error 常驻、路由变化即隐藏。
+- **弹窗**（F4）：`components/modal.tsx` 提供 `ModalProvider`/`useModal`/`ModalShell`，
+  对应 `app.main.data.modal` 的单槽 modal；`ConfirmDialog` 是 `{:type :confirm}` 分支。
+  Provider 挂在根布局，所以任何页面打开的弹窗都渲染在同一处。
+- **主题**（F4）：`components/theme.tsx` 复刻 `app.util.theme` 的 `activate-theme` ——
+  监听 profile 变化，把 `resolveTheme(profile.theme, 系统偏好)` 的结果写成 `<html>`
+  的 class（暗色是 `default`，正是 `styles/tokens.css` 里语义色令牌的作用域）。
 
-`@penpot/ui`（ds 的 input/button/menu/modal）尚未接线：该包是 React +
-react-aria-components + SCSS modules，`exports` 指向未构建的 `dist/`。接线随 F4/F5
-第一个真正需要它的页面一起做，届时 `styles/forms.css` 里的临时字段样式可退场。
+`@penpot/ui`（ds 的 input/button/menu/modal）仍未接线：该包是 React +
+react-aria-components + SCSS modules，`exports` 指向未构建的 `dist/`。F4 的
+settings 视图沿用 `styles/settings.css` 里的临时样式，接线留到 F5 dashboard
+（第一个真正需要 menu/dropdown 的路由组）一起做。
 
 ## RPC 传输层
 
@@ -111,14 +131,19 @@ react-aria-components + SCSS modules，`exports` 指向未构建的 `dist/`。�
   `:service-unavailable`/`:offline`
 - 错误：按 `handle-response` 的 `:type` 分类抛出 `RpcError`
 
+`cmdUpload`（F4）对应 repo.cljs 的 `multipart-upload`：Blob 字段转成 FormData 分片，
+请求**不设** `content-type`（boundary 交给浏览器生成），响应仍按 Transit 解码。头像
+上传 `update-profile-photo` 是第一个用例。
+
 **尚未实现**（对应 repo.cljs 的分支，列为后续任务）：SSE 流式命令（`::sse/*`）、
-`multipart` 上传、`login-with-oidc`（`api/auth/oidc`）、`export`（`api/export`）。
-Transit 读侧 handler（uuid/instant/bigint/duration/uri/ordered-map/pointer）已在 F1.1
-移植；file-data 写侧 handler 随 viewer/workspace（F6/F9）一起补。
+`login-with-oidc`（`api/auth/oidc`）、`export`（`api/export`）。Transit 读侧 handler
+（uuid/instant/bigint/duration/uri/ordered-map/pointer）已在 F1.1 移植；file-data
+写侧 handler 随 viewer/workspace（F6/F9）一起补。
 
 ## 运行
 
-前置：一个可访问的 Penpot 后端（默认 `http://localhost:6060`），可用 devenv 启动。
+前置：一个可访问的 Penpot 后端（默认 `http://localhost:6060`），可用 devenv 或
+根目录的 compose 启动。
 
 ```bash
 cd frontend-nextjs
@@ -129,9 +154,21 @@ pnpm translations # 重新生成 lib/translations/en.ts
 pnpm build        # 生产构建；别在 dev server 运行时执行，原因见下
 ```
 
-开发期 `next.config.mjs` 把 `/api/*`、`/assets/*` 反代到后端，浏览器只面对单一源，
-既避免 CORS，也保住 cookie 的 SameSite。生产环境沿用既有 nginx 反代，同样的相对
-URL 不变即可工作。
+开发期 `next.config.mjs` 把 `/api/*` 反代到后端、`/assets/*` 反代到
+`PENPOT_ASSETS_ORIGIN`，浏览器只面对单一源，既避免 CORS，也保住 cookie 的 SameSite。
+生产环境沿用既有 nginx 反代，同样的相对 URL 不变即可工作。
+
+**头像/缩略图是坏图？** 存储后端为 `fs` 时（compose 默认
+`PENPOT_OBJECTS_STORAGE_BACKEND: fs`），后端对 `/assets/*` 返回**空 204 +
+`x-accel-redirect`** 响应头（`backend/src/app/http/assets.clj` 的
+`serve-object-from-fs`），真正吐文件的是 nginx 那个 `internal` 的
+`/internal/assets` location（`docker/images/files/nginx.conf.template`）。Next
+rewrite 不认识这个头，所以 dev 下要把 `PENPOT_ASSETS_ORIGIN` 指向正在跑的 penpot
+frontend nginx（compose 里是 `http://localhost:9001`）：
+
+```powershell
+$env:PENPOT_ASSETS_ORIGIN = "http://localhost:9001"; pnpm dev
+```
 
 `next dev` 与 `next build` 共用同一个 `.next`：构建会把开发态 chunk 换成带哈希的生产
 文件，正在跑的 dev server 随即对 `main-app.js` 返回 404，页面卡在「Loading...」不再
@@ -147,13 +184,14 @@ WebSocket（`/ws/notifications`）不经 Next rewrite（rewrite 不转发 HTTP u
 | --- | --- | --- |
 | `NEXT_PUBLIC_PENPOT_PUBLIC_URI` | 空（同源相对） | RPC 基址，对应 `cf/public-uri` |
 | `NEXT_PUBLIC_PENPOT_BACKEND_ORIGIN` | `http://localhost:6060` | WS/直连后端源 |
-| `PENPOT_BACKEND_ORIGIN` | `http://localhost:6060` | 服务端 rewrite 反代目标 |
+| `PENPOT_BACKEND_ORIGIN` | `http://localhost:6060` | 服务端 rewrite 反代 `/api` 的目标 |
+| `PENPOT_ASSETS_ORIGIN` | 同 `PENPOT_BACKEND_ORIGIN` | 服务端 rewrite 反代 `/assets` 的目标；`fs` 存储下要指向能处理 `x-accel-redirect` 的 nginx |
 | `NEXT_PUBLIC_PENPOT_FLAGS` | 空 | 特性开关，对应 `cf/flags`；语法同 `penpotFlags`（`enable-x` / `disable-x`），在 `common/src/app/common/flags.cljc` 的默认集之上叠加 |
 | `NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI` | 空 | 注册页条款链接，对应 `cf/terms-of-service-uri` |
 | `NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI` | 空 | 注册页隐私链接，对应 `cf/privacy-policy-uri` |
 
 ## 下一步
 
-见根目录 `rewrite.md` 的「阶段 F：frontend-nextjs」。下一步是 F4：settings 路由组
-（profile/password/feedback/options/notifications/shortcuts），并在那里接入
-`@penpot/ui` 的 menu/modal 与 profile 驱动的主题切换。
+见根目录 `rewrite.md` 的「阶段 F：frontend-nextjs」。下一步是 F5：dashboard 路由组
+（`/dashboard/recent` 的团队/项目/文件列表、team 切换、profile-section 菜单），届时
+一并接入 `@penpot/ui` 的 menu/modal，并把 settings 侧边栏里缺的 team 切换补上。
