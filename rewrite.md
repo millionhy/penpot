@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 脚手架已落地 |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0/F1.1/F1.3/F1.4 已完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
@@ -30,11 +30,11 @@
 | 编号 | 任务 | 状态 | 交付物 / 说明 |
 | --- | --- | --- | --- |
 | F0 | Next.js 脚手架 + RPC 传输层 | ✅ | `frontend-nextjs/`：App Router 路由树、`lib/rpc.ts`（移植 `repo.cljs` 的 `send!/cmd!`）、`lib/{transit,errors,config,routes,types}.ts`、登录页 P0 样板、`next.config.mjs` 后端反代 |
-| F0.1 | 安装依赖并跑通构建 | 🔧 | `pnpm install` 进行中；随后 `pnpm typecheck` + `pnpm build` |
-| F1.1 | 移植 Transit 自定义 handler | ⬜ | uuid/instant/关键字命名空间等，对齐 `common/src/app/common/transit.cljc` |
-| F1.2 | `packages/api-types` 生成器 | ⬜ | 从后端 RPC 清单/OpenAPI 生成命令参数与响应类型（只读后端，不改后端） |
-| F1.3 | URL 兼容层 | ⬜ | 把 `?screen=<name>` 与 legacy `#/<path>` 重定向到 App Router 路径 |
-| F1.4 | 会话与引导 | ⬜ | cookie `auth-token` + `get-profile` 引导、未登录跳转（对应 `routes.cljs` 空 token 分支） |
+| F0.1 | 安装依赖并跑通构建 | ✅ | `pnpm install` / `pnpm typecheck` / `pnpm build` 全部通过；登录页经 3450 代理对 docker 后端端到端验证 |
+| F1.1 | 移植 Transit 自定义 handler | ✅ | `lib/transit.ts`：u/m/:/n/duration/uri/ordered-map/ordered-set/set/penpot/pointer 读取 handler + mapBuilder 规范化为普通 JS，12 项编解码单测通过；file-data 写入 handler（point/matrix 等）随 F6/F9 移植 |
+| F1.2 | `packages/api-types` 生成器 | ⬜ | 输入已就绪：`packages/api-types/rpc-inventory.json`（S1 产物，189 条命令）；下一步实现 malli schema → TS 类型生成（只读后端） |
+| F1.3 | URL 兼容层 | ✅ | `lib/legacy-routes.ts` + `components/url-compat.tsx`：`?screen=<name>` 与 legacy `#/<path>`（含 `:file-id` 路径参数）客户端 replace 到 App Router 路径，14 项解析器单测通过 |
+| F1.4 | 会话与引导 | ✅ | `lib/session.tsx`（SessionProvider：get-profile 引导，zero-uuid=匿名）+ `components/auth-guard.tsx`；dashboard/settings 布局与 workspace/view 页加守卫；根路径复刻空 token 分支；登录页接入 `session.refresh` |
 | F2 | 设计系统基线 | ⬜ | 复用 `@penpot/ui`（现有 menu/modal）+ 把 `frontend/src/app/main/ui/ds/*.scss` 令牌移植为 CSS 变量 |
 | F3 | auth 路由组（`/auth/*`） | ⬜ | login（样板已通）→ register/recovery/verify-token |
 | F4 | settings 路由组（`/settings/*`） | ⬜ | profile/password/feedback/options/notifications/shortcuts/… |
@@ -59,7 +59,7 @@
 
 | 编号 | 任务 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| S1 | RPC 命令清单提取 | ⬜ | 静态扫描 `/api/main/methods/*` 注册表，产出命令/参数/出处（F1.2 的输入） |
+| S1 | RPC 命令清单提取 | ✅ | `packages/api-types/scripts/scan-rpc-inventory.mjs` 静态扫描 `backend/src`（只读）→ `rpc-inventory.json`：189 条命令（29 公开、183 有 params schema、50 有 result schema），含 ns/文件/行号/auth/added |
 | S2 | OpenAPI 快照 | ⛔ | 需 JVM + Clojure 依赖或运行中的后端；解锁见 §8 |
 | S3 | DB Schema 快照 | ⬜ | 从迁移重放 DDL；B2/B3 的 sqlx 类型输入 |
 
@@ -297,9 +297,31 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - 落地 `backend-rust/README.md`（B0）：仅规划与门禁说明，无实现代码。
 - 未改动 `frontend/`、`backend/`、`common/`、根 `package.json`、根 `pnpm-workspace.yaml`
   （绞杀者模式 + 不改整仓 CI）。
-- 待办：F0.1 `pnpm install` → `pnpm typecheck` / `pnpm build` 跑通，并用 `get-profile` 验证登录页端到端。
+- F0.1 已完成：typecheck/build 通过；登录页经 Next 代理（3450）对 docker 后端端到端验证通过。
 
-### 7.2 阶段 B
+### 7.2 本轮（2026-10-02，第二批：F1 契约/会话）
+
+- 修复登录不可用（`0e762c96e0`）：transit-js 的 `transit.map()` 忽略变参导致请求体为空 map；
+  默认 reader 返回 Transit.Map 导致 `profile.id`、错误码等字段 undefined。改为 `.set()` 构建 +
+  mapBuilder/handler 规范化，并用真实账号经 3450 代理端到端验证（登录、带 cookie 的
+  get-profile、错误密码返回 `validation/wrong-credentials`）。
+- F1.1 完成：`lib/transit.ts` 移植 `common/src/app/common/transit.cljc` 的读取 handler
+  （u/m/:/n/duration/uri/ordered-map/ordered-set/set/penpot/pointer），12 项编解码单测通过。
+- F1.3 完成：`lib/legacy-routes.ts` + `components/url-compat.tsx`，对照 `ui/routes.cljs` 移植
+  legacy `#/` 路由表（含 `:file-id` 路径参数）与 `?screen=` 解析，14 项单测通过。
+- F1.4 完成：`lib/session.tsx` + `components/auth-guard.tsx`；根路径引导复刻 on-query-navigate
+  空 token 分支（zero-uuid → `/auth/login`，已登录 → `/dashboard/recent`）；dashboard/settings
+  布局与 workspace/view 页加守卫；登录页改用 `session.refresh`。
+- S1 完成：`packages/api-types/scripts/scan-rpc-inventory.mjs` 静态扫描 backend/src 的
+  `sv/defmethod`（只读，不改后端），产出 `rpc-inventory.json`：189 条命令，含
+  ns/文件/行号/auth/docstring/added 与 params/result schema 引用。
+- 验证：`pnpm typecheck` + `pnpm build` 通过（路由全部预渲染）；实测匿名 get-profile 返回
+  zero-uuid（守卫判定依据）。
+- 未改动 `frontend/`、`backend/`、`common/`、docker-compose 栈。
+- 下一步：F1.2（malli schema → TS 类型生成器，输入已就绪）、F3 auth 路由组
+  （register/recovery/verify-token）。
+
+### 7.3 阶段 B
 
 未开始（🔒 受门禁）。
 
