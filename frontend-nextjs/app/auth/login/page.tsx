@@ -1,20 +1,20 @@
 "use client";
 
 // P0 vertical slice: the first page migrated end-to-end. Proves the transport by
-// calling login-with-password then get-profile, exactly like app.main.data.auth
-// in the CLJS frontend. get-profile already declares ::sm/result in the backend,
-// so it needs no backend change to consume.
+// calling login-with-password, then refreshes the shared session (get-profile),
+// exactly like app.main.data.auth in the CLJS frontend.
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cmd } from "@/lib/rpc";
 import { RpcError } from "@/lib/errors";
-import type { LoginWithPasswordParams, Profile } from "@/lib/types";
-
-const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+import { isAuthenticatedProfile, useSession } from "@/lib/session";
+import { routePaths } from "@/lib/routes";
+import type { LoginWithPasswordParams } from "@/lib/types";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { refresh } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -26,12 +26,12 @@ export default function LoginPage() {
     setError(null);
     try {
       const params: LoginWithPasswordParams = { email, password };
-      await cmd<Profile>("login-with-password", params);
-      const profile = await cmd<Profile>("get-profile");
-      if (!profile || profile.id === ZERO_UUID) {
+      await cmd("login-with-password", params);
+      const profile = await refresh();
+      if (!isAuthenticatedProfile(profile)) {
         throw new RpcError("not authenticated", { type: "authorization" });
       }
-      router.push("/dashboard/recent");
+      router.push(routePaths["dashboard-recent"]);
     } catch (err) {
       const data = err instanceof RpcError ? err.data : { type: "internal" };
       const code = data.code ? " / " + String(data.code) : "";
