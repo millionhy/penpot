@@ -126,11 +126,17 @@ pnpm install
 pnpm dev          # http://localhost:3450
 pnpm test         # lib/** 的无头逻辑单测（vitest）
 pnpm translations # 重新生成 lib/translations/en.ts
+pnpm build        # 生产构建；别在 dev server 运行时执行，原因见下
 ```
 
 开发期 `next.config.mjs` 把 `/api/*`、`/assets/*` 反代到后端，浏览器只面对单一源，
 既避免 CORS，也保住 cookie 的 SameSite。生产环境沿用既有 nginx 反代，同样的相对
 URL 不变即可工作。
+
+`next dev` 与 `next build` 共用同一个 `.next`：构建会把开发态 chunk 换成带哈希的生产
+文件，正在跑的 dev server 随即对 `main-app.js` 返回 404，页面卡在「Loading...」不再
+hydrate —— `SessionProvider` 的 `useEffect` 根本没机会执行，`get-profile` 也就永远不
+会发出。要跑 `pnpm build` 先停掉 dev；已经踩到的话删掉 `.next` 再重启 dev 即可恢复。
 
 WebSocket（`/ws/notifications`）不经 Next rewrite（rewrite 不转发 HTTP upgrade），
 协作长连接直接连 `lib/config.ts` 里配置的后端源。
