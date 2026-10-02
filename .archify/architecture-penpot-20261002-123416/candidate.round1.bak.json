@@ -1,0 +1,295 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Penpot 系统架构总览",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-penpot-20261002-123416/penpot-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://gitcode.com/gh_mirrors/pe/penpot.git",
+      "link_mode": "local-only",
+      "revision": "84c794c5b84bf1b62fab06f9bc79bbd23ffcb452"
+    },
+    "views": [
+      { "id": "main-edit-path", "label": "主编辑链路", "focus": ["designer", "frontend", "backend", "postgres"], "note": "从浏览器到 Backend RPC 再到 PostgreSQL 的一次文件读写" },
+      { "id": "collab-broadcast", "label": "协同广播", "focus": ["frontend", "backend", "redis"], "note": "WebSocket 订阅 + Redis Pub/Sub 把文件变更推给同一团队的其他人" },
+      { "id": "export-pipeline", "label": "导出流水线", "focus": ["frontend", "exporter", "backend", "redis"], "note": "前端发起导出，Exporter 用 Playwright 渲染，进度经 Redis 回推" },
+      { "id": "async-workers", "label": "异步任务", "focus": ["dispatcher", "runner", "postgres", "redis", "smtp"], "note": "Postgres task 表是唯一协调点，Redis 列表只做进程内交接" },
+      { "id": "client-extensions", "label": "渲染与扩展", "focus": ["frontend", "wasm", "plugins", "mcp"], "note": "WASM 渲染器、SES 插件沙箱与 MCP 插件桥接" }
+    ]
+  },
+  "components": [
+    {
+      "id": "designer",
+      "type": "external",
+      "label": "设计人员",
+      "sublabel": "浏览器",
+      "pos": [20, 196],
+      "size": [140, 64]
+    },
+    {
+      "id": "frontend",
+      "type": "frontend",
+      "label": "Penpot 前端",
+      "sublabel": "ClojureScript · Potok",
+      "pos": [260, 190],
+      "size": [200, 76],
+      "sources": [
+        { "path": "frontend/src/app/main/repo.cljs", "line": 192, "label": "RPC 端点" },
+        { "path": "frontend/src/app/main/data/websocket.cljs", "line": 23, "end_line": 27, "label": "WS 端点" }
+      ]
+    },
+    {
+      "id": "wasm",
+      "type": "frontend",
+      "label": "render-wasm",
+      "sublabel": "Rust → WASM · Skia",
+      "pos": [210, 40],
+      "size": [170, 64],
+      "sources": [
+        { "path": "frontend/src/app/render_wasm/api.cljs", "line": 3038, "end_line": 3046, "label": "载入 wasm" },
+        { "path": "render-wasm/src/main.rs", "line": 2, "end_line": 17, "label": "渲染模块" }
+      ]
+    },
+    {
+      "id": "plugins",
+      "type": "frontend",
+      "label": "插件运行时",
+      "sublabel": "SES 沙箱 · Plugin API",
+      "pos": [420, 40],
+      "size": [180, 64],
+      "sources": [
+        { "path": "frontend/src/app/plugins.cljs", "line": 26, "end_line": 30, "label": "初始化运行时" }
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "Penpot MCP Server",
+      "sublabel": "AI 工具 · 插件桥接",
+      "tag": "WS :4402",
+      "pos": [700, 40],
+      "size": [190, 64],
+      "sources": [
+        { "path": "mcp/packages/server/src/PenpotMcpServer.ts", "line": 149, "end_line": 150, "label": "端口" },
+        { "path": "mcp/packages/server/src/PluginBridge.ts", "line": 97, "label": "WS 服务" }
+      ]
+    },
+    {
+      "id": "oidc",
+      "type": "security",
+      "label": "OIDC 提供方",
+      "sublabel": "Google · GitHub · GitLab",
+      "pos": [960, 40],
+      "size": [160, 64],
+      "sources": [
+        { "path": "backend/src/app/auth/oidc.clj", "line": 228, "end_line": 239, "label": "提供方配置" },
+        { "path": "backend/src/app/auth/oidc.clj", "line": 1161, "label": "回调路由" }
+      ]
+    },
+    {
+      "id": "ldap",
+      "type": "security",
+      "label": "LDAP",
+      "sublabel": "可选登录源",
+      "pos": [1150, 40],
+      "size": [150, 64],
+      "sources": [
+        { "path": "backend/src/app/auth/ldap.clj", "line": 25, "end_line": 31, "label": "建立连接" },
+        { "path": "backend/src/app/auth/ldap.clj", "line": 90, "end_line": 92, "label": "绑定认证" }
+      ]
+    },
+    {
+      "id": "backend",
+      "type": "backend",
+      "label": "Backend HTTP / RPC",
+      "sublabel": "JVM Clojure · Integrant",
+      "tag": ":6060",
+      "pos": [900, 180],
+      "size": [250, 96],
+      "sources": [
+        { "path": "backend/src/app/http.clj", "line": 267, "end_line": 294, "label": "路由表" },
+        { "path": "backend/src/app/rpc.clj", "line": 483, "end_line": 510, "label": "RPC 端点" },
+        { "path": "backend/src/app/http/websocket.clj", "line": 351, "end_line": 354, "label": "WS 端点" }
+      ]
+    },
+    {
+      "id": "exporter",
+      "type": "backend",
+      "label": "Exporter",
+      "sublabel": "Node CLJS · Playwright",
+      "tag": ":6061",
+      "pos": [260, 346],
+      "size": [200, 64],
+      "sources": [
+        { "path": "exporter/src/app/router.cljs", "line": 18, "label": "挂载点" },
+        { "path": "exporter/src/app/browser.cljs", "line": 133, "end_line": 140, "label": "浏览器池" },
+        { "path": "exporter/src/app/handlers/resources.cljs", "line": 75, "end_line": 84, "label": "回传后端" }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "messagebus",
+      "label": "Redis / Valkey",
+      "sublabel": "msgbus · 缓存 · 队列",
+      "pos": [900, 346],
+      "size": [220, 64],
+      "sources": [
+        { "path": "backend/src/app/msgbus.clj", "line": 8, "label": "msgbus 实现" },
+        { "path": "backend/src/app/worker/runner.clj", "line": 250, "end_line": 251, "label": "队列键" }
+      ]
+    },
+    {
+      "id": "mediaproc",
+      "type": "backend",
+      "label": "media-processor",
+      "sublabel": "Express · sharp",
+      "tag": ":6065",
+      "pos": [1300, 346],
+      "size": [180, 64],
+      "sources": [
+        { "path": "media-processor/src/index.ts", "line": 49, "end_line": 56, "label": "路由与端口" },
+        { "path": "backend/src/app/media/remote.clj", "line": 150, "end_line": 155, "label": "后端调用方" }
+      ]
+    },
+    {
+      "id": "dispatcher",
+      "type": "backend",
+      "label": "任务 Dispatcher",
+      "sublabel": "轮询并认领 task",
+      "pos": [560, 502],
+      "size": [210, 64],
+      "sources": [
+        { "path": "backend/src/app/worker/dispatcher.clj", "line": 44, "end_line": 52, "label": "认领 SQL" },
+        { "path": "backend/src/app/worker/dispatcher.clj", "line": 107, "end_line": 110, "label": "RPUSH" }
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "档案 · 任务 · 会话",
+      "pos": [900, 502],
+      "size": [220, 64],
+      "sources": [
+        { "path": "backend/src/app/db.clj", "line": 84, "label": "连接池" },
+        { "path": "backend/src/app/worker.clj", "line": 79, "end_line": 83, "label": "task 表入队" }
+      ]
+    },
+    {
+      "id": "objstore",
+      "type": "cloud",
+      "label": "对象存储",
+      "sublabel": "S3 / 文件系统",
+      "pos": [1300, 502],
+      "size": [180, 64],
+      "sources": [
+        { "path": "backend/src/app/storage.clj", "line": 69, "label": "后端枚举" },
+        { "path": "backend/src/app/storage.clj", "line": 84, "end_line": 92, "label": "后端解析" }
+      ]
+    },
+    {
+      "id": "runner",
+      "type": "backend",
+      "label": "任务 Runner",
+      "sublabel": "执行并回写状态",
+      "pos": [560, 658],
+      "size": [210, 64],
+      "sources": [
+        { "path": "backend/src/app/worker/runner.clj", "line": 250, "end_line": 251, "label": "BLPOP" },
+        { "path": "backend/src/app/worker/runner.clj", "line": 85, "end_line": 96, "label": "回写状态" }
+      ]
+    },
+    {
+      "id": "smtp",
+      "type": "external",
+      "label": "SMTP 邮件",
+      "sublabel": "邀请 · 重置密码",
+      "pos": [1300, 658],
+      "size": [180, 64],
+      "sources": [
+        { "path": "backend/src/app/email.clj", "line": 163, "end_line": 174, "label": "SMTP 配置" }
+      ]
+    }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "浏览器端运行时", "wraps": ["frontend", "wasm", "plugins"] },
+    { "kind": "security-group", "label": "外部身份提供方", "wraps": ["oidc", "ldap"] },
+    { "kind": "region", "label": "后台任务 · enable-backend-worker", "wraps": ["dispatcher", "runner"] }
+  ],
+  "connections": [
+    { "id": "designer-to-frontend", "from": "designer", "to": "frontend", "label": "HTTPS", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "frontend-to-wasm", "from": "frontend", "to": "wasm", "label": "图形数据 · render_frame()", "fromSide": "top", "toSide": "bottom" },
+    { "id": "frontend-to-plugins", "from": "frontend", "to": "plugins", "label": "加载插件", "fromSide": "top", "toSide": "bottom" },
+    { "id": "plugins-to-mcp", "from": "plugins", "to": "mcp", "label": "WS :4402", "variant": "dashed", "fromSide": "right", "toSide": "left" },
+    { "id": "frontend-to-backend", "from": "frontend", "to": "backend", "label": "Transit RPC · /api/main/methods", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "backend-to-frontend", "from": "backend", "to": "frontend", "label": "WS 广播文件变更", "fromSide": "left", "toSide": "right" },
+    { "id": "backend-to-oidc", "from": "backend", "to": "oidc", "label": "OAuth2", "variant": "security", "fromSide": "top", "toSide": "bottom" },
+    { "id": "backend-to-ldap", "from": "backend", "to": "ldap", "label": "LDAP 绑定", "variant": "security", "fromSide": "top", "toSide": "bottom" },
+    { "id": "backend-to-mediaproc", "from": "backend", "to": "mediaproc", "label": "图片 / 字体处理", "fromSide": "right", "toSide": "left" },
+    { "id": "backend-to-objstore", "from": "backend", "to": "objstore", "label": "媒体对象读写", "fromSide": "right", "toSide": "left" },
+    { "id": "backend-to-redis", "from": "backend", "to": "redis", "label": "Pub/Sub · 缓存", "fromSide": "bottom", "toSide": "top" },
+    { "id": "backend-to-postgres", "from": "backend", "to": "postgres", "label": "SQL 读写", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "id": "frontend-to-exporter", "from": "frontend", "to": "exporter", "label": "导出请求", "fromSide": "bottom", "toSide": "top" },
+    { "id": "exporter-to-backend", "from": "exporter", "to": "backend", "label": "共享密钥 RPC · upload-tempfile", "fromSide": "top", "toSide": "bottom" },
+    { "id": "exporter-to-redis", "from": "exporter", "to": "redis", "label": "发布导出进度", "variant": "dashed", "fromSide": "right", "toSide": "left" },
+    { "id": "dispatcher-to-postgres", "from": "dispatcher", "to": "postgres", "label": "认领 task", "fromSide": "right", "toSide": "left" },
+    { "id": "dispatcher-to-redis", "from": "dispatcher", "to": "redis", "label": "RPUSH 任务 ID", "fromSide": "top", "toSide": "bottom" },
+    { "id": "runner-to-postgres", "from": "runner", "to": "postgres", "label": "回写状态", "fromSide": "right", "toSide": "left" },
+    { "id": "runner-to-redis", "from": "runner", "to": "redis", "label": "BLPOP 取任务", "fromSide": "left", "toSide": "left" },
+    { "id": "runner-to-smtp", "from": "runner", "to": "smtp", "label": "执行 :sendmail 任务", "variant": "dashed", "fromSide": "bottom", "toSide": "bottom" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "客户端",
+      "items": [
+        "前端是 ClojureScript 单页应用：Potok 事件流 + Rumext/React 界面，共享 common/ 的 CLJC 类型",
+        "render-wasm 用 Emscripten/Skia 编译，前端经 app.render-wasm.api 动态载入 js/render-wasm.wasm",
+        "缩略图、索引与导入跑在独立 Web Worker（frontend/src/app/util/worker.cljs:92）",
+        "插件运行时用 SES 沙箱隔离第三方代码，并清洗插件的 fetch 凭据"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "服务端",
+      "items": [
+        "Backend 用 Integrant 组装一张路由表：/api/main、/api/management、/ws/notifications、/assets",
+        "生产部署由 nginx 反代到 backend:6060（docker/devenv/files/nginx.conf）",
+        "Exporter 是无头 Node 服务，Playwright Chromium 池渲染 SVG/PNG/PDF，WebP 再经 ImageMagick 转换",
+        "media-processor 用 sharp 与 FontForge 处理图片和字体，靠 X-Shared-Key 鉴权"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "异步任务",
+      "items": [
+        "wrk/submit! 只往 Postgres task 表插一行，RPC 处理器从不轮询也不等待",
+        "dispatcher 用 FOR UPDATE SKIP LOCKED 认领，再 RPUSH 到本机 Redis 列表 penpot.worker.queue:<tenant>:<queue>",
+        "runner BLPOP 取任务、执行、把 status/completed_at 回写 Postgres",
+        "Redis 交接只在进程内；跨实例的正确性只靠 Postgres 行锁，所以 cron 去重是尽力而为"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "安全与身份",
+      "items": [
+        "OIDC 支持 Google、GitHub、GitLab 与通用提供方",
+        "LDAP 是可选登录源，由 enable-login-with-ldap 开关控制",
+        "/api/management 用 X-Shared-Key 鉴权，供 Exporter 回传临时文件",
+        "会话令牌经 cookie auth-token 或 Bearer 传递，由 app.http.middleware 解析"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "仓库其余模块",
+      "items": [
+        "common/ 是 CLJC 共享层，被 frontend、backend、exporter 同时消费",
+        "library/ 产出 @penpot/library，在应用之外构造并导出 .penpot 文件",
+        "plugins/ 提供 Plugin API 的 TypeScript 声明与运行时",
+        "mcp/ 提供 MCP Server，经 WebSocket 把任务派给 Penpot 插件"
+      ]
+    }
+  ]
+}

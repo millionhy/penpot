@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "D:\\workspaces\\vibecoding\\penpot\\.archify\\architecture-penpot-20261002-123416\\candidate.json",
+    "sha256": "2b366a06c5bbc7812d9b003a63cf52dcc18a720264eab04409007cc587fae7e7",
+    "bytes": 13792
+  },
+  "artifact": {
+    "path": "D:\\workspaces\\vibecoding\\penpot\\.archify\\architecture-penpot-20261002-123416\\penpot-architecture.html",
+    "sha256": "51b773f1e17e2433d833c8189deb781879efd13539ea3351d14d282081370dcb",
+    "bytes": 791939
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "D:\\workspaces\\vibecoding\\penpot\\.archify\\architecture-penpot-20261002-123416\\penpot-architecture.finalize.json",
+    "summaryReceipt": "D:\\workspaces\\vibecoding\\penpot\\.archify\\architecture-penpot-20261002-123416\\penpot-architecture.finalize-summary.json",
+    "browserCheckReceipt": "D:\\workspaces\\vibecoding\\penpot\\.archify\\architecture-penpot-20261002-123416\\penpot-architecture.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-02T04:40:12.698Z",
+    "source": "network",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 6572,
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 6,
+      "routesOverSuggestedBends": 2,
+      "routesOverSuggestedStretch": 1
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "id": "frontend-to-backend",
+            "from": "frontend",
+            "to": "backend",
+            "label": "Transit RPC · /api/main/methods",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "right": {
+            "id": "backend-to-frontend",
+            "from": "backend",
+            "to": "frontend",
+            "label": "WS 广播文件变更",
+            "collectionIndex": 5,
+            "artifactIndex": 6
+          },
+          "point": [
+            872.49,
+            236.05
+          ],
+          "sharedNode": "frontend"
+        },
+        {
+          "left": {
+            "id": "backend-to-mediaproc",
+            "from": "backend",
+            "to": "mediaproc",
+            "label": "图片 / 字体处理",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "right": {
+            "id": "backend-to-objstore",
+            "from": "backend",
+            "to": "objstore",
+            "label": "媒体对象读写",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "point": [
+            1225,
+            235
+          ],
+          "sharedNode": "backend"
+        },
+        {
+          "left": {
+            "id": "backend-to-postgres",
+            "from": "backend",
+            "to": "postgres",
+            "label": "SQL 读写",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "right": {
+            "id": "exporter-to-backend",
+            "from": "exporter",
+            "to": "backend",
+            "label": "共享密钥 RPC · upload-tempfile",
+            "collectionIndex": 13,
+            "artifactIndex": 14
+          },
+          "point": [
+            995.9499999999997,
+            300
+          ],
+          "sharedNode": "backend"
+        },
+        {
+          "left": {
+            "id": "backend-to-postgres",
+            "from": "backend",
+            "to": "postgres",
+            "label": "SQL 读写",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "right": {
+            "id": "exporter-to-redis",
+            "from": "exporter",
+            "to": "redis",
+            "label": "发布导出进度",
+            "collectionIndex": 14,
+            "artifactIndex": 15
+          },
+          "point": [
+            893,
+            371
+          ]
+        },
+        {
+          "left": {
+            "id": "backend-to-postgres",
+            "from": "backend",
+            "to": "postgres",
+            "label": "SQL 读写",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "right": {
+            "id": "dispatcher-to-redis",
+            "from": "dispatcher",
+            "to": "redis",
+            "label": "RPUSH 任务 ID",
+            "collectionIndex": 16,
+            "artifactIndex": 17
+          },
+          "point": [
+            893,
+            434
+          ]
+        },
+        {
+          "left": {
+            "id": "backend-to-postgres",
+            "from": "backend",
+            "to": "postgres",
+            "label": "SQL 读写",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "right": {
+            "id": "runner-to-redis",
+            "from": "runner",
+            "to": "redis",
+            "label": "BLPOP 取任务",
+            "collectionIndex": 18,
+            "artifactIndex": 19
+          },
+          "point": [
+            893,
+            385
+          ]
+        }
+      ],
+      "detours": [
+        {
+          "relationship": {
+            "id": "backend-to-frontend",
+            "from": "backend",
+            "to": "frontend",
+            "label": "WS 广播文件变更",
+            "collectionIndex": 5,
+            "artifactIndex": 6
+          },
+          "bends": 4,
+          "stretch": 1.073
+        },
+        {
+          "relationship": {
+            "id": "backend-to-postgres",
+            "from": "backend",
+            "to": "postgres",
+            "label": "SQL 读写",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "bends": 4,
+          "stretch": 1.858
+        }
+      ],
+      "truncated": false
+    },
+    "hints": [
+      "frontend → backend and backend → frontend cross next to frontend: move node backend or backend so the two reach frontend from different sides (for example one level with it, one directly above or below it).",
+      "backend → mediaproc and backend → objstore cross next to backend: move node mediaproc or objstore so the two reach backend from different sides (for example one level with it, one directly above or below it).",
+      "backend → postgres and exporter → backend cross next to backend: move node postgres or exporter so the two reach backend from different sides (for example one level with it, one directly above or below it).",
+      "backend → postgres crosses exporter → redis: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "backend → postgres crosses dispatcher → redis: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "backend → postgres crosses runner → redis: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "backend → frontend needs 4 bends: move node backend or frontend so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "backend → postgres needs 4 bends: move node backend or postgres so they share a row or column with matching centers, or sit diagonally with a clear corner."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "205375bb-f065-4ace-b279-c73406f8bcb8",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "D:\\workspaces\\vibecoding\\penpot\\.archify\\architecture-penpot-20261002-123416\\candidate.json",
+  "output": "D:\\workspaces\\vibecoding\\penpot\\.archify\\architecture-penpot-20261002-123416\\penpot-architecture.html",
+  "specification": {
+    "sha256": "ef612c690106f32f45cffb6089314588e53e2ce605dcebb367a57cfbe3fc97cd",
+    "bytes": 16442
+  },
+  "artifact": {
+    "sha256": "b1da27d55782cf5812dfcdfa7d24223e3f8b98a964615e0fbd70b9b583f5b3ee",
+    "bytes": 791516
+  }
+}
