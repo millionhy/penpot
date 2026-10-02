@@ -1,0 +1,33 @@
+{
+  "name": "frontend-nextjs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MPL-2.0",
+  "description": "Next.js shell for Penpot. Strangler Fig migration of frontend/ (ClojureScript). Talks to the existing Clojure backend over Transit RPC; the backend is NOT modified until the migrated pages reach parity.",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=24.21.0"
+  },
+  "scripts": {
+    "dev": "next dev -p 3450",
+    "build": "next build",
+    "start": "next start -p 3450",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^15.5.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "transit-js": "^0.8.874"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.5.0",
+    "typescript": "^5.9.0"
+  }
+}

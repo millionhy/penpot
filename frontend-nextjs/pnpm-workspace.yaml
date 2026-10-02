@@ -1,0 +1,13 @@
+storeDir: ../.pnpm-store
+
+# Self-contained workspace: frontend-nextjs is installed independently of the
+# ClojureScript frontend/ (cd frontend-nextjs && pnpm install), mirroring how
+# frontend/ manages its own member packages. New shared TS packages that the
+# Next.js shell owns (generated RPC types, design-system) live under packages/*.
+packages:
+  - "packages/*"
+
+minimumReleaseAge: 0
+
+allowBuilds:
+  unrs-resolver: set this to true or false

@@ -1,0 +1,12 @@
+{
+  "name": "@penpot/api-types",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Generated TypeScript types for the Penpot RPC surface. Placeholder until the contract generator lands (rewrite.md task F1.2).",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
