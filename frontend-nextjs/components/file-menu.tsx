@@ -9,11 +9,13 @@
 // - "download-binary-file" / "export-binary-multi" open the binfile export
 //   dialog, which arrives with the import/export slice (F5.6); the entries
 //   are omitted until then.
-// - The can-restore branch (deleted files view) arrives with F5.3.
 // - set-file-shared no longer fetches get-file-summary a second time for the
 //   telemetry event; the shell has no analytics seam.
 // - get-all-projects is fetched when the menu opens instead of on every
 //   mounted grid item.
+// - The can-restore entries (F5.3) confirm here and then hand the id set to
+//   the flows the deleted section owns, because that section also drives the
+//   progress widget and re-fetches the trash.
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -53,7 +55,23 @@ export interface FileActionDeps {
   knownFileNames: () => Iterable<string>;
   // Re-fetch hook after mutations that do not navigate away.
   onFilesChanged: () => void | Promise<void>;
+  // The trash flows (F5.3). Only the deleted section supplies them; every
+  // other origin leaves them out because it never renders the can-restore
+  // entries.
+  bulk?: BulkFileFlows;
 }
+
+// on-restore-immediately / on-delete-immediately confirm through the menu and
+// then run the SSE command the caller owns.
+export interface BulkFileFlows {
+  restore: (files: FileSummary[]) => Promise<void>;
+  deleteForever: (files: FileSummary[]) => Promise<void>;
+}
+
+// grid* :origin. file-menu-items* only branches on these two values; the
+// recent and the files sections pass null, exactly like the CLJS views that
+// omit the prop.
+export type FileMenuOrigin = "libraries" | "search" | null;
 
 export interface FileActions {
   openNewTab: (file: FileSummary) => void;
@@ -64,10 +82,12 @@ export interface FileActions {
   requestMove: (files: FileSummary[], destTeamId: string, destProjectId: string) => void;
   requestPublish: (file: FileSummary) => void;
   requestUnpublish: (files: FileSummary[]) => void;
+  requestRestore: (files: FileSummary[]) => void;
+  requestDeleteForever: (files: FileSummary[]) => void;
 }
 
 export function useFileActions(deps: FileActionDeps): FileActions {
-  const { teamId, knownFileNames, onFilesChanged } = deps;
+  const { teamId, knownFileNames, onFilesChanged, bulk } = deps;
   const router = useRouter();
   const modal = useModal();
   const notifications = useNotifications();
@@ -261,6 +281,43 @@ export function useFileActions(deps: FileActionDeps): FileActions {
     );
   };
 
+  // Both trash confirmations name the first file even for a multi-selection,
+  // which is what file-menu-items* does ((:name file) with file = first files).
+  const requestRestore = (files: FileSummary[]) => {
+    const file = files[0];
+    if (file === undefined) return;
+    modal.open(
+      <ConfirmDialog
+        title={tr("dashboard-restore-file-confirmation.title")}
+        message={tr("dashboard-restore-file-confirmation.description", file.name)}
+        acceptLabel={tr("labels.continue")}
+        cancelLabel={tr("labels.cancel")}
+        acceptTestId="restore-file-accept"
+        onAccept={() => {
+          if (bulk !== undefined) void bulk.restore(files);
+        }}
+      />,
+    );
+  };
+
+  const requestDeleteForever = (files: FileSummary[]) => {
+    const file = files[0];
+    if (file === undefined) return;
+    modal.open(
+      <ConfirmDialog
+        title={tr("dashboard.delete-forever-confirmation.title")}
+        message={tr("dashboard.delete-file-forever-confirmation.description", file.name)}
+        acceptLabel={tr("dashboard.delete-forever-confirmation.title")}
+        cancelLabel={tr("labels.cancel")}
+        destructive
+        acceptTestId="delete-forever-accept"
+        onAccept={() => {
+          if (bulk !== undefined) void bulk.deleteForever(files);
+        }}
+      />,
+    );
+  };
+
   return {
     openNewTab,
     requestRename,
@@ -270,6 +327,8 @@ export function useFileActions(deps: FileActionDeps): FileActions {
     requestMove,
     requestPublish,
     requestUnpublish,
+    requestRestore,
+    requestDeleteForever,
   };
 }
 
@@ -279,14 +338,39 @@ export function useFileActions(deps: FileActionDeps): FileActions {
 export function buildFileMenuEntries(options: {
   files: FileSummary[];
   canEdit: boolean;
+  canRestore?: boolean;
+  origin?: FileMenuOrigin;
   currentTeamId: string | null;
   allProjects: AllProject[] | null;
   actions: FileActions;
 }): MenuEntry[] {
-  const { files, canEdit, currentTeamId, allProjects, actions } = options;
+  const { files, canEdit, canRestore, origin, currentTeamId, allProjects, actions } = options;
   const file = files[0];
   const count = files.length;
   const multi = count > 1;
+  const isLibPage = origin === "libraries";
+  const isSearchPage = origin === "search";
+
+  // The can-restore branch of file-menu-items* short-circuits the whole list:
+  // a trashed file can only be restored or destroyed, whatever else the
+  // profile may edit.
+  if (canRestore === true) {
+    return [
+      {
+        type: "item",
+        id: "restore-file",
+        label: tr("dashboard.file-menu.restore-files-option", count),
+        onSelect: () => actions.requestRestore(files),
+      },
+      {
+        type: "item",
+        id: "delete-file",
+        label: tr("dashboard.file-menu.delete-files-permanently-option", count),
+        danger: true,
+        onSelect: () => actions.requestDeleteForever(files),
+      },
+    ];
+  }
 
   const groups = allProjects === null ? [] : groupProjectsByTeam(allProjects);
   const currentTeam = groups.find((group) => group.id === currentTeamId);
@@ -365,7 +449,7 @@ export function buildFileMenuEntries(options: {
         onSelect: () => actions.requestUnpublish(files),
       });
     }
-    if (canEdit) {
+    if (!isLibPage && canEdit) {
       entries.push(
         { type: "separator", id: "delete-separator" },
         {
@@ -386,7 +470,7 @@ export function buildFileMenuEntries(options: {
     label: tr("dashboard.open-in-new-tab"),
     onSelect: () => actions.openNewTab(file),
   });
-  if (canEdit) {
+  if (!isSearchPage && canEdit) {
     entries.push({
       type: "item",
       id: "file-rename",
@@ -401,14 +485,16 @@ export function buildFileMenuEntries(options: {
         void actions.duplicate([file]);
       },
     });
-    if (hasMoveTargets) {
-      entries.push({
-        type: "submenu",
-        id: "file-move-to",
-        label: tr("dashboard.move-to"),
-        items: moveEntries,
-      });
-    }
+  }
+  if (!isLibPage && !isSearchPage && canEdit && hasMoveTargets) {
+    entries.push({
+      type: "submenu",
+      id: "file-move-to",
+      label: tr("dashboard.move-to"),
+      items: moveEntries,
+    });
+  }
+  if (!isSearchPage && canEdit) {
     entries.push(
       file["is-shared"] === true
         ? {
@@ -424,6 +510,8 @@ export function buildFileMenuEntries(options: {
             onSelect: () => actions.requestPublish(file),
           },
     );
+  }
+  if (!isLibPage && !isSearchPage && canEdit) {
     entries.push(
       { type: "separator", id: "delete-separator" },
       {
@@ -442,6 +530,8 @@ export interface FileMenuPopupProps {
   files: FileSummary[];
   anchor: MenuAnchor;
   canEdit: boolean;
+  canRestore?: boolean;
+  origin?: FileMenuOrigin;
   teamId: string | null;
   actions: FileActions;
   onClose: () => void;
@@ -451,13 +541,21 @@ export function FileMenuPopup({
   files,
   anchor,
   canEdit,
+  canRestore,
+  origin,
   teamId,
   actions,
   onClose,
 }: FileMenuPopupProps) {
   const [allProjects, setAllProjects] = useState<AllProject[] | null>(null);
+  // The trash menu has no move-to entries, so it never needs the project list.
+  const needsProjects = canRestore !== true;
 
   useEffect(() => {
+    if (!needsProjects) {
+      setAllProjects([]);
+      return;
+    }
     let live = true;
     getAllProjects()
       .then((rows) => {
@@ -471,11 +569,20 @@ export function FileMenuPopup({
     return () => {
       live = false;
     };
-  }, []);
+  }, [needsProjects]);
 
   const entries = useMemo(
-    () => buildFileMenuEntries({ files, canEdit, currentTeamId: teamId, allProjects, actions }),
-    [files, canEdit, teamId, allProjects, actions],
+    () =>
+      buildFileMenuEntries({
+        files,
+        canEdit,
+        canRestore,
+        origin,
+        currentTeamId: teamId,
+        allProjects,
+        actions,
+      }),
+    [files, canEdit, canRestore, origin, teamId, allProjects, actions],
   );
 
   return (

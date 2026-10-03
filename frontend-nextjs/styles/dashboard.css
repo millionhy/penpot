@@ -19,6 +19,9 @@
 .pp-dashboard-main .pp-dashboard-content {
   overflow: hidden;
   padding-block-end: 0;
+  /* dashboard-content* is position:relative, which makes it the containing
+     block of the absolutely positioned progress widget (F5.3). */
+  position: relative;
 }
 
 /* --- sidebar (dashboard/sidebar.scss) --- */
@@ -1082,4 +1085,333 @@
 
 .pp-highlights-item a {
   color: var(--color-accent-primary);
+}
+
+/* --- trash tabs (deleted.scss .nav, F5.3) --- */
+
+.pp-nav {
+  background: var(--color-background-primary);
+  padding: var(--sp-xxl) var(--sp-xxl) var(--sp-s) var(--sp-xxl);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-index-panels);
+}
+
+.pp-nav-inside {
+  border-bottom: var(--b-1) solid var(--color-background-quaternary);
+  display: flex;
+  gap: var(--sp-l);
+  justify-content: space-between;
+}
+
+.pp-nav-option {
+  align-items: center;
+  background: none;
+  border: var(--b-1) solid transparent;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-14);
+  justify-content: center;
+  padding: var(--sp-s);
+}
+
+.pp-nav-option.selected {
+  border-bottom: var(--b-1) solid var(--color-foreground-primary);
+  color: var(--color-foreground-primary);
+}
+
+/* --- trash notice (deleted.scss .deleted-info-*) --- */
+
+.pp-deleted-info-content {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--sp-s) var(--sp-xxl);
+}
+
+.pp-deleted-info {
+  color: var(--color-foreground-secondary);
+  display: block;
+  font-size: var(--fs-14);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.pp-info-text-highlight {
+  color: var(--color-accent-primary);
+}
+
+.pp-deleted-options {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--sp-xs);
+}
+
+/* deleted.scss .project: the trash row header carries no file counter and no
+   pin, only the name and the options button. */
+.pp-deleted-project {
+  border-radius: var(--br-4);
+  margin-block-start: var(--sp-l);
+  max-block-size: var(--sz-40);
+  padding: var(--sp-s) var(--sp-s) var(--sp-s) var(--sp-l);
+}
+
+/* --- section frames (deleted.scss / search.scss .dashboard-container) --- */
+
+.pp-dashboard-deleted,
+.pp-dashboard-shared,
+.pp-dashboard-search {
+  block-size: auto;
+  border-top: var(--b-1) solid var(--color-background-quaternary);
+  flex: 1 0 0;
+  overflow: hidden auto;
+  padding-block-end: var(--sp-xxxl);
+}
+
+.pp-dashboard-search {
+  margin-block-start: var(--sp-m);
+}
+
+/* search.scss .grid-empty-placeholder.search */
+.pp-grid-empty-placeholder.pp-search-placeholder {
+  background: transparent;
+  block-size: var(--sz-200);
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  flex-direction: column;
+  gap: var(--sp-m);
+}
+
+.pp-search-placeholder-icon {
+  color: var(--color-foreground-secondary);
+  font-size: var(--sz-32);
+  line-height: 1;
+}
+
+.pp-search-placeholder-text {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-14);
+}
+
+/* --- shared-library card (grid.scss LIBRARY) --- */
+
+.pp-grid-item-thumbnail.is-deleted,
+.pp-library-thumbnail.is-deleted {
+  opacity: 0.5;
+}
+
+/* grid.scss .project-thumbnail.library-item: px2rem(612). */
+.pp-library-item {
+  block-size: 38.25rem;
+}
+
+.pp-library-thumbnail {
+  background-color: var(--color-background-tertiary);
+  block-size: 90%;
+  border-radius: var(--br-8);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  max-block-size: 36.25rem; /* px2rem(580) */
+  overflow: hidden;
+  padding: var(--sp-xxxl);
+  position: relative;
+}
+
+.pp-library-asset-section {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+}
+
+.pp-library-asset-section:not(:first-child) {
+  margin-block-start: var(--sp-l);
+}
+
+.pp-library-asset-title {
+  display: flex;
+  font-size: var(--fs-12);
+  text-transform: uppercase;
+}
+
+.pp-library-num-assets {
+  color: var(--color-foreground-secondary);
+}
+
+.pp-library-asset-item {
+  align-items: center;
+  border: var(--b-1) solid transparent;
+  border-radius: var(--br-4);
+  color: var(--color-foreground-primary);
+  display: flex;
+  font-size: var(--fs-12);
+  margin-block-start: var(--sp-xs);
+  padding: var(--sp-xxs);
+  position: relative;
+}
+
+/* The component preview box. render/component-svg fills it once the F9
+   renderer lands; until then it stays the canvas-coloured square the SCSS
+   sizes. */
+.pp-library-asset-icon {
+  background-color: var(--color-canvas);
+  block-size: var(--sz-24);
+  border: var(--b-2) solid transparent;
+  border-radius: var(--br-4);
+  flex-shrink: 0;
+  inline-size: var(--sz-24);
+  margin-inline-end: var(--sp-s);
+}
+
+.pp-library-name-block {
+  color: var(--color-foreground-secondary);
+  flex: 1;
+  min-inline-size: 0;
+  text-align: left;
+}
+
+.pp-library-item-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-library-color-item {
+  display: grid;
+  gap: var(--sp-s);
+  grid-template-columns: auto 1fr;
+}
+
+/* bc/color-bullet* :mini true (components/color_bullet.scss). */
+.pp-color-bullet {
+  block-size: var(--sz-16);
+  border: var(--b-2) solid var(--color-background-quaternary);
+  border-radius: var(--br-circle);
+  inline-size: var(--sz-16);
+  min-block-size: var(--sz-16);
+  min-inline-size: var(--sz-16);
+}
+
+.pp-library-color-name {
+  color: var(--color-foreground-primary);
+}
+
+.pp-library-color-value {
+  color: var(--color-foreground-secondary);
+  margin-inline-start: var(--sp-xs);
+  text-transform: uppercase;
+}
+
+.pp-library-typography-sample {
+  align-items: center;
+  block-size: 1.25rem; /* px2rem(20) */
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  line-height: 1;
+  margin-inline-end: var(--sp-xs);
+  min-inline-size: 1.25rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* placeholder.scss .empty-placeholder-libraries */
+.pp-empty-placeholder-libraries {
+  margin: auto;
+  margin-block-start: 5%;
+}
+
+/* placeholder.scss .placeholder-markdown */
+.pp-placeholder-markdown {
+  font-size: var(--fs-14);
+}
+
+.pp-placeholder-markdown a {
+  color: var(--color-accent-primary);
+}
+
+/* --- progress widget (components/progress.scss) --- */
+
+.pp-progress-modal {
+  background-color: var(--color-background-primary);
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  column-gap: var(--sp-s);
+  display: grid;
+  grid-template-areas:
+    "icon text close"
+    "bar bar bar";
+  grid-template-columns: var(--sz-24) 1fr var(--sz-24);
+  overflow: hidden;
+  padding-block-start: var(--sp-s);
+  position: absolute;
+  right: var(--sp-l);
+  row-gap: var(--sp-xs);
+  top: var(--sz-48);
+  z-index: var(--z-index-set);
+}
+
+.pp-progress-icon {
+  align-self: center;
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-16);
+  grid-area: icon;
+  margin-inline-start: var(--sp-s);
+}
+
+.pp-progress-title {
+  align-self: center;
+  color: var(--color-foreground-primary);
+  display: grid;
+  font-size: var(--fs-14);
+  gap: var(--sp-s);
+  grid-area: text;
+  grid-template-columns: auto 1fr;
+  margin: 0;
+  padding: 0;
+}
+
+.pp-progress-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-progress-count {
+  align-self: center;
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  margin: 0;
+  padding-inline-start: var(--sp-s);
+}
+
+.pp-progress-close-button {
+  background: none;
+  border: 0;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  font-size: var(--fs-16);
+  grid-area: close;
+  margin-inline-end: var(--sp-s);
+  padding: 0;
+}
+
+.pp-progress-bar {
+  grid-area: bar;
+  margin-top: 0;
+}
+
+.pp-progress-track {
+  stroke: var(--color-background-quaternary);
+}
+
+/* clr/new-primary and clr/new-warning in the CLJS widget. The shell takes the
+   theme tokens instead, so the light and the dark theme both work; the warning
+   token is #fe9c07 where the deprecated constant was #fe4811. */
+.pp-progress-fill.is-healthy {
+  stroke: var(--color-accent-primary);
+}
+
+.pp-progress-fill.is-slow {
+  stroke: var(--color-accent-warning);
 }

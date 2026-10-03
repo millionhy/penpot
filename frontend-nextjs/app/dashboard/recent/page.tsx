@@ -4,7 +4,8 @@
 // header*, project-item* and projects-section* in
 // app.main.ui.dashboard.projects, now with the real line-grid (selection,
 // context menus, drag-to-move between projects, layout toggle, inline
-// project rename).
+// project rename) and, from F5.3, the Recent/Deleted tab strip that
+// projects-section* renders above the rows for a profile that can edit.
 //
 // Deviations from the CLJS original, documented:
 // - team-hero (invite-members banner) waits for F5.5, the templates section
@@ -19,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { menuAnchorFromElement, menuAnchorFromEvent, type MenuAnchor } from "@/components/dashboard-menu";
 import { LineGrid, useDynamicGridItemWidth } from "@/components/dashboard-grid";
+import { DeletedTabs } from "@/components/deleted-tabs";
 import { useFileActions } from "@/components/file-menu";
 import { InlineEdition } from "@/components/inline-edition";
 import { LayoutToggle, useDashboardLayout } from "@/components/layout-toggle";
@@ -384,6 +386,7 @@ export default function DashboardRecentPage() {
       </header>
 
       <div className="pp-dashboard-projects" data-testid="projects-container">
+        {canEdit ? <DeletedTabs section="dashboard-recent" teamId={teamId} /> : null}
         {visible.map((project) => (
           <ProjectItem
             key={project.id}

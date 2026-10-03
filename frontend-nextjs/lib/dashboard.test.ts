@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FRONTEND_ONLY_FEATURES,
+  colorSampleValue,
   computeGridLayout,
   copySuffixFn,
   dashboardHref,
@@ -11,6 +12,9 @@ import {
   singleSelectedFileId,
   toggleFileSelect,
   defaultProject,
+  deletedFilesOf,
+  deletedProjectsFor,
+  deletionDays,
   effectiveSection,
   fileFeatures,
   firstPageId,
@@ -22,14 +26,19 @@ import {
   recentFilesOf,
   resolveTeamId,
   sectionFromPathname,
+  sharedFilesForTeam,
+  subscriptionType,
   timeAgo,
   usedNames,
+  visibleDeletedFiles,
   visibleProjects,
   workspaceHref,
   canEdit,
   type AllProject,
+  type DeletedFile,
   type FileSummary,
   type Project,
+  type SharedFile,
   type Team,
 } from "@/lib/dashboard";
 
@@ -302,6 +311,14 @@ describe("computeGridLayout", () => {
     expect(thumbnailWidth).toBe(242);
     expect(thumbnailHeight).toBe(Math.ceil(242 * (2 / 3)));
   });
+
+  it("takes the itemsize override the libraries grid passes", () => {
+    // floor(1400/350) = 4, not the floor(1400/280) = 5 the default rule gives.
+    expect(computeGridLayout(1400, 350).limit).toBe(4);
+    expect(computeGridLayout(null, 350).limit).toBe(1);
+    // floor((1400 - 32 - 3*24)/4 - 12) = floor(313) = 313 -> 312 to stay even
+    expect(computeGridLayout(1400, 350).thumbnailWidth).toBe(312);
+  });
 });
 
 describe("duplicate names", () => {
@@ -347,5 +364,133 @@ describe("dashboard layout preference", () => {
     expect(parseDashboardLayout("grid")).toBe("grid");
     expect(parseDashboardLayout(null)).toBe("grid");
     expect(parseDashboardLayout("cards")).toBe("grid");
+  });
+});
+
+// --- F5.3: trash, shared libraries and retention ------------------------------
+
+function deletedFile(overrides: Partial<DeletedFile> = {}): DeletedFile {
+  return { id: "d1", name: "Trashed", "project-id": "p1", ...overrides };
+}
+
+describe("visibleDeletedFiles", () => {
+  const now = new Date("2026-10-03T12:00:00Z");
+
+  it("keeps rows without a deadline and rows whose deadline is in the future", () => {
+    const rows = [
+      deletedFile({ id: "keep-nil" }),
+      deletedFile({ id: "keep-future", "will-be-deleted-at": new Date("2026-10-10T00:00:00Z") }),
+    ];
+    expect(visibleDeletedFiles(rows, now).map((row) => row.id)).toEqual([
+      "keep-nil",
+      "keep-future",
+    ]);
+  });
+
+  it("drops rows the backend task already collected", () => {
+    const rows = [
+      deletedFile({ id: "gone", "will-be-deleted-at": new Date("2026-10-01T00:00:00Z") }),
+      deletedFile({ id: "exact", "will-be-deleted-at": now }),
+    ];
+    // ct/is-after? is strict, so a deadline equal to now is already gone.
+    expect(visibleDeletedFiles(rows, now)).toEqual([]);
+  });
+
+  it("reads an ISO deadline as well as a Date", () => {
+    const rows = [deletedFile({ id: "iso", "will-be-deleted-at": "2026-10-10T00:00:00Z" })];
+    expect(visibleDeletedFiles(rows, now).map((row) => row.id)).toEqual(["iso"]);
+  });
+});
+
+describe("deletedFilesOf", () => {
+  it("filters by project and sorts modified-at descending", () => {
+    const rows = [
+      deletedFile({ id: "a", "project-id": "p1", "modified-at": new Date("2026-01-01") }),
+      deletedFile({ id: "b", "project-id": "p2" }),
+      deletedFile({ id: "c", "project-id": "p1", "modified-at": new Date("2026-06-01") }),
+    ];
+    expect(deletedFilesOf(rows, "p1").map((row) => row.id)).toEqual(["c", "a"]);
+    expect(deletedFilesOf(rows, "p3")).toEqual([]);
+  });
+});
+
+describe("deletedProjectsFor", () => {
+  it("keeps the projects that still hold a deleted file, newest first", () => {
+    const projects = [
+      project({ id: "old", "modified-at": new Date("2026-01-01") }),
+      project({ id: "new", "modified-at": new Date("2026-09-01") }),
+      project({ id: "clean" }),
+      project({ id: "deleted-project", "deleted-at": new Date("2026-08-01") }),
+    ];
+    const files = [deletedFile({ "project-id": "old" }), deletedFile({ "project-id": "new" })];
+    // A deleted project without deleted files stays out: the second filter of
+    // the CLJS memo dominates the first.
+    expect(deletedProjectsFor(projects, files).map((row) => row.id)).toEqual(["new", "old"]);
+  });
+
+  it("answers nothing while the trash is empty", () => {
+    expect(deletedProjectsFor([project()], [])).toEqual([]);
+  });
+});
+
+describe("subscriptionType", () => {
+  it("falls back to professional without a subscription", () => {
+    expect(subscriptionType(null)).toBe("professional");
+    expect(subscriptionType(undefined)).toBe("professional");
+    expect(subscriptionType({})).toBe("professional");
+    expect(subscriptionType({ type: "" })).toBe("professional");
+  });
+
+  it("falls back to professional for an unpaid or cancelled plan", () => {
+    expect(subscriptionType({ type: "unlimited", status: "unpaid" })).toBe("professional");
+    expect(subscriptionType({ type: "enterprise", status: "canceled" })).toBe("professional");
+  });
+
+  it("keeps the plan type otherwise", () => {
+    expect(subscriptionType({ type: "unlimited", status: "active" })).toBe("unlimited");
+    expect(subscriptionType({ type: "enterprise" })).toBe("enterprise");
+  });
+});
+
+describe("deletionDays", () => {
+  it("keeps the trash 30 days on unlimited, 90 on enterprise and 7 otherwise", () => {
+    expect(deletionDays("unlimited")).toBe(30);
+    expect(deletionDays("enterprise")).toBe(90);
+    expect(deletionDays("professional")).toBe(7);
+    expect(deletionDays("whatever")).toBe(7);
+  });
+});
+
+describe("sharedFilesForTeam", () => {
+  function shared(overrides: Partial<SharedFile> = {}): SharedFile {
+    return { id: "s1", name: "Library", "project-id": "p1", "team-id": "t1", ...overrides };
+  }
+
+  it("keeps this team's libraries, modified-at descending", () => {
+    const rows = [
+      shared({ id: "a", "modified-at": new Date("2026-01-01") }),
+      shared({ id: "other-team", "team-id": "t2" }),
+      shared({ id: "b", "modified-at": new Date("2026-07-01") }),
+    ];
+    expect(sharedFilesForTeam(rows, "t1").map((row) => row.id)).toEqual(["b", "a"]);
+  });
+
+  it("answers nothing without a team", () => {
+    expect(sharedFilesForTeam([shared()], null)).toEqual([]);
+  });
+});
+
+describe("colorSampleValue", () => {
+  it("prefers the gradient type, then the colour, then the raw value", () => {
+    expect(colorSampleValue({ id: "c", name: "n", gradient: { type: "linear" } })).toBe("linear");
+    expect(colorSampleValue({ id: "c", name: "n", color: "#ff0000" })).toBe("#ff0000");
+    expect(colorSampleValue({ id: "c", name: "n", value: "#00ff00" })).toBe("#00ff00");
+    expect(colorSampleValue({ id: "c", name: "n" })).toBe("");
+  });
+
+  it("ignores an empty gradient", () => {
+    expect(colorSampleValue({ id: "c", name: "n", gradient: null, color: "#123456" })).toBe(
+      "#123456",
+    );
   });
 });

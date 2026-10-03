@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AuthGuard } from "@/components/auth-guard";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import { ProgressProvider } from "@/components/progress-notification";
 import { singleSelectedFileId, workspaceHref } from "@/lib/dashboard";
 import { DashboardProvider, useDashboard } from "@/lib/dashboard-context";
 
@@ -44,7 +45,10 @@ function DashboardFrame({ children }: { children: React.ReactNode }) {
           bubbles up from the section (grid items stop propagation when the
           click changes the selection instead). */}
       <div className="pp-dashboard-content" data-testid="dashboard-content" onClick={clearSelection}>
-        {children}
+        {/* dashboard-content* renders progress-notification-widget* as its
+            first child, so the widget hangs off the content box the same way
+            (F5.3). */}
+        <ProgressProvider>{children}</ProgressProvider>
       </div>
     </main>
   );

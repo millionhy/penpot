@@ -17,29 +17,33 @@
 //   calls move-files are ported, so drag-to-move works in the recent view.
 // - Dropping OS files (the binfile import) is deferred to F5.6 together with
 //   import.cljs; drops are swallowed to keep the browser from navigating.
-// - grid-item-library* (the shared-library summary card) arrives with the
-//   libraries route in F5.3.
-// - use-dynamic-grid-item-width takes an optional item size override no
-//   caller uses; the hook drops the parameter.
+// - The component samples of grid-item-library* render through
+//   render/component-svg, which needs the F9 renderer; the card draws the same
+//   icon box empty and keeps the component name. Loading the custom fonts
+//   behind the typography samples (fonts/ensure-loaded!) arrives with F5.4.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   menuAnchorFromElement,
   menuAnchorFromEvent,
   type MenuAnchor,
 } from "@/components/dashboard-menu";
-import { FileMenuPopup, type FileActions } from "@/components/file-menu";
+import { FileMenuPopup, type FileActions, type FileMenuOrigin } from "@/components/file-menu";
 import { InlineEdition } from "@/components/inline-edition";
+import { Tr } from "@/components/tr";
 import {
+  colorSampleValue,
   computeGridLayout,
   moveFiles,
   resolveMediaUri,
   timeAgo,
   workspaceHref,
   type DashboardLayout,
+  type DeletedFile,
   type FileSummary,
   type Project,
+  type SharedFile,
 } from "@/lib/dashboard";
 import { useDashboard } from "@/lib/dashboard-context";
 import { config } from "@/lib/config";
@@ -50,14 +54,15 @@ import { useNotifications } from "@/components/notifications";
 
 // use-dynamic-grid-item-width (app.main.ui.hooks): measure the row container
 // and export how many cards fit (limit) while writing the thumbnail box into
-// the --thumbnail-width/--thumbnail-height CSS variables.
-export function useDynamicGridItemWidth(): [
+// the --thumbnail-width/--thumbnail-height CSS variables. `minWidth` is the
+// itemsize argument only the libraries grid passes (350px cards).
+export function useDynamicGridItemWidth(minWidth?: number | null): [
   React.RefObject<HTMLDivElement | null>,
   number,
 ] {
   const [width, setWidth] = useState<number | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
-  const layout = computeGridLayout(width);
+  const layout = computeGridLayout(width, minWidth);
   const { thumbnailWidth, thumbnailHeight } = layout;
 
   useEffect(() => {
@@ -83,7 +88,15 @@ export function useDynamicGridItemWidth(): [
 
 // --- Pieces ---------------------------------------------------------------------
 
-function GridItemThumbnail({ file, canEdit }: { file: FileSummary; canEdit: boolean }) {
+function GridItemThumbnail({
+  file,
+  canEdit,
+  canRestore,
+}: {
+  file: FileSummary;
+  canEdit: boolean;
+  canRestore?: boolean;
+}) {
   const background = file.data?.background ?? "var(--color-background-quaternary)";
   const thumbnailId = file["thumbnail-id"];
   const src =
@@ -91,7 +104,12 @@ function GridItemThumbnail({ file, canEdit }: { file: FileSummary; canEdit: bool
       ? resolveMediaUri(config.publicUri, thumbnailId)
       : null;
   return (
-    <div className="pp-grid-item-thumbnail" style={{ backgroundColor: background }}>
+    <div
+      className={
+        canRestore === true ? "pp-grid-item-thumbnail is-deleted" : "pp-grid-item-thumbnail"
+      }
+      style={{ backgroundColor: background }}
+    >
       {src !== null ? (
         // eslint-disable-next-line @next/next/no-img-element -- remote media id, no next/image optimization
         <img
@@ -111,17 +129,156 @@ function GridItemThumbnail({ file, canEdit }: { file: FileSummary; canEdit: bool
   );
 }
 
-function GridItemDate({ file, layout }: { file: FileSummary; layout: DashboardLayout }) {
+// --- Shared-library card (grid-item-library*, F5.3) ---------------------------
+
+function LibrarySection({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: number;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="pp-library-asset-section">
+      <div className="pp-library-asset-title">
+        <span>{title}</span>
+        {/* U+00A0 keeps the count glued to the label, as the CLJS card does. */}
+        <span className="pp-library-num-assets">{"\u00a0(" + String(count) + ")"}</span>
+      </div>
+      <div className="pp-library-asset-list">{children}</div>
+    </div>
+  );
+}
+
+function LibraryMoreItem() {
+  return (
+    <div className="pp-library-asset-item">
+      <div className="pp-library-name-block">
+        <span className="pp-library-item-name">{"(...)"}</span>
+      </div>
+    </div>
+  );
+}
+
+export function LibraryCard({ file, canRestore }: { file: SharedFile; canRestore?: boolean }) {
+  const summary = file["library-summary"];
+  const components = summary?.components;
+  const colors = summary?.colors;
+  const typographies = summary?.typographies;
+
+  const componentCount = components?.count ?? 0;
+  const colorCount = colors?.count ?? 0;
+  const typographyCount = typographies?.count ?? 0;
+  const componentSample = components?.sample ?? [];
+  const colorSample = colors?.sample ?? [];
+  const typographySample = typographies?.sample ?? [];
+  const empty = componentCount === 0 && colorCount === 0 && typographyCount === 0;
+
+  return (
+    <div
+      className={canRestore === true ? "pp-library-thumbnail is-deleted" : "pp-library-thumbnail"}
+      data-testid={"library-card-" + file.id}
+    >
+      {/* An empty library still names its three sections, each with a zero
+          count, which is the (zero? ...) branch of grid-item-library*. */}
+      {empty ? (
+        <>
+          <LibrarySection title={tr("workspace.assets.components")} count={0} />
+          <LibrarySection title={tr("workspace.assets.colors")} count={0} />
+          <LibrarySection title={tr("workspace.assets.typography")} count={0} />
+        </>
+      ) : null}
+
+      {componentCount > 0 ? (
+        <LibrarySection title={tr("workspace.assets.components")} count={componentCount}>
+          {componentSample.map((component) => (
+            <div className="pp-library-asset-item" key={"assets-component-" + component.id}>
+              <span className="pp-library-asset-icon" aria-hidden="true" />
+              <div className="pp-library-name-block">
+                <span className="pp-library-item-name" title={component.name}>
+                  {component.name}
+                </span>
+              </div>
+            </div>
+          ))}
+          {componentCount > componentSample.length ? <LibraryMoreItem /> : null}
+        </LibrarySection>
+      ) : null}
+
+      {colorCount > 0 ? (
+        <LibrarySection title={tr("workspace.assets.colors")} count={colorCount}>
+          {colorSample.map((color) => (
+            <div
+              className="pp-library-asset-item pp-library-color-item"
+              key={"assets-color-" + color.id}
+            >
+              <span
+                className="pp-color-bullet"
+                aria-hidden="true"
+                style={{
+                  backgroundColor: color.color ?? "transparent",
+                  opacity: color.opacity ?? 1,
+                }}
+              />
+              <div className="pp-library-name-block">
+                <span className="pp-library-color-name">{color.name}</span>
+                {color.name !== colorSampleValue(color) ? (
+                  <span className="pp-library-color-value">{color.color}</span>
+                ) : null}
+              </div>
+            </div>
+          ))}
+          {colorCount > colorSample.length ? <LibraryMoreItem /> : null}
+        </LibrarySection>
+      ) : null}
+
+      {typographyCount > 0 ? (
+        <LibrarySection title={tr("workspace.assets.typography")} count={typographyCount}>
+          {typographySample.map((typography) => (
+            <div className="pp-library-asset-item" key={"assets-typography-" + typography.id}>
+              <div
+                className="pp-library-typography-sample"
+                style={{
+                  fontFamily: typography["font-family"],
+                  fontWeight: typography["font-weight"],
+                  fontStyle: typography["font-style"],
+                }}
+              >
+                {tr("workspace.assets.typography.sample")}
+              </div>
+              <div className="pp-library-name-block">
+                <span className="pp-library-item-name" title={typography.name}>
+                  {typography.name}
+                </span>
+              </div>
+            </div>
+          ))}
+          {typographyCount > typographySample.length ? <LibraryMoreItem /> : null}
+        </LibrarySection>
+      ) : null}
+    </div>
+  );
+}
+
+// grid-item-metadata*: a trashed file shows when it leaves the trash for good
+// instead of when it was last modified.
+function GridItemDate({ file, layout }: { file: DeletedFile; layout: DashboardLayout }) {
+  const className = layout === "list" ? "pp-list-item-date" : "pp-grid-item-date";
+  const deadline = file["will-be-deleted-at"];
+  if (deadline !== null && deadline !== undefined) {
+    const time = timeAgo(deadline);
+    if (time === null) return null;
+    return (
+      <span className={className} title={tr("dashboard.deleted.will-be-deleted-at", time)}>
+        {time}
+      </span>
+    );
+  }
   const time = timeAgo(file["modified-at"]);
   if (time === null) return null;
-  return (
-    <span
-      className={layout === "list" ? "pp-list-item-date" : "pp-grid-item-date"}
-      title={tr("dashboard.grid.last-modified-at", time)}
-    >
-      {time}
-    </span>
-  );
+  return <span className={className} title={tr("dashboard.grid.last-modified-at", time)}>{time}</span>;
 }
 
 export interface GridItemProps {
@@ -131,11 +288,22 @@ export interface GridItemProps {
   files: FileSummary[];
   teamId: string | null;
   canEdit: boolean;
+  canRestore?: boolean;
+  origin?: FileMenuOrigin;
   layout: DashboardLayout;
   actions: FileActions;
 }
 
-export function GridItem({ file, files, teamId, canEdit, layout, actions }: GridItemProps) {
+export function GridItem({
+  file,
+  files,
+  teamId,
+  canEdit,
+  canRestore,
+  origin,
+  layout,
+  actions,
+}: GridItemProps) {
   const router = useRouter();
   const { selection, toggleFileSelect, clearSelection, editingFileId, stopEditFileName } =
     useDashboard();
@@ -145,12 +313,19 @@ export function GridItem({ file, files, teamId, canEdit, layout, actions }: Grid
   const selectedCount = selection.ids.size;
   const editing = editingFileId === file.id;
   const list = layout === "list";
+  // library-view? in grid-item*: the libraries route swaps the thumbnail for
+  // the summary card and hides the shared badge, which would be redundant.
+  const libraryView = origin === "libraries";
+  const trashed = canRestore === true;
 
   // menu-files in grid-item*: the whole selection when this file is part of
   // it, otherwise just this file.
   const menuFiles = selected ? files.filter((row) => selection.ids.has(row.id)) : [file];
 
   const navigate = () => {
+    // on-navigate in grid-item* is a no-op for a trashed file: opening it
+    // would land on a workspace whose file is soft-deleted.
+    if (trashed) return;
     router.push(workspaceHref({ teamId, fileId: file.id }));
   };
 
@@ -217,7 +392,7 @@ export function GridItem({ file, files, teamId, canEdit, layout, actions }: Grid
   };
 
   const sharedBadge =
-    file["is-shared"] === true ? (
+    file["is-shared"] === true && !libraryView ? (
       list ? (
         <span
           className="pp-list-item-badge"
@@ -257,6 +432,8 @@ export function GridItem({ file, files, teamId, canEdit, layout, actions }: Grid
         files={menuFiles}
         anchor={menuAnchor}
         canEdit={canEdit}
+        canRestore={canRestore}
+        origin={origin}
         teamId={teamId}
         actions={actions}
         onClose={() => setMenuAnchor(null)}
@@ -277,7 +454,10 @@ export function GridItem({ file, files, teamId, canEdit, layout, actions }: Grid
 
   if (list) {
     return (
-      <li className="pp-grid-item pp-list-item" data-testid={"file-" + file.id}>
+      <li
+        className={libraryView ? "pp-grid-item pp-list-item pp-library-item" : "pp-grid-item pp-list-item"}
+        data-testid={"file-" + file.id}
+      >
         <div
           className={selected ? "pp-list-item-row is-selected" : "pp-list-item-row"}
           {...sharedHandlers}
@@ -297,12 +477,23 @@ export function GridItem({ file, files, teamId, canEdit, layout, actions }: Grid
   }
 
   return (
-    <li className="pp-grid-item pp-project-thumbnail" data-testid={"file-" + file.id}>
+    <li
+      className={
+        libraryView
+          ? "pp-grid-item pp-project-thumbnail pp-library-item"
+          : "pp-grid-item pp-project-thumbnail"
+      }
+      data-testid={"file-" + file.id}
+    >
       <div
         className={selected ? "pp-grid-item-button is-selected" : "pp-grid-item-button"}
         {...sharedHandlers}
       >
-        <GridItemThumbnail file={file} canEdit={canEdit} />
+        {libraryView ? (
+          <LibraryCard file={file} canRestore={canRestore} />
+        ) : (
+          <GridItemThumbnail file={file} canEdit={canEdit} canRestore={canRestore} />
+        )}
         {sharedBadge}
         <div className="pp-grid-item-info">
           <div className="pp-grid-item-meta">
@@ -400,17 +591,40 @@ export function EmptyGridPlaceholder({ canEdit, onCreateFile, hasOther }: EmptyG
 
 // --- Grids ------------------------------------------------------------------------
 
+// The (= :libraries origin) branch of empty-grid-placeholder*: the starter
+// card, whose markdown body only editors see.
+export function LibrariesEmptyPlaceholder({ canEdit }: { canEdit: boolean }) {
+  return (
+    <div
+      className="pp-empty-placeholder pp-empty-placeholder-libraries"
+      data-testid="empty-placeholder"
+    >
+      <h3 className="pp-empty-title">{tr("dashboard.empty-placeholder-libraries-title")}</h3>
+      {canEdit ? (
+        <Tr k="dashboard.empty-placeholder-libraries" tagName="span" className="pp-placeholder-markdown" />
+      ) : (
+        <p className="pp-empty-subtitle">
+          {tr("dashboard.empty-placeholder-libraries-subtitle-viewer-role")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export interface DashboardGridProps {
-  project: Project;
+  // search-page* calls grid* without a project; the id only feeds the testid.
+  project?: Project | null;
   teamId: string | null;
   // null while the files are still loading (loading-placeholder*).
   files: FileSummary[] | null;
   canEdit: boolean;
+  canRestore?: boolean;
+  origin?: FileMenuOrigin;
   layout: DashboardLayout;
   limit: number;
   actions: FileActions;
-  onCreateFile: () => void;
-  hasOther: boolean;
+  onCreateFile?: () => void;
+  hasOther?: boolean;
 }
 
 function partition<T>(items: T[], size: number): T[][] {
@@ -427,6 +641,8 @@ export function DashboardGrid({
   teamId,
   files,
   canEdit,
+  canRestore,
+  origin,
   layout,
   limit,
   actions,
@@ -439,24 +655,35 @@ export function DashboardGrid({
     onDrop: (event: React.DragEvent) => event.preventDefault(),
   };
 
+  const testId = "grid-" + (project?.id ?? origin ?? "all");
+  const noopCreate = () => undefined;
+
   if (files === null) {
     return (
-      <div className="pp-dashboard-grid" data-testid={"grid-" + project.id} {...swallowDrop}>
+      <div className="pp-dashboard-grid" data-testid={testId} {...swallowDrop}>
         <LoadingPlaceholder />
       </div>
     );
   }
   if (files.length === 0) {
     return (
-      <div className="pp-dashboard-grid" data-testid={"grid-" + project.id} {...swallowDrop}>
-        <EmptyGridPlaceholder canEdit={canEdit} onCreateFile={onCreateFile} hasOther={hasOther} />
+      <div className="pp-dashboard-grid" data-testid={testId} {...swallowDrop}>
+        {origin === "libraries" ? (
+          <LibrariesEmptyPlaceholder canEdit={canEdit} />
+        ) : (
+          <EmptyGridPlaceholder
+            canEdit={canEdit}
+            onCreateFile={onCreateFile ?? noopCreate}
+            hasOther={hasOther ?? false}
+          />
+        )}
       </div>
     );
   }
 
   if (layout === "list") {
     return (
-      <div className="pp-dashboard-grid" data-testid={"grid-" + project.id} {...swallowDrop}>
+      <div className="pp-dashboard-grid" data-testid={testId} {...swallowDrop}>
         <ul className="pp-grid-row pp-list-view">
           {files.map((file) => (
             <GridItem
@@ -465,6 +692,8 @@ export function DashboardGrid({
               files={files}
               teamId={teamId}
               canEdit={canEdit}
+              canRestore={canRestore}
+              origin={origin}
               layout="list"
               actions={actions}
             />
@@ -475,7 +704,7 @@ export function DashboardGrid({
   }
 
   return (
-    <div className="pp-dashboard-grid" data-testid={"grid-" + project.id} {...swallowDrop}>
+    <div className="pp-dashboard-grid" data-testid={testId} {...swallowDrop}>
       {partition(files, limit).map((row, index) => (
         <ul className="pp-grid-row" key={index}>
           {row.map((file) => (
@@ -485,6 +714,8 @@ export function DashboardGrid({
               files={files}
               teamId={teamId}
               canEdit={canEdit}
+              canRestore={canRestore}
+              origin={origin}
               layout="grid"
               actions={actions}
             />

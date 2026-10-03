@@ -6,7 +6,7 @@
 // and lib/settings.ts. The views live in app/dashboard/* and
 // components/dashboard-*.tsx.
 
-import { cmd } from "@/lib/rpc";
+import { cmd, cmdSse } from "@/lib/rpc";
 import type { RouteName } from "@/lib/routes";
 import { routePaths } from "@/lib/routes";
 import { globalStorage, userStorage } from "@/lib/storage";
@@ -42,6 +42,10 @@ export interface Team {
   "organization-name"?: string | null;
   permissions?: TeamPermissions;
   features?: string[];
+  // Only present when the backend runs with the :subscriptions flag
+  // (sql:get-teams-with-permissions-and-subscription); the deleted section
+  // reads it to work out how long the trash keeps a file.
+  subscription?: Subscription | null;
 }
 
 export interface Project {
@@ -567,8 +571,22 @@ export interface DashboardGridLayout {
   thumbnailHeight: number | null;
 }
 
-export function computeGridLayout(width: number | null): DashboardGridLayout {
-  const itemSize = width !== null && width >= 1030 ? 280 : 230;
+// The itemsize libraries-page* passes to use-dynamic-grid-item-width.
+export const LIBRARIES_GRID_ITEM_WIDTH = 350;
+
+// `minWidth` is the itemsize argument of use-dynamic-grid-item-width: the
+// libraries grid asks for 350px cards, every other section leaves it nil and
+// gets the 1030px breakpoint rule.
+export function computeGridLayout(
+  width: number | null,
+  minWidth?: number | null,
+): DashboardGridLayout {
+  const itemSize =
+    minWidth !== undefined && minWidth !== null
+      ? minWidth
+      : width !== null && width >= 1030
+        ? 280
+        : 230;
   const ratio = width !== null ? width / itemSize : 0;
   const limit = Math.max(1, Math.min(10, Math.floor(ratio)));
   if (width === null) return { limit, thumbnailWidth: null, thumbnailHeight: null };
@@ -718,4 +736,234 @@ export interface LibraryFileReference {
 
 export function getLibraryFileReferences(fileId: string): Promise<LibraryFileReference[]> {
   return cmd<LibraryFileReference[]>("get-library-file-references", { "file-id": fileId });
+}
+
+// --- Trash (F5.3) ------------------------------------------------------------------
+//
+// get-team-deleted-files answers the soft-deleted files of a team
+// (sql:team-deleted-files in backend/src/app/rpc/commands/files.clj). The rows
+// are file rows plus the deletion deadline, so they feed the same grid card.
+
+export interface DeletedFile extends FileSummary {
+  "team-id"?: string;
+  // Set by the backend deletion task: the instant the file leaves the trash
+  // for good. grid-item-metadata* shows it instead of modified-at.
+  "will-be-deleted-at"?: InstantValue | null;
+  "row-num"?: number;
+}
+
+export function getTeamDeletedFiles(teamId: string): Promise<DeletedFile[]> {
+  const params: RpcParams["get-team-deleted-files"] = { "team-id": teamId };
+  return cmd<DeletedFile[]>("get-team-deleted-files", params);
+}
+
+// deleted-files-fetched (app.main.data.dashboard): rows whose deadline already
+// passed are dropped, because the backend task is about to collect them and the
+// trash must not offer to restore a file that no longer exists.
+export function visibleDeletedFiles(
+  rows: Iterable<DeletedFile>,
+  now: Date = new Date(),
+): DeletedFile[] {
+  const out: DeletedFile[] = [];
+  for (const row of rows) {
+    const deadline = toMs(row["will-be-deleted-at"]);
+    if (deadline === null || deadline > now.getTime()) out.push(row);
+  }
+  return out;
+}
+
+// The per-project slice deleted-project-item* renders, newest first.
+export function deletedFilesOf(
+  files: Iterable<DeletedFile>,
+  projectId: string,
+): DeletedFile[] {
+  return [...files]
+    .filter((file) => file["project-id"] === projectId)
+    .sort((a, b) => timeOf(b["modified-at"]) - timeOf(a["modified-at"]));
+}
+
+// The projects memo of deleted-section*. Its two filters compose to "has at
+// least one deleted file"; the first one (deleted-at or has deleted files) is
+// subsumed by the second. Sorted modified-at descending, like every other
+// dashboard list.
+export function deletedProjectsFor(
+  projects: Iterable<Project>,
+  deletedFiles: Iterable<DeletedFile>,
+): Project[] {
+  const projectIds = new Set<string>();
+  for (const file of deletedFiles) projectIds.add(file["project-id"]);
+  return [...projects]
+    .filter((project) => projectIds.has(project.id))
+    .sort((a, b) => timeOf(b["modified-at"]) - timeOf(a["modified-at"]));
+}
+
+// --- Trash retention ----------------------------------------------------------------
+
+export interface Subscription {
+  type?: string | null;
+  status?: string | null;
+  seats?: number;
+  [key: string]: unknown;
+}
+
+// get-subscription-type (app.main.ui.dashboard.subscription): an unpaid or
+// cancelled subscription falls back to the professional plan.
+export function subscriptionType(subscription: Subscription | null | undefined): string {
+  const type = subscription?.type;
+  const status = subscription?.status;
+  if (typeof type !== "string" || type.length === 0) return "professional";
+  if (status === "unpaid" || status === "canceled") return "professional";
+  return type;
+}
+
+// The deletion-days cond of deleted-section*. The nitrate branch (90 days for a
+// valid nitrate licence on an enterprise or nitrate plan) needs the F5.7
+// subscription slice and is deferred.
+export function deletionDays(type: string): number {
+  if (type === "unlimited") return 30;
+  if (type === "enterprise") return 90;
+  return 7;
+}
+
+// --- Shared libraries (F5.3) ---------------------------------------------------------
+//
+// get-team-shared-files answers the published files of a team, each row
+// carrying the cached library summary the backend computes in
+// calculate-library-summary (backend/src/app/rpc/commands/files.clj).
+
+export interface LibraryComponentSample {
+  id: string;
+  name: string;
+  "main-instance-id"?: string | null;
+  // Components come with their shapes so the card can render a preview; the
+  // shell shows a placeholder box instead until the F9 renderer lands.
+  objects?: Record<string, unknown> | null;
+}
+
+export interface LibraryColorSample {
+  id: string;
+  name: string;
+  color?: string;
+  opacity?: number;
+  gradient?: { type?: string } | null;
+  value?: string;
+}
+
+export interface LibraryTypographySample {
+  id: string;
+  name: string;
+  "font-id"?: string;
+  "font-family"?: string;
+  "font-weight"?: string;
+  "font-style"?: string;
+}
+
+export interface LibrarySummarySection<T> {
+  count?: number;
+  sample?: T[];
+}
+
+export interface LibrarySummary {
+  components?: LibrarySummarySection<LibraryComponentSample>;
+  colors?: LibrarySummarySection<LibraryColorSample>;
+  typographies?: LibrarySummarySection<LibraryTypographySample>;
+  variants?: { count?: number };
+  "tokens-count"?: number;
+  "token-sets-count"?: number;
+  "token-themes-count"?: number;
+}
+
+export interface SharedFile extends FileSummary {
+  "team-id"?: string;
+  "library-summary"?: LibrarySummary | null;
+  "library-file-ids"?: string[];
+}
+
+export function getTeamSharedFiles(teamId: string): Promise<SharedFile[]> {
+  const params: RpcParams["get-team-shared-files"] = { "team-id": teamId };
+  return cmd<SharedFile[]>("get-team-shared-files", params);
+}
+
+// The files memo of libraries-page*: this team only, modified-at descending.
+export function sharedFilesForTeam(
+  rows: Iterable<SharedFile>,
+  teamId: string | null | undefined,
+): SharedFile[] {
+  if (teamId === null || teamId === undefined) return [];
+  return [...rows]
+    .filter((row) => row["team-id"] === teamId)
+    .sort((a, b) => timeOf(b["modified-at"]) - timeOf(a["modified-at"]));
+}
+
+// grid-item-library* hides a colour's hex value when the colour is named after
+// it; uc/gradient-type->string supplies the gradient name.
+export function colorSampleValue(sample: LibraryColorSample): string {
+  const gradientType = sample.gradient?.type;
+  if (typeof gradientType === "string" && gradientType.length > 0) return gradientType;
+  if (typeof sample.color === "string" && sample.color.length > 0) return sample.color;
+  return sample.value ?? "";
+}
+
+// --- Bulk trash operations over SSE (F5.3) --------------------------------------------
+//
+// restore-files / delete-files in app.main.data.dashboard: both send the id set
+// to a ::sse/ command and consume one progress block per file, then the end
+// block. The progress payload is {:file-id :index :total}.
+//
+// Backend race, not a client concern: delete-file and delete-project also queue
+// a :delete-object task that carries the deletion instant
+// (backend/src/app/tasks/delete_object.clj) and rewrites file.deleted_at when
+// it runs a few seconds later. A restore that lands in between is undone by it,
+// so a file can reappear in the trash right after a successful restore. The
+// CLJS app has the same hole; the shell keeps the behaviour and the backend
+// stays untouched until phase G.
+
+export interface BulkProgress {
+  "file-id"?: string;
+  index?: number;
+  total?: number;
+}
+
+export interface BulkFileHandlers {
+  signal?: AbortSignal;
+  onProgress?: (progress: BulkProgress) => void;
+}
+
+function bulkFileStream(
+  id: string,
+  teamId: string,
+  fileIds: Iterable<string>,
+  handlers: BulkFileHandlers,
+): Promise<unknown> {
+  // The backend schema is [::sm/set {:min 1} ::sm/uuid], so :ids travels as a
+  // transit set even though api-types writes it as an array.
+  const params = { "team-id": teamId, ids: transitSet(fileIds) } as unknown as Record<
+    string,
+    unknown
+  >;
+  return cmdSse(id, params, {
+    signal: handlers.signal,
+    onMessage: (message) => {
+      if (message.type !== "progress") return;
+      const payload = message.payload as BulkProgress | null;
+      if (payload === null || payload === undefined) return;
+      handlers.onProgress?.(payload);
+    },
+  });
+}
+
+export function restoreDeletedTeamFiles(
+  teamId: string,
+  fileIds: Iterable<string>,
+  handlers: BulkFileHandlers = {},
+): Promise<unknown> {
+  return bulkFileStream("restore-deleted-team-files", teamId, fileIds, handlers);
+}
+
+export function permanentlyDeleteTeamFiles(
+  teamId: string,
+  fileIds: Iterable<string>,
+  handlers: BulkFileHandlers = {},
+): Promise<unknown> {
+  return bulkFileStream("permanently-delete-team-files", teamId, fileIds, handlers);
 }

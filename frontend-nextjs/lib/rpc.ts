@@ -104,8 +104,9 @@ async function once<T>(
 
   const ctype = res.headers.get("content-type") ?? "";
   if (ctype.startsWith("text/event-stream")) {
-    // SSE commands (the ::sse/* set in repo.cljs) are not implemented yet.
-    throw new RpcError("sse stream not supported by this transport yet", {
+    // SSE commands (the ::sse/* set in repo.cljs) go through cmdSse below; a
+    // stream landing here means the caller picked the wrong transport.
+    throw new RpcError("sse stream needs cmdSse, not cmd", {
       type: "internal",
       code: "unexpected-response",
       status: res.status,
@@ -117,6 +118,158 @@ async function once<T>(
   const text = await res.text();
   if (text.length === 0) return undefined as T;
   return decodeTransit<T>(text);
+}
+
+// --- Server-sent events (F5.3) -----------------------------------------------
+//
+// The ::sse/* commands of app.main.repo (restore-deleted-team-files,
+// permanently-delete-team-files, clone-template, ...) POST a transit body and
+// answer text/event-stream instead of one transit document. The CLJS client
+// pipes that body through eventsource-parser (app.util.sse); the shell has no
+// such dependency, so the block parser lives here as a pure function and
+// cmdSse drives the reader.
+
+// One complete SSE block, still undecoded: `data` is the joined payload of
+// every "data:" field.
+export interface SseBlock {
+  type: string;
+  data: string;
+}
+
+export interface SseParseResult {
+  blocks: SseBlock[];
+  // Trailing text of an incomplete block; prepend it to the next chunk.
+  rest: string;
+}
+
+// Split raw stream text into complete blocks. Blocks end on a blank line,
+// "event:" defaults to "message", repeated "data:" fields join with "\n" and
+// comment lines (a leading ":") are dropped, per the EventStream parsing
+// rules eventsource-parser implements. A block that carries neither a named
+// event nor data is a keep-alive and is skipped.
+export function parseSseBlocks(buffer: string): SseParseResult {
+  const blocks: SseBlock[] = [];
+  const parts = buffer.split(/\r\n\r\n|\n\n|\r\r/);
+  const rest = parts.pop() ?? "";
+  for (const part of parts) {
+    let type = "message";
+    const data: string[] = [];
+    for (const line of part.split(/\r\n|\n|\r/)) {
+      if (line.length === 0 || line.startsWith(":")) continue;
+      const colon = line.indexOf(":");
+      const field = colon === -1 ? line : line.slice(0, colon);
+      let value = colon === -1 ? "" : line.slice(colon + 1);
+      if (value.startsWith(" ")) value = value.slice(1);
+      if (field === "event") type = value;
+      else if (field === "data") data.push(value);
+    }
+    if (data.length === 0 && type === "message") continue;
+    blocks.push({ type, data: data.join("\n") });
+  }
+  return { blocks, rest };
+}
+
+// A decoded stream message: `payload` is the transit-decoded data field, or
+// undefined when the block carried none.
+export interface SseMessage {
+  type: string;
+  payload: unknown;
+}
+
+export interface SseOptions {
+  signal?: AbortSignal;
+  // Every block that is neither "end" nor "error": the "progress" blocks of
+  // the bulk file operations, the per-file blocks of clone-template.
+  onMessage?: (message: SseMessage) => void;
+}
+
+async function drainSse(res: Response, onBlock: (block: SseBlock) => void): Promise<void> {
+  const body = res.body;
+  if (body === null || body === undefined) return;
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done === true) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      const parsed = parseSseBlocks(buffer);
+      buffer = parsed.rest;
+      for (const block of parsed.blocks) onBlock(block);
+    }
+    // A server that closes without the trailing blank line still ends on a
+    // complete block.
+    buffer += decoder.decode();
+    const tail = parseSseBlocks(buffer + "\n\n");
+    for (const block of tail.blocks) onBlock(block);
+  } finally {
+    // read-stream in app.util.sse cancels the reader on unsubscribe; an
+    // "error" block throws out of onBlock and must not leave the body open.
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
+// The ::sse/* branch of cmd!. "error" blocks throw with the server error map
+// (read-stream in app.util.sse), the "end" block resolves the promise with its
+// payload, and every other block is reported through onMessage as it arrives.
+// There is no retry: these commands mutate.
+export async function cmdSse<T = unknown>(
+  id: string,
+  params: Record<string, unknown> = {},
+  opts: SseOptions = {},
+): Promise<T> {
+  const uri = joinUrl(config.publicUri, METHODS_BASE + id);
+
+  let res: Response;
+  try {
+    res = await fetch(uri, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        accept: "application/transit+json,text/event-stream,*/*",
+        "content-type": "application/transit+json",
+        "x-session-id": config.sessionId,
+      },
+      body: encodeParams(params),
+      signal: opts.signal,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "network error";
+    throw new RpcError(message, { type: "network", uri });
+  }
+
+  const ctype = res.headers.get("content-type") ?? "";
+  if (!ctype.startsWith("text/event-stream")) {
+    // The backend answers plain transit when the command is not behind the
+    // ::sse/ wrapper (or when it rejected the request outright).
+    if (res.status === 204) return undefined as T;
+    if (!res.ok) await classifyAndThrow(res, uri);
+    const text = await res.text();
+    if (text.length === 0) return undefined as T;
+    return decodeTransit<T>(text);
+  }
+  if (!res.ok) await classifyAndThrow(res, uri);
+
+  let result: T | undefined;
+  await drainSse(res, (block) => {
+    const payload = block.data.length > 0 ? decodeTransit<T>(block.data) : undefined;
+    if (block.type === "error") {
+      const data = (payload ?? {}) as Partial<RpcErrorData>;
+      throw new RpcError("sse stream exception", {
+        ...data,
+        type: data.type ?? "internal",
+        uri,
+        status: res.status,
+      });
+    }
+    if (block.type === "end") {
+      result = payload;
+      return;
+    }
+    opts.onMessage?.({ type: block.type, payload });
+  });
+  return result as T;
 }
 
 async function withRetry<T>(run: () => Promise<T>): Promise<T> {
