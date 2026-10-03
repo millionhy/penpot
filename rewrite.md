@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search 完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
@@ -38,7 +38,7 @@
 | F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。F4 的 modal 需求由外壳自带的 `components/modal.tsx`（ModalProvider/ConfirmDialog）满足，profile 驱动的主题切换也已接上令牌；`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线推到 F5 dashboard（首个需要 menu/dropdown 的路由组） |
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 为占位）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes/shortcuts 未做（见 7.6） |
-| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1、F5.2 完成），见下与第 4 节 |
+| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.3 完成），见下与第 4 节 |
 | F6 | viewer（`/view`） | ⬜ | 集成 `render-wasm`（已是 Rust→WASM，可直接复用） |
 | F7 | 插件运行时 | ⬜ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`） |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
@@ -236,8 +236,10 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     `layout-toggle`、`inline-edition`、`check-updates`、`/dashboard/files`。两处修正：
     CLJS 并无「设为封面」功能（原规划笔误，已删）；缩略图本轮只经 `resolve-media` 展示
     既有 media，media-worker 客户端生成随 workspace 移到 F9 规模。
-  - **F5.3** `/dashboard/libraries`、`/dashboard/deleted`（含 SSE 批量恢复/删除进度）、
-    `/dashboard/search`。
+  - **F5.3 libraries / deleted / search（完成）**：`/dashboard/libraries`（摘要卡）、
+    `/dashboard/deleted`（SSE 批量恢复/彻底删除 + 进度组件 + 项目级菜单 + 页签）、
+    `/dashboard/search`（三态占位 + 只读结果网格）；随附 SSE 传输层
+    （`parseSseBlocks`/`drainSse`/`cmdSse`）与 `lib/progress.ts` 进度状态机。
   - **F5.4** `/dashboard/fonts`、`/dashboard/fonts/providers`。
   - **F5.5 团队管理**：`/dashboard/settings`、`/dashboard/members`、`/dashboard/invitations`、
     `/dashboard/webhooks`（加 change-owner、team-form）。
@@ -278,7 +280,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.2 完成 → F6..F9)
+阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.3 完成 → F6..F9)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -616,6 +618,65 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - 下一步：F5.3——`/dashboard/libraries`、`/dashboard/deleted`（含 SSE 批量恢复/删除
   进度）与 `/dashboard/search`。
 
+### 7.10 本轮（2026-10-03，第九批：F5.3 libraries / deleted / search）
+
+- F5.3 完成：三个路由从 `RouteStub` 升级为完整页面。`/dashboard/search`
+  （`search-page*`：type-something / searching-for / no-matches 三态占位 + 结果网格，
+  不传 `can-edit`，菜单只剩「在新标签打开」，卡片不可拖）；`/dashboard/libraries`
+  （`libraries-page*`：`get-team-shared-files` 按 team 过滤 + modified-at 倒序，卡片换成
+  `grid-item-library*` 摘要卡，无 layout 切换）；`/dashboard/deleted`（`deleted-section*`：
+  Recent/Deleted 页签、保留期提示、Restore All / Clear trash、逐项目行、项目级
+  恢复/彻底删除菜单；无编辑权限时重定向到 recent，对齐 `dashboard-content*` 的
+  `show-deleted?`）。`/dashboard/recent` 补上同一套页签。
+- SSE 传输层（`lib/rpc.ts`）：`parseSseBlocks`（纯函数，按 WHATWG EventStream 规则切块，
+  多 `data:` 行拼接、注释行丢弃、keep-alive 跳过）+ `drainSse` + `cmdSse`（POST transit、
+  消费 `text/event-stream`：`progress` 走回调、`end` 解出返回值、`error` 抛 `RpcError`；
+  非 SSE 响应回落到 transit 解码）。对应 repo.cljs 的 `::sse/*` 分支；CLJS 依赖
+  `eventsource-parser`，外壳不引第三方包。
+- 进度组件：`lib/progress.ts`（`initialize-progress`/`update-progress`/
+  `toggle-progress-visibility`/`clear-progress` 与 280px 进度条数学的无头移植）+
+  `components/progress-notification.tsx`（context + svg 进度条，healthy 用
+  `--color-accent-primary`、slow 用 `--color-accent-warning`），挂在
+  `app/dashboard/layout.tsx` 的内容区（`position: relative` 与 CLJS 的绝对定位一致）。
+- 网格与菜单扩展：`dashboard-grid.tsx` 增加 `LibraryCard`（三段资产摘要、`(...)` 溢出项、
+  颜色样本圆点、typography 样本）、`canRestore`（缩略图 `is-deleted`、卡片不导航、日期换成
+  `will-be-deleted-at`）、`origin`（libraries/search 各自裁剪菜单）与库视图的
+  `pp-library-item`；`file-menu.tsx` 增加 `bulk` 流（restore / delete-forever 两个确认
+  弹窗）与 `canRestore` 短路分支（回收站里只有这两项）；新增 `components/deleted-tabs.tsx`。
+- 无头逻辑（`lib/dashboard.ts`）：`get-team-deleted-files`/`get-team-shared-files` 封装、
+  `visibleDeletedFiles`（丢弃 deadline 已过的行，对齐 `deleted-files-fetched`）、
+  `deletedFilesOf`/`deletedProjectsFor`、`subscriptionType`/`deletionDays`、
+  `colorSampleValue`、`restoreDeletedTeamFiles`/`permanentlyDeleteTeamFiles`（ids 转
+  transit set、progress 回调），`computeGridLayout` 支持自定义最小宽（libraries 用 350）。
+- 与 CLJS 的有意偏差（代码注释均登记）：组件样本的 `component-svg` 降级为占位方块
+  （要 F9 的渲染栈）；typography 样本只套 font-family/weight/style，团队自定义字体加载
+  推到 F5.4；nitrate 的 90 天分支推到 F5.7（订阅切片）；遥测事件省略；`dd/restore-files`
+  结尾的两次 `fetch-projects` 去重为一次；进度组件的 `:error` 分支（含重试按钮）属资产
+  导出流，推到 F5.6；进度条颜色用主题令牌而非 `clr/new-primary`（浅色主题下 CLJS 的
+  `#fe4811` 与令牌 `#fe9c07` 有别）；页签用 `<button>` 而非 `div`（快捷键注册表 F5.6 才到，
+  先保证键盘可达）。
+- 后端上游竞态（本轮端到端暴露，非外壳缺陷）：`delete-file`/`delete-project` 除写库外还投递
+  `:delete-object` 任务，任务几秒后按当时算好的删除时刻**重写** `file.deleted_at`
+  （`backend/src/app/tasks/delete_object.clj`），期间发生的恢复会被覆盖，文件重新出现在
+  回收站（`is-shared` 也被一并置回 false）。CLJS 同样存在此洞；按门禁本轮不改后端，只在
+  `lib/dashboard.ts` 注释登记，端到端脚本在软删后等任务队列排空再操作 UI。
+- 测试：vitest 219 例（新增 33 例：`parseSseBlocks` 的分块/多 data 行/注释/keep-alive、
+  进度状态机与 280px 数学、`visibleDeletedFiles`/`deletedFilesOf`/`deletedProjectsFor`/
+  `subscriptionType`/`deletionDays`/`colorSampleValue`/`computeGridLayout(350)`）。
+- 端到端验证（docker 后端 + Next dev `:3450`，一次性账号 `f4-shell-check@…`，脚本开头清空
+  回收站脏数据、结尾清理本轮数据）：headless Chrome/CDP **56 项断言全过**——search 三态
+  占位、输入即路由到结果网格、结果菜单只有「在新标签打开」、清空回到占位；libraries 只列
+  已发布文件、摘要卡三段 `(0)`、库视图不显示共享 badge、无 layout 切换、菜单保留
+  rename/duplicate/unpublish 而去掉 move/delete；deleted 页签选中态、7 天保留期文案、
+  Restore All / Clear trash、单文件恢复（进度组件 + toast + RPC 复核）、项目级恢复
+  （`project.deleted_at` 清空、文件回队）与项目级彻底删除（文件离开可见回收站、渲染空态）、
+  Recent↔Deleted 页签互跳并保住 `team-id`。
+- 验证：`pnpm translations`（323 词条，+51）、`pnpm typecheck`、`pnpm lint`（无警告）、
+  `pnpm build`（30 路由全部预渲染；`/dashboard/deleted` 3.63kB、`/dashboard/libraries`
+  825B、`/dashboard/search` 1.01kB）、`pnpm test`（219 例）全部通过。
+- 下一步：F5.4——`/dashboard/fonts` 与 `/dashboard/fonts/providers`（自定义字体上传、
+  字体族与变体、`team-font-variant` 资产），顺带补回 F5.3 推迟的 typography 样本字体加载。
+
 ---
 
 ## 8. 开发环境备注（本机）
@@ -632,8 +693,8 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - `/assets` 反代：`fs` 存储下后端只回空 204 + `x-accel-redirect`，dev 要设
   `PENPOT_ASSETS_ORIGIN=http://localhost:9001`（compose 里的 frontend nginx）才看得到头像与缩略图。
 - 本机 docker 端口：backend `:6060`、frontend nginx `:9001`、postgres `:5433`、mailcatch `:1080`；
-  外壳 dev server 跑在 `:3451`（`pnpm dev` 默认 `:3450`）。
-- `rewrite.md` 被 `.gitignore` 的 `/*.md` 规则忽略（根级 md 不入库），可自由编辑。
+  外壳 dev server 默认跑在 `:3450`（早期几轮因端口被占自动落到 `:3451`）。
+- `rewrite.md` 已入库（`git ls-files rewrite.md` 可见），随每轮的 `:books:` 文档提交更新。
 - S2 解锁：装好 Clojure CLI 后用 `enable-backend-openapi-doc` flag 起后端抓 `GET /api/rpc/openapi.json`，
   或用 devenv 容器；S1/S3 走静态扫描，不依赖运行时。
 

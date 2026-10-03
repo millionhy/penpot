@@ -46,7 +46,10 @@ frontend-nextjs/
 │   ├── dashboard/layout.tsx AuthGuard + DashboardProvider + 侧边栏 + 内容槽
 │   ├── dashboard/recent/  projects-section*（项目行：网格/列表、拖拽移动、inline 重命名）
 │   ├── dashboard/files/   files-section*（F5.2 完整网格：多选/菜单/重命名/移动/删除）
-│   ├── dashboard/{libraries,fonts,search,deleted,members,…}/ 占位（F5.3–F5.5 逐片替换）
+│   ├── dashboard/libraries/ libraries-page*（F5.3 共享库摘要卡）
+│   ├── dashboard/search/  search-page*（F5.3 三态占位 + 只读结果网格）
+│   ├── dashboard/deleted/ deleted-section*（F5.3 回收站：SSE 批量恢复/彻底删除 + 进度）
+│   ├── dashboard/{fonts,members,…}/ 占位（F5.4–F5.5 逐片替换）
 │   ├── view/             占位（Viewer，后续集成 WASM 渲染）
 │   └── workspace/        占位（编辑器，最后迁移）
 ├── lib/
@@ -64,13 +67,15 @@ frontend-nextjs/
 │   ├── auth-flow.ts      登录/注册后的跳转（对应 logged-in、login-from-register）
 │   ├── storage.ts        localStorage/sessionStorage（对应 app.util.storage 键布局）
 │   ├── settings.ts       设置页无头逻辑（主题/语言、参数映射、错误分类、侧边栏清单）
-│   ├── dashboard.ts      dashboard 无头逻辑（team 解析、派生选择、timeAgo、命令封装）
+│   ├── dashboard.ts      dashboard 无头逻辑（team 解析、派生选择、timeAgo、回收站/共享库
+│   │                     派生、SSE 批量恢复与彻底删除、其余命令封装）
 │   ├── dashboard-context.tsx DashboardProvider（团队/项目/近期文件，对应 dd/initialize 链）
+│   ├── progress.ts       批量操作进度状态机（对应 dcm/initialize-progress 一族）
 │   ├── check-updates.ts    check-for-updates 无头逻辑（版本比较、CHANGES.md 解析、highlights）
 │   ├── avatars.ts        canvas 首字母头像（仅客户端，对应 app.util.profile）
 │   ├── dom.ts            useDocumentTitle（对应 router.cljs 的页面标题副作用）
 │   └── types.ts          api-types 生成类型的桥接与别名
-├── components/           视图组件（form/tr/notifications/modal/theme/settings-sidebar/dashboard-*/file-menu/project-menu/inline-edition/layout-toggle/check-updates/delete-shared-dialog…）
+├── components/           视图组件（form/tr/notifications/modal/theme/settings-sidebar/dashboard-*/file-menu/project-menu/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification…）
 ├── styles/               tokens.css（ds 令牌）+ forms.css + auth.css + settings.css + dashboard.css
 ├── scripts/              extract-translations.mjs（词条抽取生成器）
 ├── public/               fonts/（worksans、vazirmatn、robotomono）+ images/
@@ -91,7 +96,7 @@ CLJS 用查询串路由（`?screen=<name>`）并保留一段 `#/...` 兼容期�
 | --- | --- | --- | --- |
 | auth | `/auth/login`、`/auth/register`、`/auth/recovery`、`/auth/verify-token` | `app.main.ui.auth` | 已迁移（SSO/OIDC 按钮除外） |
 | settings | `/settings/profile`、`/settings/password`、`/settings/notifications`、`/settings/options`、`/settings/feedback` | `app.main.ui.settings` | 已迁移（shortcuts 为占位，subscription/integrations 未建路由） |
-| dashboard | `/dashboard/recent`、`/dashboard/files`（完整网格），其余九路由占位 | `app.main.ui.dashboard` | F5 进行中（F5.1–F5.2 已迁移） |
+| dashboard | `/dashboard/recent`、`/dashboard/files`、`/dashboard/libraries`、`/dashboard/search`、`/dashboard/deleted`，其余六路由占位 | `app.main.ui.dashboard` | F5 进行中（F5.1–F5.3 已迁移） |
 | viewer | `/view` | `app.main.ui.viewer` | 占位 |
 | workspace | `/workspace` | `app.main.ui.workspace` | 占位（最后迁移） |
 
@@ -142,7 +147,13 @@ F5 切片（完整网格的右键菜单、team 切换菜单）按需评估。
 请求**不设** `content-type`（boundary 交给浏览器生成），响应仍按 Transit 解码。头像
 上传 `update-profile-photo` 是第一个用例。
 
-**尚未实现**（对应 repo.cljs 的分支，列为后续任务）：SSE 流式命令（`::sse/*`）、
+`cmdSse`（F5.3）对应 repo.cljs 的 `::sse/*` 分支：POST 一个 transit body，但消费
+`text/event-stream`。块解析器 `parseSseBlocks` 是纯函数（多 `data:` 行拼接、注释行
+丢弃、keep-alive 跳过），`progress` 块走 `onMessage` 回调，`end` 块解出返回值，
+`error` 块抛 `RpcError`；响应不是 SSE 时回落到普通 transit 解码。CLJS 用
+`eventsource-parser`，外壳不引第三方包。回收站的批量恢复/彻底删除是第一个用例。
+
+**尚未实现**（对应 repo.cljs 的分支，列为后续任务）：
 `login-with-oidc`（`api/auth/oidc`）、`export`（`api/export`）。Transit 读侧 handler
 （uuid/instant/bigint/duration/uri/ordered-map/pointer）已在 F1.1 移植；file-data
 写侧 handler 随 viewer/workspace（F6/F9）一起补。
@@ -201,10 +212,13 @@ WebSocket（`/ws/notifications`）不经 Next rewrite（rewrite 不转发 HTTP u
 ## 下一步
 
 见根目录 `rewrite.md` 的「阶段 F：frontend-nextjs」。F5 dashboard 已切片推进，F5.1
-（外壳 + 数据基座 + `/dashboard/recent` + 侧边栏 + profile-section 菜单）与 F5.2
+（外壳 + 数据基座 + `/dashboard/recent` + 侧边栏 + profile-section 菜单）、F5.2
 （完整网格 `grid.cljs`：多选、右键/…菜单、重命名/复制/移动/删除、layout 切换、inline
-编辑、check-for-updates，与 `/dashboard/files`）已完成。缩略图暂只展示既有 media
-（media-worker 生成随 F9），binfile 导入/导出与 templates 分区留到 F5.6。下一步 F5.3：
-`/dashboard/libraries`、`/dashboard/deleted`（含 SSE 批量恢复/删除进度）与
-`/dashboard/search`。`@penpot/ui` 接线继续推迟（menu/modal 由外壳组件承担）。
+编辑、check-for-updates，与 `/dashboard/files`）与 F5.3（`/dashboard/libraries` 摘要卡、
+`/dashboard/search` 三态占位、`/dashboard/deleted` 回收站：SSE 批量恢复/彻底删除 +
+进度组件 + 项目级菜单 + Recent/Deleted 页签）已完成。缩略图暂只展示既有 media
+（media-worker 生成随 F9），binfile 导入/导出与 templates 分区留到 F5.6，进度组件的
+`:error` 分支同批。下一步 F5.4：`/dashboard/fonts` 与 `/dashboard/fonts/providers`
+（自定义字体上传、字体族与变体、`team-font-variant` 资产），顺带补回 F5.3 推迟的
+typography 样本字体加载。`@penpot/ui` 接线继续推迟（menu/modal 由外壳组件承担）。
 organization/team 切换留到 F5.7。
