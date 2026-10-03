@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0/F1 完成，F2 令牌基线完成，F3 auth 路由组完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
@@ -38,7 +38,7 @@
 | F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。F4 的 modal 需求由外壳自带的 `components/modal.tsx`（ModalProvider/ConfirmDialog）满足，profile 驱动的主题切换也已接上令牌；`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线推到 F5 dashboard（首个需要 menu/dropdown 的路由组） |
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 为占位）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes/shortcuts 未做（见 7.6） |
-| F5 | dashboard 路由组（`/dashboard/*`） | ⬜ | recent/files/libraries/fonts/members/invitations/webhooks/search/deleted |
+| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片，见下与第 4 节 |
 | F6 | viewer（`/view`） | ⬜ | 集成 `render-wasm`（已是 Rust→WASM，可直接复用） |
 | F7 | 插件运行时 | ⬜ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`） |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
@@ -225,8 +225,24 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   subscription/integrations 未建路由（`settingsNav` 已按 flag 门控留位）。命令：`update-profile`、
   `update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、
   `delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`。详见 7.6。
-- **F5 dashboard**：recent/files/libraries/fonts/font-providers/members/invitations/webhooks/search/
-  deleted/settings。命令：`get-teams`、`get-projects`、`get-project-files`、`get-team-members` 等。
+- **F5 dashboard（切片进行中）**：11 个路由、约 7000 行 CLJS UI（`ui/dashboard*`）加 843 行
+  `data/dashboard.cljs`、753 行 `data/team.cljs`，一次做完不现实，切成七片：
+  - **F5.1 外壳与数据基座**：team 解析（`?team-id=` → last-team-id → default-team-id）、
+    `get-teams`/`get-team`/`get-projects`/`get-team-recent-files`、dashboard context、
+    `app/dashboard/layout.tsx`（AuthGuard + 侧边栏 + 内容槽）、侧边栏（搜索、projects/drafts、
+    sources、pinned 与全部项目、新建项目）、`profile-section`（F4 遗留项）、
+    `/dashboard/recent` 的项目分区与文件卡片。
+  - **F5.2 完整网格**：`grid.cljs`（缩略图由 media worker 客户端渲染，所以留到这一片）、多选、
+    右键菜单、重命名/复制/移动/删除/设为封面、`layout-toggle`、`inline-edition`、
+    `check-updates`、`/dashboard/files`。
+  - **F5.3** `/dashboard/libraries`、`/dashboard/deleted`（含 SSE 批量恢复/删除进度）、
+    `/dashboard/search`。
+  - **F5.4** `/dashboard/fonts`、`/dashboard/fonts/providers`。
+  - **F5.5 团队管理**：`/dashboard/settings`、`/dashboard/members`、`/dashboard/invitations`、
+    `/dashboard/webhooks`（加 change-owner、team-form）。
+  - **F5.6** templates 分区、binfile 导入、dashboard 快捷键注册表（补齐 settings/shortcuts）。
+  - **F5.7** organization/team switch、subscription/nitrate、comments、插件注册、WebSocket
+    `subscribe-team` 实时刷新（依赖 F8）。
 - **F6 viewer**：`/view` + `frame-preview` + `render-sprite`；集成 render-wasm 渲染画布（复用
   `app.render_wasm.api` 的加载方式）。
 - **F7 插件**：复用 SES 运行时与 Plugin API（`app.plugins`），保持 `plugins → mcp`（WS :4402）连线。
@@ -261,7 +277,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ██████████████████████████████████████████████  (F0–F4 已完成 → F5..F9)
+阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中 → F6..F9)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -475,6 +491,69 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ### 7.7 阶段 B
 
 未开始（🔒 受门禁）。
+
+### 7.8 本轮（2026-10-03，第七批：F5.1 dashboard 外壳与数据基座）
+
+- F5.1 完成：dashboard 外壳与数据基座落地，`/dashboard/*` 十一个路由全部挂在
+  `app/dashboard/layout.tsx`（AuthGuard + DashboardProvider + 侧边栏 + 内容槽，对应
+  `app.main.ui.cljs/team-container*` 与 `dashboard*`）下。`/dashboard/recent` 从 CLJS
+  移植（`projects-section*`/`project-item*`/`header*`）；其余十个路由先建 `RouteStub`
+  占位页，按 F5.2–F5.5 逐片替换。
+- 数据基座（后端未改动）：`lib/dashboard.ts` 承载无头逻辑——team 解析
+  （`?team-id=` → last-team-id → default-team-id → 首个 team）、项目/文件的派生选择
+  （`visibleProjects`/`pinnedProjects`/`recentFilesOf`/`defaultProject`/`canEdit`）、
+  section↔pathname 映射、`dashboardHref`/`workspaceHref` 构造、`timeAgo`
+  （date-fns v4 `formatDistanceToNowStrict` 的 en-US 逐字移植，含 DST 归一化与
+  「12 个月折成 1 年」规则）、唯一名生成（`generateUniqueName`/`usedNames`）、
+  `fileFeatures`（剥离 `frontend-only-features`）与命令封装；`lib/dashboard-context.tsx`
+  的 `DashboardProvider` 复刻 `initialize-team`→`dd/initialize` 链（get-teams → 解析
+  teamId → `router.replace` 补全 `?team-id=` → 写 last-team-id → get-projects +
+  get-team-recent-files），对外暴露 `useDashboard()`。
+- 视图：`components/dashboard-sidebar.tsx`（搜索 500ms 防抖、projects/drafts、sources、
+  pinned 项目带取消置顶）与 `components/dashboard-profile-menu.tsx`（`profile-section*`
+  移植：账户、help/community 子菜单、about+版本号、退出；F4 遗留项到此补齐）。
+- 命令链路（后端未改动）：`get-teams`、`get-team`、`get-projects`、
+  `get-team-recent-files`、`get-project-files`、`create-project`、`rename-project`、
+  `update-project-pin`、`delete-project`、`create-file`、`search-files`。
+- 修掉一个会让整个 dashboard 空白的缺陷：后端把**所有 vector 应答**包成 Transit
+  `~#list` 标签，而 `lib/transit.ts` 只登记了 set/ordered-* 处理器、没有 `list`，于是
+  `get-teams`/`get-projects` 解出来不是 JS 数组（`Array.isArray` 为假 → teams=[] →
+  provider 判定无团队）。补上 `list` 处理器（→ 数组），与其它集合归一化一致。这是 F5
+  第一条 list 型命令才暴露的根因。
+- `update-project-pin` 实测应答 204 空体（不是项目行），命令封装相应改成
+  `Promise<void>`，调用方一律 re-fetch 项目列表。
+- `create-file` 的 `features` 必须是团队启用集减去 `frontend-only-features`：后端
+  `check-client-features!` 会拒绝声明不足的客户端（实测少声明报
+  `feature-not-supported`）。`fileFeatures(team)` 供这个集合，实测带它 create-file 200
+  且返回体含 `data.pages`（`firstPageId` 据此导航到 workspace 首页）。
+- 样式：`styles/dashboard.css`（`dashboard.scss`/`sidebar.scss`/`projects.scss` 与 grid
+  度量的移植），全部作用域在 `.pp-dashboard-main`/`.pp-dashboard-sidebar` 下，避免与
+  settings 的 `.pp-dashboard` 外壳冲突；`app/globals.css` 增加 `@import`。
+- settings 侧边栏「返回 dashboard」链接补上 `?team-id=`（F4 遗留项）：挂载后从
+  last-team-id（或 profile 默认团队）读取，因为 localStorage 在 SSR 阶段不可读。
+- 测试：vitest 164 例（新增 `lib/dashboard.test.ts` 27 例，覆盖 team 解析优先级、项目
+  选择、权限/section 派生、href 构造、`projectsTitleName`、`timeAgo` 各时间桶与未来/
+  ISO/无效值、唯一名生成、`fileFeatures` 剥离）。
+- 端到端验证（docker 后端 + Next dev `:3451`，全程一次性账号 `f4-shell-check@…`，不动既有
+  资料；验证后软删本轮造的项目）：headless Chrome/CDP 驱动 18 项断言——外壳解析出团队并把
+  `?team-id=` 写回 URL、侧边栏团队名与分区标签、recent 的 h1（默认团队 = Personal
+  Projects）与 document title、项目行含 Drafts、文件卡带 `Last modified … ago` 标题；
+  新建项目按钮追加一行「New Project N」；置顶/取消置顶切换侧边栏 pinned 列表；新建文件
+  导航到 `/workspace?file-id&page-id`；侧边栏搜索防抖跳 `/dashboard/search` 且保留
+  team-id；`/dashboard/files` 占位页在外壳内渲染且 drafts 链接高亮；profile 下拉列出五个
+  移植项、「你的账户」跳 `/settings/profile` 且返回链接带 team-id。
+- 有意留到后续切片（代码注释与 README 均登记）：完整 `grid.cljs`（media-worker 缩略图、
+  多选、右键菜单、拖拽、layout 切换、inline 重命名）→ F5.2，所以文件卡暂是点击即导航的
+  普通链接；team hero（邀请成员）→ F5.5；templates 分区 → F5.6；dashboard 快捷键注册表 →
+  F5.6；organization/team 切换、subscription/nitrate、comments、插件注册、`subscribe-team`
+  实时刷新 → F5.7。`@penpot/ui` 仍未接线，menu/dropdown 用外壳临时样式。
+- 与 CLJS 的有意偏差：`create-project` 不进入 inline 重命名（F5.2 才有），保留生成的唯一名；
+  `create-file` 的唯一名只在团队 recent files 内计算（后端不强制文件名唯一）；项目行在
+  `count>0` 但文件尚未取回时显示 `labels.loading`（CLJS 用专门的 loading 占位）。
+- 验证：`pnpm translations`（209 词条）、`pnpm typecheck`、`pnpm lint`（无警告）、
+  `pnpm build`（30 个路由全部预渲染，含 11 个 dashboard）、`pnpm test` 全部通过。
+- 下一步：F5.2 完整网格（`grid.cljs`：缩略图、多选、右键菜单、重命名/复制/移动/删除、
+  layout 切换、inline 编辑）与 `/dashboard/files`。
 
 ---
 
