@@ -6,13 +6,13 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | `frontend-nextjs` 完成对应功能迁移前，不改 `backend/`、不实现 `backend-rust` |
-| 最后更新 | 2026-10-02 |
+| 最后更新 | 2026-10-03 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -38,7 +38,7 @@
 | F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。F4 的 modal 需求由外壳自带的 `components/modal.tsx`（ModalProvider/ConfirmDialog）满足，profile 驱动的主题切换也已接上令牌；`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线推到 F5 dashboard（首个需要 menu/dropdown 的路由组） |
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 为占位）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes/shortcuts 未做（见 7.6） |
-| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片，见下与第 4 节 |
+| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1、F5.2 完成），见下与第 4 节 |
 | F6 | viewer（`/view`） | ⬜ | 集成 `render-wasm`（已是 Rust→WASM，可直接复用） |
 | F7 | 插件运行时 | ⬜ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`） |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
@@ -232,9 +232,10 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     `app/dashboard/layout.tsx`（AuthGuard + 侧边栏 + 内容槽）、侧边栏（搜索、projects/drafts、
     sources、pinned 与全部项目、新建项目）、`profile-section`（F4 遗留项）、
     `/dashboard/recent` 的项目分区与文件卡片。
-  - **F5.2 完整网格**：`grid.cljs`（缩略图由 media worker 客户端渲染，所以留到这一片）、多选、
-    右键菜单、重命名/复制/移动/删除/设为封面、`layout-toggle`、`inline-edition`、
-    `check-updates`、`/dashboard/files`。
+  - **F5.2 完整网格（完成）**：`grid.cljs` 移植——多选、右键菜单、重命名/复制/移动/删除、
+    `layout-toggle`、`inline-edition`、`check-updates`、`/dashboard/files`。两处修正：
+    CLJS 并无「设为封面」功能（原规划笔误，已删）；缩略图本轮只经 `resolve-media` 展示
+    既有 media，media-worker 客户端生成随 workspace 移到 F9 规模。
   - **F5.3** `/dashboard/libraries`、`/dashboard/deleted`（含 SSE 批量恢复/删除进度）、
     `/dashboard/search`。
   - **F5.4** `/dashboard/fonts`、`/dashboard/fonts/providers`。
@@ -277,7 +278,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中 → F6..F9)
+阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.2 完成 → F6..F9)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -554,6 +555,66 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   `pnpm build`（30 个路由全部预渲染，含 11 个 dashboard）、`pnpm test` 全部通过。
 - 下一步：F5.2 完整网格（`grid.cljs`：缩略图、多选、右键菜单、重命名/复制/移动/删除、
   layout 切换、inline 编辑）与 `/dashboard/files`。
+
+### 7.9 本轮（2026-10-03，第八批：F5.2 完整网格与 /dashboard/files）
+
+- F5.2 完成：`grid.cljs` 与周边逐件移植。`/dashboard/files` 从占位升级为完整
+  `files-section*`（逐项目取 `get-project-files`、按 modified-at 倒序、标题双击 inline
+  重命名、新建文件、置顶、项目菜单）；`/dashboard/recent` 升级为完整 `project-item*`
+  （layout 切换、项目标题 inline 重命名、`create-project` 进入重命名态、show-all-files、
+  LineGrid 跨项目行拖拽移动文件）。
+- 组件：`dashboard-grid.tsx`（GridItem 卡片/列表两形态、选中描边、右键与「…」菜单锚点、
+  dragstart `penpot/files`、LineGrid 行内 drop、加载/空占位）、`dashboard-menu.tsx`
+  （portal 弹出菜单：点/矩形锚点、drilldown 子菜单、视口夹取、外点/Esc/滚动关闭）、
+  `file-menu.tsx`（`useFileActions`：重命名、复制（"(copy)" 后缀唯一名）、删除（共享库
+  二次确认）、移动（drilldown 列 `get-all-projects`，跨团队共享库先警告）、发布/取消发布
+  共享库）、`project-menu.tsx`（复制/移动/删除/置顶/重命名）、`inline-edition.tsx`、
+  `layout-toggle.tsx`、`delete-shared-dialog.tsx`、`check-updates.tsx`（最新/有新版/无法
+  检查三弹窗）、`modal.tsx` 的 ConfirmDialog 增加 `hideCancel`。
+- 无头逻辑：`lib/dashboard.ts` 增加选择集（`toggleFileSelect`，跨项目不合并）、
+  `computeGridLayout`（`use-dynamic-grid-item-width` 的度量数学）、`resolveMediaUri`、
+  layout 持久化（`penpot-user:app.main.ui.dashboard.layout-toggle/dashboard-layout`，
+  写 transit keyword 与 CLJS 互通）、`groupProjectsByTeam`、`copySuffixFn`，及命令封装
+  `rename-file`/`delete-file`/`duplicate-file`/`set-file-shared`/`move-files`（数组转
+  transit set）/`get-all-projects`/`duplicate-project`/`move-project`/`get-file-summary`/
+  `get-library-file-references`；`lib/check-updates.ts`（`check_updates.cljs` 的无头移植，
+  fetcher 可注入）；`lib/transit.ts` 增加 `set()` 写入器；`lib/dashboard-context.tsx`
+  增加选择与 `editingFileId`；`app/dashboard/layout.tsx` 增加全局 Enter（打开唯一选中
+  文件）与内容区点击清空选择；`lib/dom.ts` 的 useDocumentTitle 跳过空串。
+- 修掉三个缺陷（均由本轮 CDP 端到端断言暴露）：① 三处菜单锚点在 `setState` 函数式
+  更新器里读 `event.currentTarget`——React 在更新器执行前已将其置空，「…」按钮点击抛
+  TypeError、菜单永远打不开（改为同步先读元素）；② `LineGrid` 的加载/空分支缺
+  `line-grid-<id>` testid，drop 目标不可定位（补齐，与其它分支一致）；③ `lib/config.ts`
+  用动态 `process.env[name]` 读环境变量——Next 只内联**静态书写**的
+  `process.env.NEXT_PUBLIC_*`，浏览器包里所有 NEXT_PUBLIC 值一直静默落到默认（版本行与
+  check-for-updates 入口因此不显示）；补静态引用表 `publicEnv`，服务端仍回退动态读取。
+- 与 CLJS 的有意偏差（代码注释均登记）：缩略图只经 `resolve-media` 展示既有 media
+  （`thumbnail-id`），media-worker 客户端生成随 workspace 移到 F9 规模；binfile 导出/
+  导入（下载、多选导出、导入卡、OS 文件拖入）→ F5.6，当前吞掉 OS drop 防止导航；
+  `can-restore`（deleted 视图）与 `grid-item-library*` 摘要卡 → F5.3；拖拽计数元素省略
+  （用浏览器默认拖影）；`use-visible` 的 IntersectionObserver 用原生 `loading="lazy"`
+  替代；drafts 行无菜单（CLJS 该菜单只剩被推迟的导入项）；遥测与 set-file-shared 后的
+  第二次 get-file-summary 刷新省略。核实 `dashboard.copy-suffix` 官方英文即 "(copy)"
+  （en.po），复制命名与 CLJS 一致；原规划 F5.2 行的「设为封面」无对应 CLJS 功能，已从
+  第 4 节删除。
+- 测试：vitest 186 例（新增 22 例：选择集、`computeGridLayout`（1400px → 242px 缩略
+  宽）、`copySuffixFn`、`groupProjectsByTeam`、`resolveMediaUri`、`parseDashboardLayout`；
+  `lib/check-updates.test.ts` 12 例：版本比较、CHANGES.md 解析、highlights 截断、inline
+  markdown 降级）。其中非 http 链接降级断言按 CLJS 实况修正：前缀与原始匹配拆成两个
+  `:text` 片段，不合并成一段。
+- 端到端验证（docker 后端 + Next dev `:3451`，一次性账号 `f4-shell-check@…`，验证后
+  软删本轮数据）：headless Chrome/CDP 35 项断言全过——files 页渲染取回的文件、列表/
+  网格切换写入 localStorage 并跨刷新生效、点选/shift 多选/点空白清空、「…」菜单六项
+  齐全、inline 重命名（文件与项目标题）落库、复制得 "(copy)"、发布共享库（badge +
+  is-shared）与取消发布、移动 drilldown 迁移后跳转目标项目、删除确认弹窗、recent 跨
+  项目行拖拽出成功 toast 且落库、profile 菜单版本行与 check-for-updates（拉真实
+  CHANGES.md，弹「有新版本」弹窗）。
+- 环境备注：`NEXT_PUBLIC_PENPOT_VERSION` 在 dev/build 进程启动时设置才生效（Next 编译
+  期内联）；本轮验证以 `2.11.0` 运行。
+- 验证：`pnpm translations`（272 词条）、`pnpm typecheck`、`pnpm lint`（无警告）、
+  `pnpm build`（30 路由全部预渲染）、`pnpm test`（186 例）全部通过。
+- 下一步：F5.3——`/dashboard/libraries`、`/dashboard/deleted`（含 SSE 批量恢复/删除
+  进度）与 `/dashboard/search`。
 
 ---
 

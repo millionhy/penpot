@@ -44,8 +44,9 @@ frontend-nextjs/
 │   ├── settings/feedback/ send-user-feedback（受 `:user-feedback` 开关控制）
 │   ├── settings/shortcuts/ 占位（依赖 dashboard/workspace 的快捷键注册表）
 │   ├── dashboard/layout.tsx AuthGuard + DashboardProvider + 侧边栏 + 内容槽
-│   ├── dashboard/recent/  projects-section*（项目/文件卡片、新建项目/文件、置顶）
-│   ├── dashboard/{files,libraries,fonts,search,deleted,members,…}/ 占位（F5.2–F5.5 逐片替换）
+│   ├── dashboard/recent/  projects-section*（项目行：网格/列表、拖拽移动、inline 重命名）
+│   ├── dashboard/files/   files-section*（F5.2 完整网格：多选/菜单/重命名/移动/删除）
+│   ├── dashboard/{libraries,fonts,search,deleted,members,…}/ 占位（F5.3–F5.5 逐片替换）
 │   ├── view/             占位（Viewer，后续集成 WASM 渲染）
 │   └── workspace/        占位（编辑器，最后迁移）
 ├── lib/
@@ -65,10 +66,11 @@ frontend-nextjs/
 │   ├── settings.ts       设置页无头逻辑（主题/语言、参数映射、错误分类、侧边栏清单）
 │   ├── dashboard.ts      dashboard 无头逻辑（team 解析、派生选择、timeAgo、命令封装）
 │   ├── dashboard-context.tsx DashboardProvider（团队/项目/近期文件，对应 dd/initialize 链）
+│   ├── check-updates.ts    check-for-updates 无头逻辑（版本比较、CHANGES.md 解析、highlights）
 │   ├── avatars.ts        canvas 首字母头像（仅客户端，对应 app.util.profile）
 │   ├── dom.ts            useDocumentTitle（对应 router.cljs 的页面标题副作用）
 │   └── types.ts          api-types 生成类型的桥接与别名
-├── components/           视图组件（form/tr/notifications/modal/theme/settings-sidebar/dashboard-sidebar/dashboard-profile-menu…）
+├── components/           视图组件（form/tr/notifications/modal/theme/settings-sidebar/dashboard-*/file-menu/project-menu/inline-edition/layout-toggle/check-updates/delete-shared-dialog…）
 ├── styles/               tokens.css（ds 令牌）+ forms.css + auth.css + settings.css + dashboard.css
 ├── scripts/              extract-translations.mjs（词条抽取生成器）
 ├── public/               fonts/（worksans、vazirmatn、robotomono）+ images/
@@ -89,7 +91,7 @@ CLJS 用查询串路由（`?screen=<name>`）并保留一段 `#/...` 兼容期�
 | --- | --- | --- | --- |
 | auth | `/auth/login`、`/auth/register`、`/auth/recovery`、`/auth/verify-token` | `app.main.ui.auth` | 已迁移（SSO/OIDC 按钮除外） |
 | settings | `/settings/profile`、`/settings/password`、`/settings/notifications`、`/settings/options`、`/settings/feedback` | `app.main.ui.settings` | 已迁移（shortcuts 为占位，subscription/integrations 未建路由） |
-| dashboard | `/dashboard/recent`（外壳 + 项目/文件），其余十路由占位 | `app.main.ui.dashboard` | F5 进行中（F5.1 外壳与 recent 已迁移） |
+| dashboard | `/dashboard/recent`、`/dashboard/files`（完整网格），其余九路由占位 | `app.main.ui.dashboard` | F5 进行中（F5.1–F5.2 已迁移） |
 | viewer | `/view` | `app.main.ui.viewer` | 占位 |
 | workspace | `/workspace` | `app.main.ui.workspace` | 占位（最后迁移） |
 
@@ -194,12 +196,15 @@ WebSocket（`/ws/notifications`）不经 Next rewrite（rewrite 不转发 HTTP u
 | `NEXT_PUBLIC_PENPOT_FLAGS` | 空 | 特性开关，对应 `cf/flags`；语法同 `penpotFlags`（`enable-x` / `disable-x`），在 `common/src/app/common/flags.cljc` 的默认集之上叠加 |
 | `NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI` | 空 | 注册页条款链接，对应 `cf/terms-of-service-uri` |
 | `NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI` | 空 | 注册页隐私链接，对应 `cf/privacy-policy-uri` |
-| `NEXT_PUBLIC_PENPOT_VERSION` | 空（隐藏版本行） | dashboard profile 菜单「关于 Penpot」显示的版本号，对应 `(:base cf/version)` |
+| `NEXT_PUBLIC_PENPOT_VERSION` | 空（隐藏版本行与 check-for-updates 入口） | dashboard profile 菜单「关于 Penpot」显示的版本号，对应 `(:base cf/version)`；编译期内联，须在 dev/build 启动时设置 |
 
 ## 下一步
 
 见根目录 `rewrite.md` 的「阶段 F：frontend-nextjs」。F5 dashboard 已切片推进，F5.1
-（外壳 + 数据基座 + `/dashboard/recent` + 侧边栏 + profile-section 菜单）已完成。下一步
-F5.2：完整网格 `grid.cljs`（media-worker 缩略图、多选、右键菜单、重命名/复制/移动/删除、
-layout 切换、inline 编辑）与 `/dashboard/files`，届时一并评估接入 `@penpot/ui` 的
-menu/modal。organization/team 切换留到 F5.7。
+（外壳 + 数据基座 + `/dashboard/recent` + 侧边栏 + profile-section 菜单）与 F5.2
+（完整网格 `grid.cljs`：多选、右键/…菜单、重命名/复制/移动/删除、layout 切换、inline
+编辑、check-for-updates，与 `/dashboard/files`）已完成。缩略图暂只展示既有 media
+（media-worker 生成随 F9），binfile 导入/导出与 templates 分区留到 F5.6。下一步 F5.3：
+`/dashboard/libraries`、`/dashboard/deleted`（含 SSE 批量恢复/删除进度）与
+`/dashboard/search`。`@penpot/ui` 接线继续推迟（menu/modal 由外壳组件承担）。
+organization/team 切换留到 F5.7。
