@@ -7,6 +7,7 @@
 @import "../styles/forms.css";
 @import "../styles/auth.css";
 @import "../styles/settings.css";
+@import "../styles/dashboard.css";
 
 @font-face {
   font-family: "worksans";

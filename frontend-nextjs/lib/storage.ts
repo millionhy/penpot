@@ -56,6 +56,7 @@ export function createStorage(kind: "local" | "session", prefix: string): Namesp
 }
 
 // Same prefixes as the defonce storages in app.util.storage.
+export const globalStorage = createStorage("local", "penpot-global");
 export const userStorage = createStorage("local", "penpot-user");
 export const sessionStorage = createStorage("session", "penpot");
 

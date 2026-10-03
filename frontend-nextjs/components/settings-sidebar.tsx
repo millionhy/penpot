@@ -17,6 +17,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { generateAvatar } from "@/lib/avatars";
 import { logout } from "@/lib/auth";
+import { readLastTeamId } from "@/lib/dashboard";
 import { config } from "@/lib/config";
 import { tr } from "@/lib/i18n";
 import { routePaths } from "@/lib/routes";
@@ -36,6 +37,20 @@ export function SettingsSidebar() {
 
   const items = useMemo(() => settingsNav(config.flags), []);
   const showFeedback = useMemo(() => feedbackVisible(config.flags), []);
+
+  // go-to-dashboard-projects in app.main.data.common carries the current
+  // team-id. The settings pages live outside the dashboard store, so the back
+  // link rebuilds it after mount from the last visited team (or the profile
+  // default); localStorage is not readable during SSR, hence the effect.
+  const [backHref, setBackHref] = useState(routePaths["dashboard-recent"]);
+  useEffect(() => {
+    const teamId = readLastTeamId() ?? runtime?.["default-team-id"] ?? null;
+    setBackHref(
+      teamId === null
+        ? routePaths["dashboard-recent"]
+        : routePaths["dashboard-recent"] + "?team-id=" + teamId,
+    );
+  }, [runtime]);
 
   // resolve-profile-photo-url falls back to the generated initials avatar, which
   // needs a canvas, so it is resolved after mount.
@@ -63,7 +78,7 @@ export function SettingsSidebar() {
     <aside className="pp-settings-sidebar">
       <div className="pp-sidebar-content">
         <div className="pp-sidebar-section">
-          <Link className="pp-back-to-dashboard" href={routePaths["dashboard-recent"]}>
+          <Link className="pp-back-to-dashboard" href={backHref}>
             <span aria-hidden="true">←</span>
             <span className="pp-back-text">{tr("labels.dashboard")}</span>
           </Link>

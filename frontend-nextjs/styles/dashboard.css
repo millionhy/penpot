@@ -1,0 +1,554 @@
+/* Dashboard route group (F5.1). Port of the shell-relevant parts of
+   frontend/src/app/main/ui/dashboard.scss, dashboard/sidebar.scss,
+   dashboard/projects.scss and the card metrics of dashboard/grid.scss onto
+   the tokens in styles/tokens.css. Class names map 1:1 from the SCSS modules;
+   everything is scoped under .pp-dashboard-main or .pp-dashboard-sidebar so
+   the settings pages (styles/settings.css) keep their own frame.
+
+   Stand-ins until later F5 slices: the file cards render a placeholder
+   thumbnail slot (the media-worker image arrives with grid.cljs in F5.2) and
+   the unicode glyphs replace ds icons until @penpot/ui is wired. */
+
+/* --- frame (dashboard.scss .dashboard / .dashboard-content) --- */
+
+.pp-dashboard-main {
+  grid-template-columns: 18.5rem 1fr; /* sz-40 + 256px of the CLJS grid */
+  grid-template-rows: 1fr;
+}
+
+.pp-dashboard-main .pp-dashboard-content {
+  overflow: hidden;
+  padding-block-end: 0;
+}
+
+/* --- sidebar (dashboard/sidebar.scss) --- */
+
+.pp-dashboard-sidebar {
+  background: var(--color-background-tertiary);
+  block-size: 100%;
+  border-inline-end: var(--b-1) solid var(--color-background-quaternary);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+.pp-dashboard-sidebar .pp-sidebar-content {
+  display: grid;
+  gap: var(--sp-xl);
+  grid-template-rows: auto auto auto auto 1fr;
+  min-block-size: 0;
+  overflow: hidden auto;
+  padding: var(--sp-m) 0;
+}
+
+.pp-sidebar-team-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xxs);
+  min-inline-size: 0;
+  padding: var(--sp-s) var(--sp-l);
+}
+
+.pp-team-name {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-16);
+  font-weight: var(--fw-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-organization-name {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-sidebar-content-section {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.pp-sidebar-section-title {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  padding: 0 var(--sp-s) var(--sp-s) var(--sp-l);
+  text-transform: uppercase;
+}
+
+.pp-dashboard-sidebar .pp-sidebar-nav {
+  user-select: none;
+}
+
+.pp-sidebar-nav-item {
+  border-radius: var(--br-6);
+  cursor: pointer;
+  margin-inline: var(--sp-s);
+}
+
+.pp-sidebar-nav-item:hover {
+  background: var(--color-background-secondary);
+}
+
+.pp-sidebar-nav-item.current {
+  background: var(--color-background-quaternary);
+}
+
+.pp-sidebar-link {
+  color: var(--color-foreground-primary);
+  display: block;
+  font-size: var(--fs-14);
+  inline-size: 100%;
+  padding: var(--sp-s) var(--sp-s) var(--sp-s) var(--sp-l);
+  text-decoration: none;
+}
+
+.pp-dashboard-sidebar .pp-element-title {
+  color: inherit;
+  display: block;
+  font-size: var(--fs-14);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Search (sidebar-search*) */
+
+.pp-sidebar-search {
+  align-items: center;
+  background: var(--color-background-primary);
+  border: var(--b-1) solid transparent;
+  border-radius: var(--br-8);
+  display: grid;
+  grid-template-columns: 1fr;
+  margin: 0 var(--sp-l);
+  position: relative;
+}
+
+.pp-sidebar-search .pp-input-text {
+  background: transparent;
+  border: var(--b-1) solid transparent;
+  border-radius: var(--br-8);
+  block-size: var(--sz-40);
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-14);
+  inline-size: 100%;
+  margin: 0;
+  min-inline-size: 0;
+  padding: var(--sp-s) var(--sp-xxxl) var(--sp-s) var(--sp-m);
+}
+
+.pp-sidebar-search .pp-input-text:focus,
+.pp-sidebar-search .pp-input-text:focus-visible {
+  border-color: var(--color-accent-primary);
+  outline: none;
+}
+
+.pp-search-btn {
+  background: none;
+  border: 0;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-16);
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  padding: 0 var(--sp-s);
+  position: absolute;
+  block-size: var(--sz-40);
+  inline-size: var(--sp-xxxl);
+}
+
+.pp-search-btn:hover {
+  color: var(--color-foreground-primary);
+}
+
+/* Pinned projects */
+
+.pp-pinned-projects {
+  overflow-y: auto;
+}
+
+.pp-project-element {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+  justify-content: space-between;
+  padding: var(--sp-s) var(--sp-s) var(--sp-s) var(--sp-l);
+}
+
+.pp-project-element .pp-element-title {
+  flex: 1;
+  min-inline-size: 0;
+  padding: 0;
+}
+
+.pp-pin-btn {
+  background: none;
+  border: 0;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  font-size: var(--fs-14);
+  padding: 0 var(--sp-xs);
+}
+
+.pp-pin-btn:hover {
+  color: var(--color-foreground-primary);
+}
+
+.pp-sidebar-empty-placeholder {
+  align-items: center;
+  color: var(--color-foreground-secondary);
+  display: flex;
+  gap: var(--sp-xs);
+  padding: var(--sp-m) var(--sp-l);
+}
+
+.pp-empty-text {
+  font-size: var(--fs-12);
+}
+
+/* --- profile section (sidebar.scss profile-section + dropdown) --- */
+
+.pp-dashboard-sidebar .pp-profile-section {
+  background: var(--color-background-tertiary);
+  border-block-start: var(--b-1) solid var(--color-background-quaternary);
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  padding: var(--sp-m) var(--sp-l);
+  position: relative;
+}
+
+.pp-profile {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: var(--sp-s);
+  min-inline-size: 0;
+  padding: 0;
+  text-align: start;
+}
+
+.pp-profile-img {
+  background: var(--color-background-secondary);
+  block-size: var(--sz-32);
+  border-radius: var(--br-circle);
+  inline-size: var(--sz-32);
+  object-fit: cover;
+}
+
+.pp-profile-fullname {
+  font-size: var(--fs-14);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-profile-dropdown {
+  background: var(--color-background-primary);
+  border-radius: var(--br-8);
+  box-shadow: var(--el-shadow-dark);
+  inset-block-end: calc(100% + var(--sp-s));
+  inset-inline-start: var(--sp-m);
+  list-style: none;
+  margin: 0;
+  min-inline-size: 14rem;
+  padding: var(--sp-xs) 0;
+  position: absolute;
+  z-index: var(--z-index-dropdown);
+}
+
+.pp-profile-dropdown-item {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: var(--fs-14);
+  gap: var(--sp-s);
+  inline-size: 100%;
+  justify-content: space-between;
+  padding: var(--sp-s) var(--sp-l);
+  text-align: start;
+  text-decoration: none;
+}
+
+.pp-profile-dropdown-item:hover {
+  background: var(--color-background-secondary);
+}
+
+.pp-profile-separator {
+  border-block-start: var(--b-1) solid var(--color-background-quaternary);
+  margin-block: var(--sp-xs);
+}
+
+.pp-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-sub-menu {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--sp-l);
+}
+
+.pp-submenu-item {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: var(--fs-12);
+  inline-size: 100%;
+  padding: var(--sp-xs) var(--sp-l);
+  text-align: start;
+  text-decoration: none;
+}
+
+.pp-submenu-item:hover {
+  color: var(--color-foreground-primary);
+}
+
+.pp-about-row {
+  color: var(--color-foreground-secondary);
+  cursor: default;
+}
+
+.pp-about-row:hover {
+  background: none;
+}
+
+.pp-menu-version {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  max-inline-size: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- projects section (projects.scss) --- */
+
+.pp-dashboard-header-actions {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-s);
+  margin-inline-start: auto;
+}
+
+.pp-dashboard-projects {
+  align-content: start;
+  display: grid;
+  flex: 1;
+  grid-auto-rows: min-content;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding: 0 var(--sp-l) var(--sp-xl) var(--sp-xl);
+  user-select: none;
+}
+
+.pp-project-row {
+  --actions-opacity: 0;
+
+  margin-block-end: var(--sp-xxl);
+  position: relative;
+}
+
+.pp-project-row:hover,
+.pp-project-row:has(:focus-visible) {
+  --actions-opacity: 1;
+}
+
+.pp-project {
+  align-items: center;
+  border-radius: var(--br-4);
+  display: flex;
+  flex-direction: row;
+  gap: var(--sp-s);
+  justify-content: space-between;
+  margin-block-start: var(--sp-l);
+  max-block-size: var(--sz-40);
+  padding: var(--sp-s) var(--sp-s) var(--sp-s) var(--sp-l);
+}
+
+.pp-project-name-wrapper {
+  align-items: center;
+  display: flex;
+  inline-size: 100%;
+  justify-content: flex-start;
+  margin-inline-start: var(--sp-s);
+  min-inline-size: 0;
+}
+
+.pp-project-name {
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  display: flex;
+  flex: 0 1 auto;
+  margin-inline-end: var(--sp-m);
+  min-inline-size: 0;
+  text-decoration: none;
+}
+
+.pp-project-name h2 {
+  font-size: var(--fs-16);
+  font-weight: var(--fw-regular);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-info-wrapper {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--sp-s);
+}
+
+.pp-project-info {
+  display: flex;
+}
+
+.pp-info {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+}
+
+.pp-project-actions {
+  display: flex;
+  gap: var(--sp-s);
+  margin-inline-start: var(--sp-xxxl);
+  opacity: var(--actions-opacity);
+}
+
+.pp-pinned-project {
+  opacity: 1;
+}
+
+.pp-icon-btn {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--br-4);
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-16);
+  padding: var(--sp-xs);
+}
+
+.pp-icon-btn:hover:not(:disabled) {
+  background: var(--color-background-secondary);
+  color: var(--color-foreground-primary);
+}
+
+.pp-icon-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* --- file cards (grid.scss metrics, thumbnails deferred to F5.2) --- */
+
+.pp-grid-row {
+  display: grid;
+  gap: var(--sp-m);
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  inline-size: 100%;
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--sp-xs);
+}
+
+.pp-grid-item-button {
+  background: var(--color-background-tertiary);
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  padding: var(--sp-s);
+  text-decoration: none;
+}
+
+.pp-grid-item-button:hover {
+  border-color: var(--color-accent-primary);
+}
+
+.pp-grid-item-thumbnail {
+  aspect-ratio: 3 / 2;
+  background: var(--color-background-quaternary);
+  border-radius: var(--br-4);
+  inline-size: 100%;
+}
+
+.pp-grid-item-name {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-regular);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-grid-item-badge {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+}
+
+.pp-grid-item-date {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+}
+
+.pp-grid-loading {
+  padding: var(--sp-m) var(--sp-l);
+}
+
+.pp-empty-placeholder {
+  align-items: center;
+  border: var(--b-1) dashed var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  margin: var(--sp-l) var(--sp-xxxl);
+  padding: var(--sp-xl);
+  text-align: center;
+}
+
+.pp-empty-title {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-16);
+  font-weight: var(--fw-regular);
+  margin: 0;
+}
+
+.pp-empty-subtitle {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  margin: 0;
+}

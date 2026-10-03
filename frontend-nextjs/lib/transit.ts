@@ -67,6 +67,10 @@ const readerOptions = {
     // LinkedSet / transit set -> array (insertion order)
     "ordered-set": (rep: unknown) => (Array.isArray(rep) ? rep : []),
     set: (rep: unknown) => (Array.isArray(rep) ? rep : []),
+    // "~#list" wraps every vector answer (get-teams, get-projects,
+    // get-team-recent-files, ...); the CLJS reader makes it a cljs List, the
+    // shell normalizes it to an array like the other collections.
+    list: (rep: unknown) => (Array.isArray(rep) ? rep : []),
     // Pointer [id metadata] (backend pointer-map serialization)
     "penpot/pointer": (rep: unknown) => {
       const pair = Array.isArray(rep) ? rep : [];

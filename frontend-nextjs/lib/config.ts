@@ -18,6 +18,11 @@ export interface PenpotConfig {
   // value is identical on the server and the client (no hydration mismatch).
   termsOfServiceUri: string | null;
   privacyPolicyUri: string | null;
+  // The running Penpot version, shown by the dashboard profile menu the way
+  // (:base cf/version) is in about-penpot-menu*. The CLJS app reads it from the
+  // build stamp; the shell has none, so it comes from the environment and the
+  // menu hides the entry when it is unset.
+  version: string | null;
 }
 
 function readEnv(name: string, fallback: string): string {
@@ -101,6 +106,7 @@ export const config: PenpotConfig = {
   flags: [...parseFlags(envFlagTokens, defaultFlags)],
   termsOfServiceUri: readOptionalEnv("NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI"),
   privacyPolicyUri: readOptionalEnv("NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI"),
+  version: readOptionalEnv("NEXT_PUBLIC_PENPOT_VERSION"),
 };
 
 export function hasFlag(flag: string): boolean {
