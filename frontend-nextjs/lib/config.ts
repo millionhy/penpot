@@ -25,8 +25,21 @@ export interface PenpotConfig {
   version: string | null;
 }
 
+// Next.js only inlines `process.env.NEXT_PUBLIC_*` expressions that appear
+// verbatim in the source, so a dynamic process.env[name] lookup is empty in
+// the browser bundle. Listing the public names here keeps readEnv working on
+// both sides.
+const publicEnv: Record<string, string | undefined> = {
+  NEXT_PUBLIC_PENPOT_PUBLIC_URI: process.env.NEXT_PUBLIC_PENPOT_PUBLIC_URI,
+  NEXT_PUBLIC_PENPOT_BACKEND_ORIGIN: process.env.NEXT_PUBLIC_PENPOT_BACKEND_ORIGIN,
+  NEXT_PUBLIC_PENPOT_FLAGS: process.env.NEXT_PUBLIC_PENPOT_FLAGS,
+  NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI: process.env.NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI,
+  NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI: process.env.NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI,
+  NEXT_PUBLIC_PENPOT_VERSION: process.env.NEXT_PUBLIC_PENPOT_VERSION,
+};
+
 function readEnv(name: string, fallback: string): string {
-  const value = process.env[name];
+  const value = publicEnv[name] ?? process.env[name];
   return value && value.length > 0 ? value : fallback;
 }
 

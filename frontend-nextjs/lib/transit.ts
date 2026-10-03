@@ -121,6 +121,14 @@ export function uuid(value: string): unknown {
   return transit.uuid(value);
 }
 
+// Some command params are sets on the wire (move-files :ids is
+// [::sm/set ...] on the backend). transit-js cannot write a JS Set, but its
+// own set constructor produces the same "~#set" form the CLJS writer emits
+// for the #{} literals in data/dashboard.cljs.
+export function set(values: Iterable<unknown>): unknown {
+  return transit.set([...values]);
+}
+
 // js/Date is written natively as "~m<millis>" by transit-js, matching the
 // instant write handler in app.common.transit.
 export function instant(value: Date): unknown {

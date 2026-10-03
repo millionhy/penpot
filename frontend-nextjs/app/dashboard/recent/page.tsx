@@ -1,27 +1,29 @@
 "use client";
 
-// Recent files / projects section (F5.1). Port of header*, project-item* and
-// projects-section* in app.main.ui.dashboard.projects.
+// Recent files / projects section (F5.1 shell, F5.2 full grid). Port of
+// header*, project-item* and projects-section* in
+// app.main.ui.dashboard.projects, now with the real line-grid (selection,
+// context menus, drag-to-move between projects, layout toggle, inline
+// project rename).
 //
-// The file grid is simplified to plain cards: grid.cljs (media-worker
-// thumbnails, multi-select, context menus, drag & drop) arrives with F5.2, so
-// a card is a link that navigates on click instead of joining a selection. The
-// team hero (invite-members banner) waits for the invitations flow (F5.5), the
-// templates section for F5.6 and the layout toggle for F5.2.
-//
-// Documented deviations:
-// - dd/create-project puts the new row into inline rename right away; inline
-//   edition arrives with F5.2, so the generated unique name stays.
-// - dd/create-file computes name uniqueness from every file loaded for the
-//   team; the shell only has the team recent files, so uniqueness is scoped to
-//   those. The backend does not enforce unique file names.
-// - project-item* renders a loading placeholder while count > 0 and the files
-//   are still unfetched; the shell shows labels.loading in the same case.
+// Deviations from the CLJS original, documented:
+// - team-hero (invite-members banner) waits for F5.5, the templates section
+//   and the dashboard shortcuts registry for F5.6.
+// - The project menu omits the import entry (binfile flow, F5.6); with every
+//   other entry gated on a non-default project, the Drafts row has no menu.
+// - create-project enters inline rename through the page-level
+//   editingProjectId (the CLJS dashboard-local :project-for-edit), but the
+//   generated unique name stays until the user edits it, same as F5.1.
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { menuAnchorFromElement, menuAnchorFromEvent, type MenuAnchor } from "@/components/dashboard-menu";
+import { LineGrid, useDynamicGridItemWidth } from "@/components/dashboard-grid";
+import { useFileActions } from "@/components/file-menu";
+import { InlineEdition } from "@/components/inline-edition";
+import { LayoutToggle, useDashboardLayout } from "@/components/layout-toggle";
 import { useNotifications } from "@/components/notifications";
+import { ProjectMenuPopup, useProjectActions } from "@/components/project-menu";
 import {
   createFile,
   createProject,
@@ -31,6 +33,7 @@ import {
   generateUniqueName,
   projectsTitleName,
   recentFilesOf,
+  renameProject,
   timeAgo,
   updateProjectPin,
   usedNames,
@@ -44,84 +47,80 @@ import { useDashboard } from "@/lib/dashboard-context";
 import { useDocumentTitle } from "@/lib/dom";
 import { tr } from "@/lib/i18n";
 
-function FileCard({ file, teamId }: { file: FileSummary; teamId: string | null }) {
-  const href = workspaceHref({ teamId, fileId: file.id });
-  const time = timeAgo(file["modified-at"]);
-  return (
-    <li className="pp-grid-item">
-      <Link
-        className="pp-grid-item-button"
-        href={href}
-        title={file.name}
-        aria-label={file.name}
-        data-testid={"file-" + file.id}
-      >
-        {/* The media-worker thumbnail slot arrives with the full grid (F5.2). */}
-        <div className="pp-grid-item-thumbnail" aria-hidden="true" />
-        <h3 className="pp-grid-item-name">{file.name}</h3>
-        {file["is-shared"] === true ? (
-          <span
-            className="pp-grid-item-badge"
-            aria-label={tr("workspace.assets.shared-library")}
-            title={tr("workspace.assets.shared-library")}
-          >
-            {"\u29c9"}
-          </span>
-        ) : null}
-        {time !== null ? (
-          <span className="pp-grid-item-date" title={tr("dashboard.grid.last-modified-at", time)}>
-            {time}
-          </span>
-        ) : null}
-      </Link>
-    </li>
-  );
-}
-
-function EmptyPlaceholder({ isDraft }: { isDraft: boolean }) {
-  return (
-    <div className="pp-empty-placeholder" data-testid="empty-placeholder">
-      <h3 className="pp-empty-title">
-        {isDraft
-          ? tr("dashboard.empty-placeholder-drafts-title")
-          : tr("dashboard.empty-placeholder-files-title")}
-      </h3>
-      <p className="pp-empty-subtitle">
-        {isDraft
-          ? tr("dashboard.empty-placeholder-drafts-subtitle")
-          : tr("dashboard.empty-placeholder-files-subtitle")}
-      </p>
-    </div>
-  );
-}
-
-function ProjectSection({
-  project,
-  team,
-  teamId,
-  canEdit,
-  files,
-  allFileNames,
-}: {
+interface ProjectItemProps {
   project: Project;
   team: Team | null;
+  teams: Team[];
+  projects: Project[];
   teamId: string | null;
   canEdit: boolean;
+  layout: "grid" | "list";
   files: FileSummary[];
   allFileNames: Set<string>;
-}) {
+  editingProjectId: string | null;
+  onProjectsChanged: () => Promise<void>;
+  onFilesChanged: () => Promise<void>;
+  actions: ReturnType<typeof useFileActions>;
+}
+
+function ProjectItem({
+  project,
+  team,
+  teams,
+  projects,
+  teamId,
+  canEdit,
+  layout,
+  files,
+  allFileNames,
+  editingProjectId,
+  onProjectsChanged,
+  onFilesChanged,
+  actions,
+}: ProjectItemProps) {
   const router = useRouter();
   const notifications = useNotifications();
-  const { refreshProjects } = useDashboard();
+  const [rowRef, limit] = useDynamicGridItemWidth();
+  // project-item* initializes :edition from dashboard-local :project-for-edit,
+  // which dd/create-project sets for the row it just created.
+  const [edition, setEdition] = useState(project.id === editingProjectId);
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
   const [busy, setBusy] = useState(false);
 
   const isDraft = project["is-default"] === true;
   const name = isDraft ? tr("labels.drafts") : project.name;
   const fileCount = project.count ?? 0;
   const time = timeAgo(project["modified-at"]);
-  const filesHref = dashboardHref("dashboard-files", { teamId, projectId: project.id });
+  const showMenu = canEdit && !isDraft;
 
-  // dd/toggle-project-pin.
+  const onNav = () => {
+    router.push(dashboardHref("dashboard-files", { teamId, projectId: project.id }));
+  };
+
+  const otherTeams = useMemo(() => teams.filter((row) => row.id !== teamId), [teams, teamId]);
+
+  const projectActions = useProjectActions({
+    project,
+    projects,
+    onRename: () => {
+      setMenuAnchor(null);
+      setEdition(true);
+    },
+    onProjectsChanged,
+  });
+
+  const onEditEnd = async (value: string) => {
+    setEdition(false);
+    const trimmed = value.trim();
+    if (trimmed === "") return;
+    try {
+      await renameProject({ id: project.id, name: trimmed });
+      await onProjectsChanged();
+    } catch {
+      notifications.error(tr("errors.generic"));
+    }
+  };
+
   const onTogglePin = async () => {
     if (teamId === null) return;
     setBusy(true);
@@ -131,7 +130,7 @@ function ProjectSection({
         id: project.id,
         "is-pinned": project["is-pinned"] !== true,
       });
-      await refreshProjects();
+      await onProjectsChanged();
     } catch {
       notifications.error(tr("errors.generic"));
     } finally {
@@ -139,8 +138,7 @@ function ProjectSection({
     }
   };
 
-  // dd/create-file plus on-file-created: the new file opens straight in the
-  // workspace on its first page.
+  // header* create-file (dd/create-file + on-file-created).
   const onCreateFile = async () => {
     setBusy(true);
     try {
@@ -158,16 +156,34 @@ function ProjectSection({
     }
   };
 
+  // loading? in project-item*: the row shows the loading placeholder while
+  // the count says there are files but none arrived yet.
+  const loading = (project.count ?? 0) > 0 && files.length === 0;
+  const emptyViewer = !canEdit && fileCount === 0;
+  const hasOther =
+    projects.some((row) => row["is-default"] !== true) || files.length > 0 || fileCount > 0;
+
   return (
     <article className="pp-project-row">
       <header className="pp-project">
         <div className="pp-project-name-wrapper">
-          {/* The context-menu wrapper (rename, duplicate, move, delete) arrives
-              with the full grid in F5.2; the name links to the files route the
-              way on-nav does. */}
-          <Link className="pp-project-name" href={filesHref} title={name}>
-            <h2>{name}</h2>
-          </Link>
+          {edition && canEdit ? (
+            <InlineEdition content={project.name} onEnd={(value) => void onEditEnd(value)} maxLength={250} />
+          ) : (
+            <h2
+              className="pp-project-name"
+              title={name}
+              data-testid={"project-title-" + project.id}
+              onClick={onNav}
+              onContextMenu={(event) => {
+                if (!showMenu) return;
+                event.preventDefault();
+                setMenuAnchor(menuAnchorFromEvent(event));
+              }}
+            >
+              {name}
+            </h2>
+          )}
         </div>
         <div className="pp-info-wrapper">
           <div className="pp-project-info">
@@ -189,7 +205,8 @@ function ProjectSection({
                 aria-label={tr("dashboard.pin-unpin")}
                 aria-pressed={project["is-pinned"] === true}
                 data-testid={"pin-" + project.id}
-                onClick={() => {
+                onClick={(event) => {
+                  event.stopPropagation();
                   void onTogglePin();
                 }}
               >
@@ -210,31 +227,96 @@ function ProjectSection({
                 +
               </button>
             ) : null}
+            {showMenu ? (
+              <button
+                type="button"
+                className="pp-icon-btn"
+                aria-label={tr("dashboard.options")}
+                aria-haspopup="menu"
+                aria-expanded={menuAnchor !== null}
+                data-testid="project-options"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  // currentTarget must be read synchronously: React clears it
+                  // before the functional updater runs.
+                  const element = event.currentTarget;
+                  setMenuAnchor((current) =>
+                    current === null ? menuAnchorFromElement(element, "bottom-start") : null,
+                  );
+                }}
+              >
+                <span aria-hidden="true">…</span>
+              </button>
+            ) : null}
           </div>
+          {limit > 0 && fileCount > limit ? (
+            <button type="button" className="pp-show-more" data-testid="show-all-files" onClick={onNav}>
+              {tr("dashboard.show-all-files")}
+              <span aria-hidden="true">→</span>
+            </button>
+          ) : null}
         </div>
       </header>
 
-      {files.length > 0 ? (
-        <ul className="pp-grid-row">
-          {files.map((file) => (
-            <FileCard key={file.id} file={file} teamId={teamId} />
-          ))}
-        </ul>
-      ) : fileCount > 0 ? (
-        <p className="pp-muted pp-grid-loading" data-testid="files-loading">
-          {tr("labels.loading")}
-        </p>
-      ) : (
-        <EmptyPlaceholder isDraft={isDraft} />
-      )}
+      {menuAnchor !== null && showMenu ? (
+        <ProjectMenuPopup
+          otherTeams={otherTeams}
+          anchor={menuAnchor}
+          actions={projectActions}
+          onClose={() => setMenuAnchor(null)}
+        />
+      ) : null}
+
+      <div className="pp-grid-container" ref={rowRef}>
+        {emptyViewer ? (
+          <div className="pp-empty-placeholder" data-testid="empty-placeholder">
+            <h3 className="pp-empty-title">
+              {isDraft
+                ? tr("dashboard.empty-placeholder-drafts-title")
+                : tr("dashboard.empty-placeholder-files-title")}
+            </h3>
+            <p className="pp-empty-subtitle">
+              {isDraft
+                ? tr("dashboard.empty-placeholder-drafts-subtitle")
+                : tr("dashboard.empty-placeholder-files-subtitle")}
+            </p>
+          </div>
+        ) : (
+          <LineGrid
+            project={project}
+            teamId={teamId}
+            files={loading ? null : files}
+            canEdit={canEdit}
+            layout={layout}
+            limit={limit}
+            actions={actions}
+            onCreateFile={() => {
+              void onCreateFile();
+            }}
+            hasOther={hasOther}
+            onFilesMoved={onFilesChanged}
+          />
+        )}
+      </div>
     </article>
   );
 }
 
 export default function DashboardRecentPage() {
-  const { team, projects, recentFiles, canEdit, teamId, refreshProjects } = useDashboard();
+  const {
+    team,
+    teams,
+    projects,
+    recentFiles,
+    canEdit,
+    teamId,
+    refreshProjects,
+    refreshRecentFiles,
+  } = useDashboard();
   const notifications = useNotifications();
   const [busy, setBusy] = useState(false);
+  const [layout, onLayoutChange] = useDashboardLayout();
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
 
   // The title effect in projects-section*.
   useDocumentTitle(
@@ -244,19 +326,28 @@ export default function DashboardRecentPage() {
   const visible = useMemo(() => visibleProjects(projects), [projects]);
   const allFileNames = useMemo(() => usedNames(recentFiles), [recentFiles]);
 
-  // dd/create-project: generate a unique name from the team's projects and
-  // create the row right away (no modal in the CLJS original either).
+  const onFilesChanged = useCallback(async () => {
+    await Promise.all([refreshProjects(), refreshRecentFiles()]);
+  }, [refreshProjects, refreshRecentFiles]);
+
+  const knownFileNames = useCallback(() => allFileNames, [allFileNames]);
+
+  const actions = useFileActions({ teamId, knownFileNames, onFilesChanged });
+
+  // dd/create-project: create the row and open inline rename on it (the CLJS
+  // event stores the new id in dashboard-local :project-for-edit).
   const onCreateProject = async () => {
     if (teamId === null) return;
     setBusy(true);
     try {
-      await createProject({
+      const created = await createProject({
         "team-id": teamId,
         name: generateUniqueName(tr("dashboard.new-project-prefix"), usedNames(projects), {
           immediateSuffix: true,
         }),
       });
       await refreshProjects();
+      setEditingProjectId(created.id);
     } catch {
       notifications.error(tr("errors.generic"));
     } finally {
@@ -275,6 +366,7 @@ export default function DashboardRecentPage() {
           </h1>
         </div>
         <div className="pp-dashboard-header-actions">
+          <LayoutToggle layout={layout} onChange={onLayoutChange} />
           {canEdit ? (
             <button
               type="button"
@@ -293,14 +385,21 @@ export default function DashboardRecentPage() {
 
       <div className="pp-dashboard-projects" data-testid="projects-container">
         {visible.map((project) => (
-          <ProjectSection
+          <ProjectItem
             key={project.id}
             project={project}
             team={team}
+            teams={teams}
+            projects={projects}
             teamId={teamId}
             canEdit={canEdit}
+            layout={layout}
             files={recentFilesOf(recentFiles, project.id)}
             allFileNames={allFileNames}
+            editingProjectId={editingProjectId}
+            onProjectsChanged={refreshProjects}
+            onFilesChanged={onFilesChanged}
+            actions={actions}
           />
         ))}
       </div>

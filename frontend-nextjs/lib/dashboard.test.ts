@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   FRONTEND_ONLY_FEATURES,
+  computeGridLayout,
+  copySuffixFn,
   dashboardHref,
+  emptyFileSelection,
+  groupProjectsByTeam,
+  parseDashboardLayout,
+  resolveMediaUri,
+  singleSelectedFileId,
+  toggleFileSelect,
   defaultProject,
   effectiveSection,
   fileFeatures,
@@ -19,6 +27,7 @@ import {
   visibleProjects,
   workspaceHref,
   canEdit,
+  type AllProject,
   type FileSummary,
   type Project,
   type Team,
@@ -240,5 +249,103 @@ describe("fileFeatures", () => {
     expect(fileFeatures(team({ features }))).toEqual(["components/v2", "fdata/pointer-map"]);
     expect(fileFeatures(null)).toEqual([]);
     expect(FRONTEND_ONLY_FEATURES).toContain("render-wasm/v1");
+  });
+});
+
+describe("file selection", () => {
+  it("toggles ids inside one project", () => {
+    let selection = emptyFileSelection();
+    selection = toggleFileSelect(selection, file({ id: "f1" }));
+    selection = toggleFileSelect(selection, file({ id: "f2" }));
+    expect([...selection.ids].sort()).toEqual(["f1", "f2"]);
+    expect(selection.projectId).toBe("p1");
+    selection = toggleFileSelect(selection, file({ id: "f1" }));
+    expect([...selection.ids]).toEqual(["f2"]);
+  });
+
+  it("is a no-op across projects, like dd/toggle-file-select", () => {
+    let selection = toggleFileSelect(emptyFileSelection(), file({ id: "f1" }));
+    selection = toggleFileSelect(selection, file({ id: "f2", "project-id": "p2" }));
+    expect([...selection.ids]).toEqual(["f1"]);
+    expect(selection.projectId).toBe("p1");
+  });
+
+  it("reports the single selected file for the global Enter", () => {
+    let selection = toggleFileSelect(emptyFileSelection(), file({ id: "f1" }));
+    expect(singleSelectedFileId(selection)).toBe("f1");
+    selection = toggleFileSelect(selection, file({ id: "f2" }));
+    expect(singleSelectedFileId(selection)).toBeNull();
+    expect(singleSelectedFileId(emptyFileSelection())).toBeNull();
+  });
+});
+
+describe("computeGridLayout", () => {
+  it("keeps limit 1 and no thumbnail until measured", () => {
+    expect(computeGridLayout(null)).toEqual({
+      limit: 1,
+      thumbnailWidth: null,
+      thumbnailHeight: null,
+    });
+  });
+
+  it("caps the limit at 10 and switches the item size at 1030px", () => {
+    expect(computeGridLayout(900).limit).toBe(3); // floor(900/230)
+    expect(computeGridLayout(1030).limit).toBe(3); // floor(1030/280)
+    expect(computeGridLayout(1400).limit).toBe(5); // floor(1400/280)
+    expect(computeGridLayout(9999).limit).toBe(10);
+  });
+
+  it("derives an even thumbnail width and a 3:2 height", () => {
+    const { thumbnailWidth, thumbnailHeight } = computeGridLayout(1400);
+    expect(thumbnailWidth !== null && thumbnailWidth % 2).toBe(0);
+    // floor((1400 - 32 - 4*24)/5 - 12) = floor(242.4) = 242
+    expect(thumbnailWidth).toBe(242);
+    expect(thumbnailHeight).toBe(Math.ceil(242 * (2 / 3)));
+  });
+});
+
+describe("duplicate names", () => {
+  it("builds the copy suffixes of dd/duplicate-file", () => {
+    const suffix = copySuffixFn("Copy");
+    expect(suffix(1)).toBe(" Copy");
+    expect(suffix(2)).toBe(" Copy 2");
+    expect(generateUniqueName("File", ["File"], { suffixFn: suffix })).toBe("File Copy");
+    expect(generateUniqueName("File", ["File", "File Copy"], { suffixFn: suffix })).toBe(
+      "File Copy 2",
+    );
+    expect(generateUniqueName("File", ["Other"], { suffixFn: suffix })).toBe("File");
+  });
+});
+
+describe("groupProjectsByTeam", () => {
+  it("groups the get-all-projects rows keeping the input order", () => {
+    const rows: AllProject[] = [
+      { id: "p1", name: "A", "team-id": "t1", "team-name": "One", "is-default-team": true },
+      { id: "p2", name: "B", "team-id": "t2", "team-name": "Two" },
+      { id: "p3", name: "C", "team-id": "t1" },
+    ];
+    const groups = groupProjectsByTeam(rows);
+    expect(groups.map((group) => group.id)).toEqual(["t1", "t2"]);
+    expect(groups[0].name).toBe("One");
+    expect(groups[0].isDefault).toBe(true);
+    expect(groups[0].projects.map((row) => row.id)).toEqual(["p1", "p3"]);
+    expect(groups[1].isDefault).toBe(false);
+  });
+});
+
+describe("resolveMediaUri", () => {
+  it("joins the public uri with assets/by-id", () => {
+    expect(resolveMediaUri("", "abc")).toBe("/assets/by-id/abc");
+    expect(resolveMediaUri("http://x:9001", "abc")).toBe("http://x:9001/assets/by-id/abc");
+    expect(resolveMediaUri("http://x:9001/", "abc")).toBe("http://x:9001/assets/by-id/abc");
+  });
+});
+
+describe("dashboard layout preference", () => {
+  it("accepts only list and grid, defaulting to grid", () => {
+    expect(parseDashboardLayout("list")).toBe("list");
+    expect(parseDashboardLayout("grid")).toBe("grid");
+    expect(parseDashboardLayout(null)).toBe("grid");
+    expect(parseDashboardLayout("cards")).toBe("grid");
   });
 });

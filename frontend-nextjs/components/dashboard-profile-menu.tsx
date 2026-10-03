@@ -11,15 +11,19 @@
 //   needs no positioning library.
 // - ev/event telemetry on the external links is dropped; the shell has no
 //   analytics seam yet.
-// - The about submenu omits release-notes and check-for-updates: the first needs
-//   the onboarding/release-notes modal system, the second is
-//   ui/dashboard/check-updates.cljs, both scheduled for F5.6. The version line
-//   renders only when NEXT_PUBLIC_PENPOT_VERSION is set.
+// - The about submenu omits the release-notes entry (labels.version-notes):
+//   it needs the onboarding/release-notes modal system, scheduled for F5.6.
+//   Check-for-updates landed with F5.2 (lib/check-updates.ts +
+//   components/check-updates.tsx); its entry renders only when
+//   NEXT_PUBLIC_PENPOT_VERSION is set, since without an installed version
+//   there is nothing to compare against.
 // - nitrate/subscription blocks and comments-section are flag-gated SaaS
 //   features and stay out of the shell.
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { runCheckForUpdates } from "@/components/check-updates";
+import { useModal } from "@/components/modal";
 import { logout } from "@/lib/auth";
 import { generateAvatar } from "@/lib/avatars";
 import { config } from "@/lib/config";
@@ -28,7 +32,7 @@ import { routePaths } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { feedbackVisible, profilePhotoUrl, type RuntimeProfile } from "@/lib/settings";
 
-type SubMenuName = "help-learning" | "community-contributions";
+type SubMenuName = "help-learning" | "community-contributions" | "about-penpot";
 
 interface ExternalEntry {
   label: string;
@@ -57,7 +61,9 @@ export function DashboardProfileMenu() {
 
   const [open, setOpen] = useState(false);
   const [subMenu, setSubMenu] = useState<SubMenuName | null>(null);
+  const [checking, setChecking] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const modal = useModal();
 
   const photo = profilePhotoUrl(runtime, config.publicUri);
   const fullname = runtime?.fullname ?? "";
@@ -107,6 +113,19 @@ export function DashboardProfileMenu() {
 
   const toggleSubMenu = (name: SubMenuName) => {
     setSubMenu((current) => (current === name ? null : name));
+  };
+
+  // check-for-updates in about-penpot-menu*: guarded against a second run
+  // while one is in flight, and the profile popup closes when it finishes.
+  const onCheckForUpdates = async () => {
+    if (checking || config.version === null) return;
+    setChecking(true);
+    try {
+      await runCheckForUpdates(modal, config.version);
+    } finally {
+      setChecking(false);
+      setOpen(false);
+    }
   };
 
   const showFeedback = feedbackVisible(config.flags);
@@ -215,17 +234,69 @@ export function DashboardProfileMenu() {
           </li>
 
           <li role="none">
-            {/* CLJS shows the version on the row itself and expands into
-                release-notes and check-for-updates; both land with F5.6, so the
-                row is not expandable here. */}
-            <span className="pp-profile-dropdown-item pp-about-row" data-testid="about-penpot">
+            {/* about-penpot-menu*: the row expands into the changelog, the
+                terms and the update check; the release-notes entry lands with
+                F5.6 together with its modal. */}
+            <button
+              type="button"
+              role="menuitem"
+              className="pp-profile-dropdown-item"
+              data-testid="about-penpot"
+              aria-expanded={subMenu === "about-penpot"}
+              onClick={() => toggleSubMenu("about-penpot")}
+            >
               <span className="pp-item-name">{tr("labels.about-penpot")}</span>
               {config.version !== null ? (
                 <span className="pp-menu-version" data-testid="penpot-version" title={config.version}>
                   {config.version}
                 </span>
               ) : null}
-            </span>
+              <span aria-hidden="true">›</span>
+            </button>
+            {subMenu === "about-penpot" ? (
+              <ul className="pp-sub-menu" role="menu">
+                <li role="none">
+                  <a
+                    role="menuitem"
+                    className="pp-submenu-item"
+                    href="https://github.com/penpot/penpot/blob/develop/CHANGES.md"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {tr("labels.penpot-changelog")}
+                  </a>
+                </li>
+                <li role="none">
+                  <a
+                    role="menuitem"
+                    className="pp-submenu-item"
+                    href="https://penpot.app/terms"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {tr("auth.terms-of-service")}
+                  </a>
+                </li>
+                {config.version !== null ? (
+                  <li role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="pp-submenu-item"
+                      data-testid="check-for-updates"
+                      disabled={checking}
+                      onClick={() => {
+                        void onCheckForUpdates();
+                      }}
+                    >
+                      {checking
+                        ? tr("labels.checking-for-updates")
+                        : tr("labels.check-for-updates")}
+                    </button>
+                  </li>
+                ) : null}
+              </ul>
+            ) : null}
           </li>
 
           <li className="pp-profile-separator" role="separator" />

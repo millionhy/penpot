@@ -29,6 +29,7 @@ import {
   dashboardHref,
   defaultProject as pickDefaultProject,
   effectiveSection,
+  emptyFileSelection,
   getProjects,
   getTeamRecentFiles,
   getTeams,
@@ -36,9 +37,12 @@ import {
   readLastTeamId,
   resolveTeamId,
   sectionFromPathname,
+  toggleFileSelect as toggleSelect,
   writeLastTeamId,
+  type FileSelection,
   type FileSummary,
   type Project,
+  type SelectableFile,
   type Team,
 } from "@/lib/dashboard";
 import type { RouteName } from "@/lib/routes";
@@ -69,6 +73,15 @@ export interface DashboardState {
   navigate: (section: RouteName, params?: DashboardNavigateParams) => void;
   refreshProjects: () => Promise<void>;
   refreshRecentFiles: () => Promise<void>;
+  // Store-level :selected-files/:selected-project and the dashboard-local
+  // inline-rename slot (:edition/:file-id), shared by every grid on the page
+  // the way the Potok store shares them across sections (F5.2).
+  selection: FileSelection;
+  toggleFileSelect: (file: SelectableFile) => void;
+  clearSelection: () => void;
+  editingFileId: string | null;
+  startEditFileName: (fileId: string) => void;
+  stopEditFileName: () => void;
 }
 
 const defaultValue: DashboardState = {
@@ -87,6 +100,12 @@ const defaultValue: DashboardState = {
   navigate: () => undefined,
   refreshProjects: async () => undefined,
   refreshRecentFiles: async () => undefined,
+  selection: emptyFileSelection(),
+  toggleFileSelect: () => undefined,
+  clearSelection: () => undefined,
+  editingFileId: null,
+  startEditFileName: () => undefined,
+  stopEditFileName: () => undefined,
 };
 
 const DashboardContext = createContext<DashboardState>(defaultValue);
@@ -130,6 +149,24 @@ function DashboardProviderInner({
   const [projectRows, setProjectRows] = useState<Project[] | null>(null);
   const [recentFiles, setRecentFiles] = useState<FileSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [selection, setSelection] = useState<FileSelection>(emptyFileSelection);
+  const [editingFileId, setEditingFileId] = useState<string | null>(null);
+
+  const toggleFileSelect = useCallback((file: SelectableFile) => {
+    setSelection((current) => toggleSelect(current, file));
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelection(emptyFileSelection());
+  }, []);
+
+  const startEditFileName = useCallback((fileId: string) => {
+    setEditingFileId(fileId);
+  }, []);
+
+  const stopEditFileName = useCallback(() => {
+    setEditingFileId(null);
+  }, []);
 
   const section = useMemo(() => sectionFromPathname(pathname), [pathname]);
   const queryTeamId = params.get("team-id");
@@ -212,6 +249,10 @@ function DashboardProviderInner({
     if (teamId === null) return;
     setProjectRows(null);
     setRecentFiles(null);
+    // dd/finalize drops the team slice on a team switch; the selection and
+    // the inline rename belong to it.
+    setSelection(emptyFileSelection());
+    setEditingFileId(null);
     void loadProjects();
     void loadRecentFiles();
   }, [teamId, loadProjects, loadRecentFiles]);
@@ -265,6 +306,12 @@ function DashboardProviderInner({
       navigate,
       refreshProjects: loadProjects,
       refreshRecentFiles: loadRecentFiles,
+      selection,
+      toggleFileSelect,
+      clearSelection,
+      editingFileId,
+      startEditFileName,
+      stopEditFileName,
     };
   }, [
     teams,
@@ -278,6 +325,12 @@ function DashboardProviderInner({
     navigate,
     loadProjects,
     loadRecentFiles,
+    selection,
+    toggleFileSelect,
+    clearSelection,
+    editingFileId,
+    startEditFileName,
+    stopEditFileName,
   ]);
 
   if (value.status === "loading") return <DashboardLoading />;

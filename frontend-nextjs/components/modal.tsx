@@ -97,6 +97,9 @@ export interface ConfirmDialogProps {
   cancelLabel: string;
   destructive?: boolean;
   acceptTestId?: string;
+  // The :cancel-label :omit branch of the CLJS confirm modal (add-shared with
+  // an empty library hides the cancel button).
+  hideCancel?: boolean;
   onAccept: () => void;
 }
 
@@ -108,6 +111,7 @@ export function ConfirmDialog({
   cancelLabel,
   destructive,
   acceptTestId,
+  hideCancel,
   onAccept,
 }: ConfirmDialogProps) {
   const { close } = useModal();
@@ -117,9 +121,11 @@ export function ConfirmDialog({
       closeLabel={cancelLabel}
       footer={
         <div className="pp-modal-actions">
-          <button type="button" className="pp-btn-secondary" onClick={close}>
-            {cancelLabel}
-          </button>
+          {hideCancel === true ? null : (
+            <button type="button" className="pp-btn-secondary" onClick={close}>
+              {cancelLabel}
+            </button>
+          )}
           <button
             type="button"
             className={destructive === true ? "pp-btn-danger" : "pp-btn-primary"}

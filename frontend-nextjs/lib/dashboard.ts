@@ -9,7 +9,8 @@
 import { cmd } from "@/lib/rpc";
 import type { RouteName } from "@/lib/routes";
 import { routePaths } from "@/lib/routes";
-import { globalStorage } from "@/lib/storage";
+import { globalStorage, userStorage } from "@/lib/storage";
+import { keyword, set as transitSet } from "@/lib/transit";
 import type { RpcParams } from "@/lib/types";
 
 // --- Row shapes ------------------------------------------------------------
@@ -66,17 +67,25 @@ export interface FileSummary {
   "is-shared"?: boolean;
   "modified-at"?: InstantValue | null;
   "created-at"?: InstantValue | null;
-  // file_thumbnail id joined by sql:team-recent-files. Turning it into an image
-  // goes through the media worker (render-thumbnail in ui/dashboard/grid.cljs),
-  // which arrives with the full grid in F5.2.
+  // file_thumbnail id served from assets/by-id (cf/resolve-media). The client
+  // side regeneration through the media worker is deferred; see the F5.2 note
+  // in components/dashboard-grid.tsx.
   "thumbnail-id"?: string | null;
+  // get-project-files and get-team-recent-files rows carry the file data; the
+  // grid card uses [:data :background] as the thumbnail backdrop and
+  // on-file-created reads [:data :pages] of the create-file answer.
+  data?: FileData | null;
+}
+
+// The data slice the shell reads; the real file data is far wider (F9).
+export interface FileData {
+  background?: string;
+  pages?: string[];
 }
 
 // create-file answers with the whole file, data included, because
 // on-file-created navigates straight to the first page.
-export interface CreatedFile extends FileSummary {
-  data?: { pages?: string[] } | null;
-}
+export type CreatedFile = FileSummary;
 
 // --- Team resolution -------------------------------------------------------
 
@@ -411,15 +420,27 @@ export function usedNames(rows: Iterable<{ name?: string | null }>): Set<string>
 export function generateUniqueName(
   baseName: string,
   existingNames: Iterable<string>,
-  options: { immediateSuffix?: boolean } = {},
+  options: {
+    immediateSuffix?: boolean;
+    // cfh/generate-unique-name takes a :suffix-fn; the duplicate events pass
+    // one that renders " Copy" / " Copy N" instead of the default " N".
+    suffixFn?: (count: number) => string;
+  } = {},
 ): string {
   const used = new Set(existingNames);
   if (options.immediateSuffix === true) used.add(baseName);
   if (!used.has(baseName)) return baseName;
+  const suffix = options.suffixFn ?? ((count: number) => " " + String(count));
   for (let count = 1; ; count += 1) {
-    const candidate = baseName + " " + String(count);
+    const candidate = baseName + suffix(count);
     if (!used.has(candidate)) return candidate;
   }
+}
+
+// The suffix-fn the duplicate-file and duplicate-project events build from
+// the "dashboard.copy-suffix" translation ("(copy)" on en).
+export function copySuffixFn(copyWord: string): (count: number) => string {
+  return (count) => (count > 1 ? " " + copyWord + " " + count : " " + copyWord);
 }
 
 // --- File features -----------------------------------------------------------
@@ -492,4 +513,209 @@ export function createFile(params: RpcParams["create-file"]): Promise<CreatedFil
 
 export function searchFiles(params: RpcParams["search-files"]): Promise<FileSummary[]> {
   return cmd<FileSummary[]>("search-files", params);
+}
+
+// --- File selection (F5.2) ---------------------------------------------------
+//
+// dd/toggle-file-select and dd/clear-selected-files: the selection is a set of
+// file ids pinned to one project (toggle is a no-op across projects), which is
+// what lets shift-click extend a selection inside a grid but never mix files
+// from two projects.
+
+export interface FileSelection {
+  projectId: string | null;
+  ids: Set<string>;
+}
+
+export interface SelectableFile {
+  id: string;
+  "project-id": string;
+}
+
+export function emptyFileSelection(): FileSelection {
+  return { projectId: null, ids: new Set<string>() };
+}
+
+export function toggleFileSelect(
+  selection: FileSelection,
+  file: SelectableFile,
+): FileSelection {
+  const projectId = selection.projectId;
+  if (projectId !== null && projectId !== file["project-id"]) return selection;
+  const ids = new Set(selection.ids);
+  if (ids.has(file.id)) ids.delete(file.id);
+  else ids.add(file.id);
+  return { projectId: file["project-id"], ids };
+}
+
+// dd/open-selected-file: Enter navigates only when exactly one file is
+// selected.
+export function singleSelectedFileId(selection: FileSelection): string | null {
+  return selection.ids.size === 1 ? selection.ids.values().next().value ?? null : null;
+}
+
+// --- Grid metrics (F5.2) ------------------------------------------------------
+//
+// Pure half of use-dynamic-grid-item-width (app.main.ui.hooks): the row
+// container measures itself with a ResizeObserver and derives how many cards
+// fit (limit, capped at 10) plus the thumbnail box the CSS variables
+// --thumbnail-width/--thumbnail-height carry.
+
+export interface DashboardGridLayout {
+  limit: number;
+  thumbnailWidth: number | null;
+  thumbnailHeight: number | null;
+}
+
+export function computeGridLayout(width: number | null): DashboardGridLayout {
+  const itemSize = width !== null && width >= 1030 ? 280 : 230;
+  const ratio = width !== null ? width / itemSize : 0;
+  const limit = Math.max(1, Math.min(10, Math.floor(ratio)));
+  if (width === null) return { limit, thumbnailWidth: null, thumbnailHeight: null };
+  let thumbnailWidth = Math.floor((width - 32 - (limit - 1) * 24) / limit - 12);
+  // The hook keeps the value even so the 3:2 box lands on whole pixels.
+  if (thumbnailWidth % 2 !== 0) thumbnailWidth -= 1;
+  const thumbnailHeight = Math.ceil(thumbnailWidth * (2 / 3));
+  return { limit, thumbnailWidth, thumbnailHeight };
+}
+
+// --- Media URIs ----------------------------------------------------------------
+
+// cf/resolve-media: stored media (file thumbnails, photos) is served from
+// assets/by-id on the public URI.
+export function resolveMediaUri(publicUri: string, mediaId: string): string {
+  const base = publicUri.endsWith("/") ? publicUri : publicUri + "/";
+  return base + "assets/by-id/" + mediaId;
+}
+
+// --- Layout preference -----------------------------------------------------------
+//
+// hooks/use-persisted-state with lt/layout-key: the grid/list choice lives in
+// the "penpot-user" local storage under the layout-toggle namespace, shared by
+// the recent and the files views. The value is written as a transit keyword so
+// a CLJS tab on the same origin reads back :grid/:list, exactly what
+// use-persisted-state stored there.
+
+export type DashboardLayout = "grid" | "list";
+
+export const LAYOUT_STORAGE_NS = "app.main.ui.dashboard.layout-toggle";
+export const LAYOUT_STORAGE_KEY = "dashboard-layout";
+export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = "grid";
+
+// The reader decodes keywords as plain strings; anything unexpected falls back
+// to the default layout.
+export function parseDashboardLayout(value: unknown): DashboardLayout {
+  return value === "list" ? "list" : DEFAULT_DASHBOARD_LAYOUT;
+}
+
+export function readDashboardLayout(): DashboardLayout {
+  return parseDashboardLayout(userStorage.get(LAYOUT_STORAGE_NS, LAYOUT_STORAGE_KEY));
+}
+
+export function writeDashboardLayout(layout: DashboardLayout): void {
+  userStorage.set(LAYOUT_STORAGE_NS, LAYOUT_STORAGE_KEY, keyword(layout));
+}
+
+// --- Move-to grouping ---------------------------------------------------------------
+//
+// get-all-projects answers with every project the profile can edit across all
+// its teams, each row carrying team-name and is-default-team (sql:all-projects
+// in backend/src/app/rpc/commands/projects.clj). group-by-team in
+// file_menu.cljs folds those rows into the move-to drilldown: the current
+// team's projects first, then one submenu per other team.
+
+export interface AllProject extends Project {
+  "team-name"?: string;
+  "is-default-team"?: boolean;
+}
+
+export interface ProjectTeamGroup {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  projects: AllProject[];
+}
+
+export function groupProjectsByTeam(projects: Iterable<AllProject>): ProjectTeamGroup[] {
+  const groups: ProjectTeamGroup[] = [];
+  const byTeam = new Map<string, ProjectTeamGroup>();
+  for (const project of projects) {
+    const teamId = project["team-id"];
+    let group = byTeam.get(teamId);
+    if (group === undefined) {
+      group = {
+        id: teamId,
+        name: project["team-name"] ?? "",
+        isDefault: project["is-default-team"] === true,
+        projects: [],
+      };
+      byTeam.set(teamId, group);
+      groups.push(group);
+    }
+    group.projects.push(project);
+  }
+  return groups;
+}
+
+// --- Commands (F5.2) ------------------------------------------------------------------
+
+export function renameFile(params: RpcParams["rename-file"]): Promise<unknown> {
+  return cmd("rename-file", params);
+}
+
+export function deleteFile(params: RpcParams["delete-file"]): Promise<unknown> {
+  return cmd("delete-file", params);
+}
+
+export function duplicateFile(params: RpcParams["duplicate-file"]): Promise<CreatedFile> {
+  return cmd<CreatedFile>("duplicate-file", params);
+}
+
+export function setFileShared(params: RpcParams["set-file-shared"]): Promise<unknown> {
+  return cmd("set-file-shared", params);
+}
+
+// The backend schema is [::sm/set {:min 1} ::sm/uuid] for :ids, so the array
+// goes on the wire as a transit set (data/dashboard.cljs sends #{}).
+export function moveFiles(ids: Iterable<string>, projectId: string): Promise<unknown> {
+  const params = { ids: transitSet(ids), "project-id": projectId } as unknown as RpcParams["move-files"];
+  return cmd("move-files", params);
+}
+
+export function getAllProjects(): Promise<AllProject[]> {
+  return cmd<AllProject[]>("get-all-projects");
+}
+
+export function duplicateProject(params: RpcParams["duplicate-project"]): Promise<Project> {
+  return cmd<Project>("duplicate-project", params);
+}
+
+export function moveProject(params: RpcParams["move-project"]): Promise<unknown> {
+  return cmd("move-project", params);
+}
+
+// show-shared-dialog reads the asset counts from the file summary to decide
+// which add-shared-confirm message to show. The summary is far wider than this;
+// only the counts and the name are consumed.
+export interface FileSummaryCounts {
+  name?: string;
+  components?: { count?: number };
+  graphics?: { count?: number };
+  colors?: { count?: number };
+  typographies?: { count?: number };
+  variants?: { count?: number };
+}
+
+export function getFileSummary(id: string): Promise<FileSummaryCounts> {
+  return cmd<FileSummaryCounts>("get-file-summary", { id });
+}
+
+// delete-shared-dialog lists the files that link each shared library.
+export interface LibraryFileReference {
+  id: string;
+  name: string;
+}
+
+export function getLibraryFileReferences(fileId: string): Promise<LibraryFileReference[]> {
+  return cmd<LibraryFileReference[]>("get-library-file-references", { "file-id": fileId });
 }
