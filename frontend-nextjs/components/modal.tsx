@@ -93,6 +93,9 @@ export function ModalShell({ title, titleTestId, closeLabel, children, footer }:
 export interface ConfirmDialogProps {
   title: string;
   message: string;
+  // The :scd-message slot of the CLJS confirm modal (promote-owner-confirm and
+  // leave-and-close-confirm carry an extra hint under the message).
+  hint?: string;
   acceptLabel: string;
   cancelLabel: string;
   destructive?: boolean;
@@ -107,6 +110,7 @@ export interface ConfirmDialogProps {
 export function ConfirmDialog({
   title,
   message,
+  hint,
   acceptLabel,
   cancelLabel,
   destructive,
@@ -141,6 +145,7 @@ export function ConfirmDialog({
       }
     >
       <p className="pp-modal-message">{message}</p>
+      {hint !== undefined ? <p className="pp-modal-hint">{hint}</p> : null}
     </ModalShell>
   );
 }

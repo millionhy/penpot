@@ -8,28 +8,36 @@
 // projects-section* renders above the rows for a profile that can edit.
 //
 // Deviations from the CLJS original, documented:
-// - team-hero (invite-members banner) waits for F5.5, the templates section
-//   and the dashboard shortcuts registry for F5.6.
-// - The project menu omits the import entry (binfile flow, F5.6); with every
-//   other entry gated on a non-default project, the Drafts row has no menu.
+// - The team-hero (invite-members banner) arrived with F5.5; the dashboard
+//   shortcuts registry still waits for F5.6. The dismissed flag lives in the
+//   same penpot-global key as the CLJS island, but the shell reads it on
+//   mount instead of during render (same trade-off as useDashboardLayout)
+//   and drops the dont-show-team-up-hero analytics event (the shell has no
+//   analytics seam yet).
 // - create-project enters inline rename through the page-level
 //   editingProjectId (the CLJS dashboard-local :project-for-edit), but the
 //   generated unique name stays until the user edits it, same as F5.1.
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { menuAnchorFromElement, menuAnchorFromEvent, type MenuAnchor } from "@/components/dashboard-menu";
 import { LineGrid, useDynamicGridItemWidth } from "@/components/dashboard-grid";
 import { DeletedTabs } from "@/components/deleted-tabs";
 import { useFileActions } from "@/components/file-menu";
+import { useImportFile } from "@/components/import-dialog";
 import { InlineEdition } from "@/components/inline-edition";
 import { LayoutToggle, useDashboardLayout } from "@/components/layout-toggle";
 import { useNotifications } from "@/components/notifications";
 import { ProjectMenuPopup, useProjectActions } from "@/components/project-menu";
+import { TeamHero } from "@/components/team-hero";
+import { useInviteMembers } from "@/components/team-invite";
+import { TemplatesSection } from "@/components/templates-section";
+import { hasFlag } from "@/lib/config";
 import {
   createFile,
   createProject,
   dashboardHref,
+  defaultProject,
   fileFeatures,
   firstPageId,
   generateUniqueName,
@@ -48,6 +56,8 @@ import {
 import { useDashboard } from "@/lib/dashboard-context";
 import { useDocumentTitle } from "@/lib/dom";
 import { tr } from "@/lib/i18n";
+import { useSession } from "@/lib/session";
+import { canSendInvitations, readTeamHeroVisible, writeTeamHeroVisible } from "@/lib/team";
 
 interface ProjectItemProps {
   project: Project;
@@ -82,6 +92,7 @@ function ProjectItem({
 }: ProjectItemProps) {
   const router = useRouter();
   const notifications = useNotifications();
+  const { clearSelection } = useDashboard();
   const [rowRef, limit] = useDynamicGridItemWidth();
   // project-item* initializes :edition from dashboard-local :project-for-edit,
   // which dd/create-project sets for the row it just created.
@@ -93,13 +104,21 @@ function ProjectItem({
   const name = isDraft ? tr("labels.drafts") : project.name;
   const fileCount = project.count ?? 0;
   const time = timeAgo(project["modified-at"]);
-  const showMenu = canEdit && !isDraft;
+  const showMenu = canEdit;
 
   const onNav = () => {
     router.push(dashboardHref("dashboard-files", { teamId, projectId: project.id }));
   };
 
   const otherTeams = useMemo(() => teams.filter((row) => row.id !== teamId), [teams, teamId]);
+
+  // line-grid*'s on-finish-import: dd/fetch-recent-files + dd/clear-selected-files.
+  const onImported = useCallback(async () => {
+    clearSelection();
+    await onFilesChanged();
+  }, [clearSelection, onFilesChanged]);
+
+  const { openPicker } = useImportFile(project.id, onImported);
 
   const projectActions = useProjectActions({
     project,
@@ -109,6 +128,7 @@ function ProjectItem({
       setEdition(true);
     },
     onProjectsChanged,
+    onImport: openPicker,
   });
 
   const onEditEnd = async (value: string) => {
@@ -265,6 +285,7 @@ function ProjectItem({
           otherTeams={otherTeams}
           anchor={menuAnchor}
           actions={projectActions}
+          isDefault={isDraft}
           onClose={() => setMenuAnchor(null)}
         />
       ) : null}
@@ -297,6 +318,7 @@ function ProjectItem({
             }}
             hasOther={hasOther}
             onFilesMoved={onFilesChanged}
+            onImported={onImported}
           />
         )}
       </div>
@@ -315,18 +337,55 @@ export default function DashboardRecentPage() {
     refreshProjects,
     refreshRecentFiles,
   } = useDashboard();
+  const { profile } = useSession();
   const notifications = useNotifications();
+  // check-and-invite-members with the :hero origin, for the banner.
+  const { openInvite } = useInviteMembers(team, profile?.id, "hero");
   const [busy, setBusy] = useState(false);
   const [layout, onLayoutChange] = useDashboardLayout();
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+
+  // :show-team-hero of projects-section*: a per-profile persisted flag
+  // (storage/global under the CLJS keyword namespace, kept in lib/team.ts).
+  // Read on mount, never during SSR, like useDashboardLayout: the
+  // prerendered markup stays hero-less and the flag wins right after.
+  const [showTeamHero, setShowTeamHero] = useState(false);
+  useEffect(() => {
+    setShowTeamHero(readTeamHeroVisible());
+  }, []);
 
   // The title effect in projects-section*.
   useDocumentTitle(
     tr("title.dashboard.projects", projectsTitleName(team, tr("dashboard.personal-projects"))),
   );
 
+  // The render condition of team-hero* in projects-section*:
+  // show-team-hero? && can-invite && (not default-team?).
+  const viewerId = profile?.id ?? null;
+  const canInvite = canSendInvitations(team, viewerId);
+  const defaultTeam = team?.["is-default"] === true;
+  const heroVisible = showTeamHero && canInvite && !defaultTeam;
+  // with-team-hero, the class that reflows the container: the same guard the
+  // CLJS section adds, (! my-penpot?) && ! default-team && show-hero && can-invite.
+  const myPenpot = teamId !== null && teamId === profile?.["default-team-id"];
+  const withTeamHero = !myPenpot && heroVisible;
+
+  const onCloseHero = () => {
+    setShowTeamHero(false);
+    // The [show-team-hero?] effect of the CLJS section persists on change;
+    // the shell writes when the banner is dismissed instead.
+    writeTeamHeroVisible(false);
+  };
+
   const visible = useMemo(() => visibleProjects(projects), [projects]);
   const allFileNames = useMemo(() => usedNames(recentFiles), [recentFiles]);
+  // The default-project memo of dashboard*: where the template dialog lands
+  // when the section has no project of its own (drafts).
+  const defaultProjectId = useMemo(() => defaultProject(projects)?.id ?? null, [projects]);
+
+  // dashboard-content*'s show-templates?: the dashboard-templates-section
+  // flag plus edit rights.
+  const showTemplates = hasFlag("dashboard-templates-section") && canEdit;
 
   const onFilesChanged = useCallback(async () => {
     await Promise.all([refreshProjects(), refreshRecentFiles()]);
@@ -385,7 +444,19 @@ export default function DashboardRecentPage() {
         </div>
       </header>
 
-      <div className="pp-dashboard-projects" data-testid="projects-container">
+      <div
+        className={withTeamHero ? "pp-dashboard-projects pp-with-team-hero" : "pp-dashboard-projects"}
+        data-testid="projects-container"
+      >
+        {heroVisible && teamId !== null ? (
+          <TeamHero
+            teamId={teamId}
+            onInvite={() => {
+              void openInvite(null);
+            }}
+            onClose={onCloseHero}
+          />
+        ) : null}
         {canEdit ? <DeletedTabs section="dashboard-recent" teamId={teamId} /> : null}
         {visible.map((project) => (
           <ProjectItem
@@ -406,6 +477,15 @@ export default function DashboardRecentPage() {
           />
         ))}
       </div>
+
+      {showTemplates && projects.length > 0 ? (
+        <TemplatesSection
+          projectId={null}
+          defaultProjectId={defaultProjectId}
+          profileId={viewerId}
+          onFinishImport={onFilesChanged}
+        />
+      ) : null}
     </>
   );
 }

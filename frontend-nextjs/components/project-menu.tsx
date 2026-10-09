@@ -5,8 +5,7 @@
 // move-project, delete-project). Shared by the "..." button and the
 // right-click menu of a project title in the recent and files views.
 //
-// Deviations: the "Import files" entry needs the binfile import flow (F5.6)
-// and is omitted; telemetry events are dropped like elsewhere in the shell.
+// Deviations: telemetry events are dropped like elsewhere in the shell.
 
 import { useRouter } from "next/navigation";
 import { DashboardMenu, type MenuAnchor, type MenuEntry } from "@/components/dashboard-menu";
@@ -34,10 +33,14 @@ export interface ProjectActionDeps {
   onRename: () => void;
   // Re-fetch the project list after pin/duplicate/delete mutations.
   onProjectsChanged: () => Promise<void> | void;
+  // on-import-click of the CLJS menu: open the binfile import for this
+  // project. The caller owns the picker, since the popover unmounts its
+  // content while it closes (see frontend src dashboard/project_menu.cljs).
+  onImport?: () => void;
 }
 
 export function useProjectActions(deps: ProjectActionDeps) {
-  const { project, projects, onRename, onProjectsChanged } = deps;
+  const { project, projects, onRename, onProjectsChanged, onImport } = deps;
   const router = useRouter();
   const modal = useModal();
   const notifications = useNotifications();
@@ -114,66 +117,82 @@ export function useProjectActions(deps: ProjectActionDeps) {
     );
   };
 
-  return { duplicate, togglePin, moveTo, requestDelete, onRename };
+  return { duplicate, togglePin, moveTo, requestDelete, onRename, onImport };
 }
 
-// project-menu-items*: every entry is gated on a non-default project except
-// the (deferred) import, so the Drafts row has no menu at all in the shell.
+// project-menu-items*: every entry but the import one is gated on a
+// non-default project, and the import entry shows whenever the caller
+// passes on-import-click (so the Drafts row keeps exactly that entry).
 export function buildProjectMenuEntries(options: {
   otherTeams: Team[];
+  isDefault?: boolean;
   actions: {
     onRename: () => void;
     duplicate: () => Promise<void>;
     togglePin: () => Promise<void>;
     moveTo: (teamId: string) => Promise<void>;
     requestDelete: () => void;
+    onImport?: (() => void) | undefined;
   };
 }): MenuEntry[] {
-  const { otherTeams, actions } = options;
-  const entries: MenuEntry[] = [
-    { type: "item", id: "project-rename", label: tr("labels.rename"), onSelect: actions.onRename },
-    {
-      type: "item",
-      id: "project-duplicate",
-      label: tr("dashboard.duplicate"),
-      onSelect: () => {
-        void actions.duplicate();
-      },
-    },
-    {
-      type: "item",
-      id: "project-pin",
-      label: tr("dashboard.pin-unpin"),
-      onSelect: () => {
-        void actions.togglePin();
-      },
-    },
-  ];
-  if (otherTeams.length > 0) {
-    entries.push({
-      type: "submenu",
-      id: "project-move-to",
-      label: tr("dashboard.move-to"),
-      items: otherTeams.map((team) => ({
+  const { otherTeams, isDefault, actions } = options;
+  const entries: MenuEntry[] = [];
+  if (isDefault !== true) {
+    entries.push(
+      { type: "item", id: "project-rename", label: tr("labels.rename"), onSelect: actions.onRename },
+      {
         type: "item",
-        id: "move-to-" + team.id,
-        label: team.name,
+        id: "project-duplicate",
+        label: tr("dashboard.duplicate"),
         onSelect: () => {
-          void actions.moveTo(team.id);
+          void actions.duplicate();
         },
-      })),
+      },
+      {
+        type: "item",
+        id: "project-pin",
+        label: tr("dashboard.pin-unpin"),
+        onSelect: () => {
+          void actions.togglePin();
+        },
+      },
+    );
+    if (otherTeams.length > 0) {
+      entries.push({
+        type: "submenu",
+        id: "project-move-to",
+        label: tr("dashboard.move-to"),
+        items: otherTeams.map((team) => ({
+          type: "item",
+          id: "move-to-" + team.id,
+          label: team.name,
+          onSelect: () => {
+            void actions.moveTo(team.id);
+          },
+        })),
+      });
+    }
+  }
+  if (actions.onImport !== undefined) {
+    entries.push({
+      type: "item",
+      id: "file-import",
+      label: tr("dashboard.import"),
+      onSelect: actions.onImport,
     });
   }
-  entries.push(
-    { type: "separator", id: "project-delete-separator" },
-    {
-      type: "item",
-      id: "project-delete",
-      label: tr("labels.delete"),
-      danger: true,
-      onSelect: actions.requestDelete,
-    },
-  );
+  if (isDefault !== true) {
+    entries.push(
+      { type: "separator", id: "project-delete-separator" },
+      {
+        type: "item",
+        id: "project-delete",
+        label: tr("labels.delete"),
+        danger: true,
+        onSelect: actions.requestDelete,
+      },
+    );
+  }
   return entries;
 }
 
@@ -181,6 +200,8 @@ export interface ProjectMenuPopupProps {
   otherTeams: Team[];
   anchor: MenuAnchor;
   actions: ReturnType<typeof useProjectActions>;
+  // is-default of the rendered project row.
+  isDefault?: boolean;
   onClose: () => void;
 }
 
@@ -188,9 +209,10 @@ export function ProjectMenuPopup({
   otherTeams,
   anchor,
   actions,
+  isDefault,
   onClose,
 }: ProjectMenuPopupProps) {
-  const entries = buildProjectMenuEntries({ otherTeams, actions });
+  const entries = buildProjectMenuEntries({ otherTeams, isDefault, actions });
   return (
     <DashboardMenu anchor={anchor} entries={entries} onClose={onClose} ariaLabel={tr("dashboard.options")} />
   );

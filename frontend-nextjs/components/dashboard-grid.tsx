@@ -15,8 +15,8 @@
 // - The drag image counter element is dropped; the HTML5 default drag image
 //   is used. The "penpot/files" drag type and the cross-project drop that
 //   calls move-files are ported, so drag-to-move works in the recent view.
-// - Dropping OS files (the binfile import) is deferred to F5.6 together with
-//   import.cljs; drops are swallowed to keep the browser from navigating.
+// - OS-file drops open the import dialog (components/import-dialog.tsx) on
+//   every editable grid, like the CLJS grid* and line-grid* drop handlers.
 // - The component samples of grid-item-library* render through
 //   render/component-svg, which needs the F9 renderer; the card draws the same
 //   icon box empty and keeps the component name.
@@ -34,6 +34,7 @@ import {
   type MenuAnchor,
 } from "@/components/dashboard-menu";
 import { FileMenuPopup, type FileActions, type FileMenuOrigin } from "@/components/file-menu";
+import { useImportFile } from "@/components/import-dialog";
 import { InlineEdition } from "@/components/inline-edition";
 import { Tr } from "@/components/tr";
 import {
@@ -541,13 +542,38 @@ export function LoadingPlaceholder() {
 export interface EmptyGridPlaceholderProps {
   canEdit: boolean;
   onCreateFile: () => void;
+  // The import card opens the OS picker through use-import-file, like
+  // empty-project-placeholder* clicks its mounted file input.
+  onImportFiles: () => void;
   // make-has-other-files-or-projects-ref: without any other project or file
   // the team shows the big starter cards instead of the small "+" tile.
   hasOther: boolean;
+  // The drag hint of line-grid*: while a penpot/files selection or OS files
+  // hover the empty grid, the placeholder gives way to the insertion slot.
+  isDragging?: boolean;
+  limit?: number;
 }
 
-export function EmptyGridPlaceholder({ canEdit, onCreateFile, hasOther }: EmptyGridPlaceholderProps) {
+export function EmptyGridPlaceholder({
+  canEdit,
+  onCreateFile,
+  onImportFiles,
+  hasOther,
+  isDragging,
+  limit,
+}: EmptyGridPlaceholderProps) {
   const [showText, setShowText] = useState(false);
+
+  if (isDragging === true && limit !== undefined) {
+    return (
+      <ul
+        className="pp-grid-row pp-no-wrap"
+        style={{ gridTemplateColumns: "repeat(" + String(limit) + ", 1fr)" }}
+      >
+        <li className="pp-grid-item is-dragged" />
+      </ul>
+    );
+  }
 
   if (!hasOther) {
     return (
@@ -566,7 +592,22 @@ export function EmptyGridPlaceholder({ canEdit, onCreateFile, hasOther }: EmptyG
           <div className="pp-empty-project-card-title">{tr("dashboard.empty-project.create")}</div>
           <div className="pp-empty-project-card-subtitle">{tr("dashboard.empty-project.start")}</div>
         </div>
-        {/* The import card arrives with the binfile flow (F5.6). */}
+        <div
+          className="pp-empty-project-card"
+          role="button"
+          tabIndex={0}
+          title={tr("dashboard.empty-project.import")}
+          data-testid="empty-import-files"
+          onClick={onImportFiles}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") onImportFiles();
+          }}
+        >
+          <div className="pp-empty-project-card-title">{tr("dashboard.empty-project.import")}</div>
+          <div className="pp-empty-project-card-subtitle">
+            {tr("dashboard.empty-project.import-penpot")}
+          </div>
+        </div>
         <div
           className="pp-empty-project-card"
           role="link"
@@ -640,6 +681,9 @@ export interface DashboardGridProps {
   actions: FileActions;
   onCreateFile?: () => void;
   hasOther?: boolean;
+  // dd/fetch-files + dd/clear-selected-files after an import; grids without
+  // a project (search) pass nothing and never open the dialog.
+  onImported?: () => void;
 }
 
 function partition<T>(items: T[], size: number): T[][] {
@@ -663,11 +707,49 @@ export function DashboardGrid({
   actions,
   onCreateFile,
   hasOther,
+  onImported,
 }: DashboardGridProps) {
-  // OS file drops (binfile import) are swallowed until F5.6.
-  const swallowDrop = {
-    onDragOver: (event: React.DragEvent) => event.preventDefault(),
-    onDrop: (event: React.DragEvent) => event.preventDefault(),
+  const { openFiles, openPicker } = useImportFile(project?.id ?? null, onImported);
+  const [dragging, setDragging] = useState(false);
+
+  // The grid* drag handlers: OS files open the import dialog on drop and
+  // highlight the insertion slot meanwhile. Everything but penpot/files is
+  // left to the browser default, like the CLJS cond with no further branch.
+  const hasOsFiles = (event: React.DragEvent) =>
+    !event.dataTransfer.types.includes("penpot/files") &&
+    (event.dataTransfer.types.includes("Files") ||
+      event.dataTransfer.types.includes("application/x-moz-file"));
+
+  const fromChild = (event: React.DragEvent) =>
+    event.currentTarget.contains(event.relatedTarget as Node);
+
+  const dragHandlers = {
+    onDragEnter: (event: React.DragEvent) => {
+      if (!canEdit || !hasOsFiles(event)) return;
+      event.preventDefault();
+      setDragging(true);
+    },
+    onDragOver: (event: React.DragEvent) => {
+      if (
+        event.dataTransfer.types.includes("Files") ||
+        event.dataTransfer.types.includes("application/x-moz-file")
+      ) {
+        event.preventDefault();
+      }
+    },
+    onDragLeave: (event: React.DragEvent) => {
+      if (!fromChild(event)) setDragging(false);
+    },
+    onDrop: (event: React.DragEvent) => {
+      if (!canEdit) {
+        event.preventDefault();
+        return;
+      }
+      if (!hasOsFiles(event)) return;
+      event.preventDefault();
+      setDragging(false);
+      openFiles(event.dataTransfer.files);
+    },
   };
 
   const testId = "grid-" + (project?.id ?? origin ?? "all");
@@ -675,20 +757,21 @@ export function DashboardGrid({
 
   if (files === null) {
     return (
-      <div className="pp-dashboard-grid" data-testid={testId} {...swallowDrop}>
+      <div className="pp-dashboard-grid" data-testid={testId} {...dragHandlers}>
         <LoadingPlaceholder />
       </div>
     );
   }
   if (files.length === 0) {
     return (
-      <div className="pp-dashboard-grid" data-testid={testId} {...swallowDrop}>
+      <div className="pp-dashboard-grid" data-testid={testId} {...dragHandlers}>
         {origin === "libraries" ? (
           <LibrariesEmptyPlaceholder canEdit={canEdit} />
         ) : (
           <EmptyGridPlaceholder
             canEdit={canEdit}
             onCreateFile={onCreateFile ?? noopCreate}
+            onImportFiles={openPicker}
             hasOther={hasOther ?? false}
           />
         )}
@@ -698,8 +781,9 @@ export function DashboardGrid({
 
   if (layout === "list") {
     return (
-      <div className="pp-dashboard-grid" data-testid={testId} {...swallowDrop}>
+      <div className="pp-dashboard-grid" data-testid={testId} {...dragHandlers}>
         <ul className="pp-grid-row pp-list-view">
+          {dragging ? <li className="pp-list-item-dragged" /> : null}
           {files.map((file) => (
             <GridItem
               key={file.id}
@@ -719,9 +803,10 @@ export function DashboardGrid({
   }
 
   return (
-    <div className="pp-dashboard-grid" data-testid={testId} {...swallowDrop}>
+    <div className="pp-dashboard-grid" data-testid={testId} {...dragHandlers}>
       {partition(files, limit).map((row, index) => (
         <ul className="pp-grid-row" key={index}>
+          {dragging ? <li className="pp-grid-item" /> : null}
           {row.map((file) => (
             <GridItem
               key={file.id}
@@ -751,8 +836,10 @@ export interface LineGridProps {
   actions: FileActions;
   onCreateFile: () => void;
   hasOther: boolean;
-  // dd/fetch-recent-files + dd/fetch-projects after a successful drop.
+  // dd/fetch-recent-files + dd/clear-selected-files after a successful drop.
   onFilesMoved: () => Promise<void> | void;
+  // dd/fetch-recent-files + dd/clear-selected-files after an import.
+  onImported?: () => void;
 }
 
 // line-grid*: one row of at most `limit` files, and the drop target that
@@ -768,24 +855,36 @@ export function LineGrid({
   onCreateFile,
   hasOther,
   onFilesMoved,
+  onImported,
 }: LineGridProps) {
   const [dragging, setDragging] = useState(false);
   const { selection, clearSelection } = useDashboard();
   const notifications = useNotifications();
+  const { openFiles, openPicker } = useImportFile(project.id, onImported);
 
   const hasFiles = (event: React.DragEvent) => event.dataTransfer.types.includes("penpot/files");
+
+  const hasOsFiles = (event: React.DragEvent) =>
+    !hasFiles(event) &&
+    (event.dataTransfer.types.includes("Files") ||
+      event.dataTransfer.types.includes("application/x-moz-file"));
 
   const fromChild = (event: React.DragEvent) =>
     event.currentTarget.contains(event.relatedTarget as Node);
 
   const onDragEnter = (event: React.DragEvent) => {
-    if (!canEdit || !hasFiles(event)) return;
-    event.preventDefault();
-    if (!fromChild(event) && selection.projectId !== project.id) setDragging(true);
+    if (!canEdit) return;
+    if (hasFiles(event)) {
+      event.preventDefault();
+      if (!fromChild(event) && selection.projectId !== project.id) setDragging(true);
+    } else if (hasOsFiles(event)) {
+      event.preventDefault();
+      setDragging(true);
+    }
   };
 
   const onDragOver = (event: React.DragEvent) => {
-    if (hasFiles(event)) event.preventDefault();
+    if (hasFiles(event) || hasOsFiles(event)) event.preventDefault();
   };
 
   const onDragLeave = (event: React.DragEvent) => {
@@ -797,28 +896,30 @@ export function LineGrid({
       event.preventDefault();
       return;
     }
-    if (!hasFiles(event)) {
-      // OS file drops (binfile import) arrive with F5.6; swallow them so the
-      // browser does not navigate away.
+    if (hasFiles(event)) {
       event.preventDefault();
+      setDragging(false);
+      const ids = [...selection.ids];
+      if (selection.projectId === project.id || ids.length === 0) return;
+      void (async () => {
+        try {
+          await moveFiles(ids, project.id);
+          notifications.success(
+            ids.length > 1 ? tr("dashboard.success-move-files") : tr("dashboard.success-move-file"),
+          );
+          clearSelection();
+          await onFilesMoved();
+        } catch {
+          notifications.error(tr("errors.generic"));
+        }
+      })();
       return;
     }
-    event.preventDefault();
-    setDragging(false);
-    const ids = [...selection.ids];
-    if (selection.projectId === project.id || ids.length === 0) return;
-    void (async () => {
-      try {
-        await moveFiles(ids, project.id);
-        notifications.success(
-          ids.length > 1 ? tr("dashboard.success-move-files") : tr("dashboard.success-move-file"),
-        );
-        clearSelection();
-        await onFilesMoved();
-      } catch {
-        notifications.error(tr("errors.generic"));
-      }
-    })();
+    if (hasOsFiles(event)) {
+      event.preventDefault();
+      setDragging(false);
+      openFiles(event.dataTransfer.files);
+    }
   };
 
   const dragHandlers = { onDragEnter, onDragOver, onDragLeave, onDrop };
@@ -833,7 +934,14 @@ export function LineGrid({
   if (files.length === 0) {
     return (
       <div className="pp-dashboard-grid" {...dragHandlers} data-testid={"line-grid-" + project.id}>
-        <EmptyGridPlaceholder canEdit={canEdit} onCreateFile={onCreateFile} hasOther={hasOther} />
+        <EmptyGridPlaceholder
+          canEdit={canEdit}
+          onCreateFile={onCreateFile}
+          onImportFiles={openPicker}
+          hasOther={hasOther}
+          isDragging={dragging}
+          limit={limit}
+        />
       </div>
     );
   }

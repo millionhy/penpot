@@ -164,7 +164,9 @@ export interface SelectOption {
 
 export interface SelectProps {
   name: string;
-  label: string;
+  // fm/select renders without a label in several forms (the change-owner and
+  // webhook selects); the label element only appears when one is given.
+  label?: string;
   options: readonly SelectOption[];
   testId?: string;
   className?: string;
@@ -180,9 +182,11 @@ export function Select({ name, label, options, testId, className }: SelectProps)
   const id = "pp-field-" + name;
   return (
     <div className={"pp-field" + (className !== undefined ? " " + className : "")}>
-      <label className="pp-field-label" htmlFor={id}>
-        {label}
-      </label>
+      {label !== undefined ? (
+        <label className="pp-field-label" htmlFor={id}>
+          {label}
+        </label>
+      ) : null}
       <select
         id={id}
         className="pp-field-input"

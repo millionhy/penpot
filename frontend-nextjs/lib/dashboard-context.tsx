@@ -9,7 +9,10 @@
 // then get-team only when the team is missing from the store, and write
 // ::current-team-id into the "penpot-global" storage) followed by dashboard*
 // (dd/initialize: fetch-projects, fetch-fonts and the websocket subscribe-team).
-// Fonts landed with F5.4; the websocket subscription arrives with F8.
+// Fonts landed with F5.4; the team slice (members, invitations, webhooks, stats)
+// arrived with F5.5: team-initialized fetches the members alongside the
+// projects, and the team pages read the rest through refreshInvitations,
+// refreshWebhooks and refreshStats. The websocket subscription arrives with F8.
 //
 // Query params come through the QueryParams Suspense boundary because Next.js
 // only allows useSearchParams inside one on a statically prerendered route.
@@ -54,6 +57,17 @@ import {
   registerCustomFonts,
   type FontVariantRow,
 } from "@/lib/fonts";
+import { RpcError } from "@/lib/errors";
+import {
+  getTeamInvitations,
+  getTeamMembers,
+  getTeamStats,
+  getWebhooks,
+  type TeamInvitation,
+  type TeamMember,
+  type TeamStats,
+  type Webhook,
+} from "@/lib/team";
 
 export type DashboardStatus = "loading" | "ready" | "no-teams" | "error";
 
@@ -78,12 +92,23 @@ export interface DashboardState {
   // Every fetch re-registers the custom families so the typography samples
   // can resolve them (fonts-fetched in app.main.data.fonts).
   fonts: FontVariantRow[] | null;
+  // The team slice of app.main.data.team: members load with the team
+  // (team-initialized), invitations/webhooks/stats load from their pages.
+  members: TeamMember[] | null;
+  invitations: TeamInvitation[] | null;
+  webhooks: Webhook[] | null;
+  stats: TeamStats | null;
   section: RouteName | null;
   canEdit: boolean;
   navigate: (section: RouteName, params?: DashboardNavigateParams) => void;
+  refreshTeams: () => Promise<void>;
   refreshProjects: () => Promise<void>;
   refreshRecentFiles: () => Promise<void>;
   refreshFonts: () => Promise<void>;
+  refreshMembers: () => Promise<void>;
+  refreshInvitations: () => Promise<void>;
+  refreshWebhooks: () => Promise<void>;
+  refreshStats: () => Promise<void>;
   // Store-level :selected-files/:selected-project and the dashboard-local
   // inline-rename slot (:edition/:file-id), shared by every grid on the page
   // the way the Potok store shares them across sections (F5.2).
@@ -107,12 +132,21 @@ const defaultValue: DashboardState = {
   recentFiles: [],
   searchTerm: null,
   fonts: null,
+  members: null,
+  invitations: null,
+  webhooks: null,
+  stats: null,
   section: null,
   canEdit: false,
   navigate: () => undefined,
+  refreshTeams: async () => undefined,
   refreshProjects: async () => undefined,
   refreshRecentFiles: async () => undefined,
   refreshFonts: async () => undefined,
+  refreshMembers: async () => undefined,
+  refreshInvitations: async () => undefined,
+  refreshWebhooks: async () => undefined,
+  refreshStats: async () => undefined,
   selection: emptyFileSelection(),
   toggleFileSelect: () => undefined,
   clearSelection: () => undefined,
@@ -162,6 +196,10 @@ function DashboardProviderInner({
   const [projectRows, setProjectRows] = useState<Project[] | null>(null);
   const [recentFiles, setRecentFiles] = useState<FileSummary[] | null>(null);
   const [fontRows, setFontRows] = useState<FontVariantRow[] | null>(null);
+  const [memberRows, setMemberRows] = useState<TeamMember[] | null>(null);
+  const [invitationRows, setInvitationRows] = useState<TeamInvitation[] | null>(null);
+  const [webhookRows, setWebhookRows] = useState<Webhook[] | null>(null);
+  const [statsRow, setStatsRow] = useState<TeamStats | null>(null);
   const [failed, setFailed] = useState(false);
   const [selection, setSelection] = useState<FileSelection>(emptyFileSelection);
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
@@ -275,11 +313,61 @@ function DashboardProviderInner({
     }
   }, [teamId]);
 
+  // dtm/fetch-members skips a :not-found team with a log line; the shell
+  // settles on an empty list for the same error. Any other failure leaves the
+  // current rows untouched, like the rx/throw branch of the CLJS event.
+  const loadMembers = useCallback(async () => {
+    if (teamId === null) return;
+    try {
+      const rows = await getTeamMembers(teamId);
+      setMemberRows(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      if (err instanceof RpcError && err.type === "not-found") setMemberRows([]);
+    }
+  }, [teamId]);
+
+  // fetch-invitations, fetch-webhooks and fetch-stats have no catch in CLJS:
+  // a failure aborts the event and the store keeps the previous value, so the
+  // shell swallows the rejection and keeps the last rows.
+  const loadInvitations = useCallback(async () => {
+    if (teamId === null) return;
+    try {
+      const rows = await getTeamInvitations(teamId);
+      setInvitationRows(Array.isArray(rows) ? rows : []);
+    } catch {
+      // keep the last rows
+    }
+  }, [teamId]);
+
+  const loadWebhooks = useCallback(async () => {
+    if (teamId === null) return;
+    try {
+      const rows = await getWebhooks(teamId);
+      setWebhookRows(Array.isArray(rows) ? rows : []);
+    } catch {
+      // keep the last rows
+    }
+  }, [teamId]);
+
+  const loadStats = useCallback(async () => {
+    if (teamId === null) return;
+    try {
+      const stats = await getTeamStats(teamId);
+      setStatsRow(stats ?? {});
+    } catch {
+      // keep the last stats
+    }
+  }, [teamId]);
+
   useEffect(() => {
     if (teamId === null) return;
     setProjectRows(null);
     setRecentFiles(null);
     setFontRows(null);
+    setMemberRows(null);
+    setInvitationRows(null);
+    setWebhookRows(null);
+    setStatsRow(null);
     // dd/finalize drops the team slice on a team switch; the selection and
     // the inline rename belong to it.
     setSelection(emptyFileSelection());
@@ -287,7 +375,9 @@ function DashboardProviderInner({
     void loadProjects();
     void loadRecentFiles();
     void loadFonts();
-  }, [teamId, loadProjects, loadRecentFiles, loadFonts]);
+    // team-initialized fetches the members for every visited team.
+    void loadMembers();
+  }, [teamId, loadProjects, loadRecentFiles, loadFonts, loadMembers]);
 
   const navigate = useCallback(
     (next: RouteName, navParams: DashboardNavigateParams = {}) => {
@@ -334,12 +424,21 @@ function DashboardProviderInner({
       recentFiles: recentFiles ?? [],
       searchTerm: querySearchTerm,
       fonts: fontRows,
+      members: memberRows,
+      invitations: invitationRows,
+      webhooks: webhookRows,
+      stats: statsRow,
       section: section === null ? null : effectiveSection(section, team),
       canEdit: teamCanEdit(team),
       navigate,
+      refreshTeams: loadTeams,
       refreshProjects: loadProjects,
       refreshRecentFiles: loadRecentFiles,
       refreshFonts: loadFonts,
+      refreshMembers: loadMembers,
+      refreshInvitations: loadInvitations,
+      refreshWebhooks: loadWebhooks,
+      refreshStats: loadStats,
       selection,
       toggleFileSelect,
       clearSelection,
@@ -353,14 +452,23 @@ function DashboardProviderInner({
     projectRows,
     recentFiles,
     fontRows,
+    memberRows,
+    invitationRows,
+    webhookRows,
+    statsRow,
     queryProjectId,
     querySearchTerm,
     section,
     failed,
     navigate,
+    loadTeams,
     loadProjects,
     loadRecentFiles,
     loadFonts,
+    loadMembers,
+    loadInvitations,
+    loadWebhooks,
+    loadStats,
     selection,
     toggleFileSelect,
     clearSelection,

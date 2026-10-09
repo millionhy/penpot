@@ -6,9 +6,6 @@
 // items trigger (rename, duplicate, move, delete, publish/unpublish).
 //
 // Deviations from the CLJS original, documented:
-// - "download-binary-file" / "export-binary-multi" open the binfile export
-//   dialog, which arrives with the import/export slice (F5.6); the entries
-//   are omitted until then.
 // - set-file-shared no longer fetches get-file-summary a second time for the
 //   telemetry event; the shell has no analytics seam.
 // - get-all-projects is fetched when the menu opens instead of on every
@@ -27,8 +24,10 @@ import {
   type MenuEntrySubmenu,
 } from "@/components/dashboard-menu";
 import { DeleteSharedDialog } from "@/components/delete-shared-dialog";
+import { ExportDialog } from "@/components/export-dialog";
 import { ConfirmDialog, useModal } from "@/components/modal";
 import { useNotifications } from "@/components/notifications";
+import { hasFileLibraries } from "@/lib/binfile";
 import {
   copySuffixFn,
   dashboardHref,
@@ -84,6 +83,7 @@ export interface FileActions {
   requestUnpublish: (files: FileSummary[]) => void;
   requestRestore: (files: FileSummary[]) => void;
   requestDeleteForever: (files: FileSummary[]) => void;
+  openExportDialog: (files: FileSummary[]) => void;
 }
 
 export function useFileActions(deps: FileActionDeps): FileActions {
@@ -318,6 +318,26 @@ export function useFileActions(deps: FileActionDeps): FileActions {
     );
   };
 
+  // fexp/open-export-dialog: the dialog only opens once every file reported
+  // whether it links libraries, because a selection without them starts
+  // exporting right away.
+  const openExportDialog = (files: FileSummary[]) => {
+    void (async () => {
+      try {
+        const rows = await Promise.all(
+          files.map(async (file) => ({
+            id: file.id,
+            name: file.name,
+            hasLibraries: await hasFileLibraries(file.id),
+          })),
+        );
+        modal.open(<ExportDialog files={rows} />);
+      } catch {
+        notifications.error(tr("errors.generic"));
+      }
+    })();
+  };
+
   return {
     openNewTab,
     requestRename,
@@ -329,6 +349,7 @@ export function useFileActions(deps: FileActionDeps): FileActions {
     requestUnpublish,
     requestRestore,
     requestDeleteForever,
+    openExportDialog,
   };
 }
 
@@ -441,6 +462,14 @@ export function buildFileMenuEntries(options: {
         items: moveEntries,
       });
     }
+    // Unconditional in the CLJS list: the export entry shows for any
+    // multi-selection, whether the page allows edits or not.
+    entries.push({
+      type: "item",
+      id: "file-binary-export-multi",
+      label: tr("dashboard.export-binary-multi", count),
+      onSelect: () => actions.openExportDialog(files),
+    });
     if (file["is-shared"] === true && canEdit) {
       entries.push({
         type: "item",
@@ -511,6 +540,17 @@ export function buildFileMenuEntries(options: {
           },
     );
   }
+  // Unconditional in the CLJS list, with its own leading separator (the
+  // conditional delete block below adds another one when it renders).
+  entries.push(
+    { type: "separator", id: "export-separator" },
+    {
+      type: "item",
+      id: "download-binary-file",
+      label: tr("dashboard.download-binary-file"),
+      onSelect: () => actions.openExportDialog([file]),
+    },
+  );
   if (!isLibPage && !isSearchPage && canEdit) {
     entries.push(
       { type: "separator", id: "delete-separator" },

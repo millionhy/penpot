@@ -5,10 +5,8 @@
 // pin, project menu) and the full file grid fed by get-project-files.
 //
 // Deviations from the CLJS original, documented:
-// - The templates section under the grid is F5.6; the dashboard shortcuts
-//   registry (select-all etc.) is F5.6 too.
-// - The import entries (header menu item and drag & drop of .penpot files)
-//   wait for the binfile flow in F5.6.
+// - The dashboard shortcuts registry (select-all etc.) is F5.6, still to
+//   come.
 // - dashboard-content* renders files-section* only when the project param
 //   resolves; the shell does the same and renders nothing otherwise.
 // - create-file name uniqueness is computed from this project's loaded
@@ -19,13 +17,17 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DashboardGrid, useDynamicGridItemWidth } from "@/components/dashboard-grid";
 import { useFileActions } from "@/components/file-menu";
+import { useImportFile } from "@/components/import-dialog";
 import { InlineEdition } from "@/components/inline-edition";
 import { LayoutToggle, useDashboardLayout } from "@/components/layout-toggle";
 import { useNotifications } from "@/components/notifications";
 import { ProjectMenuPopup, useProjectActions } from "@/components/project-menu";
+import { TemplatesSection } from "@/components/templates-section";
 import { menuAnchorFromElement, menuAnchorFromEvent, type MenuAnchor } from "@/components/dashboard-menu";
+import { hasFlag } from "@/lib/config";
 import {
   createFile,
+  defaultProject,
   fileFeatures,
   firstPageId,
   generateUniqueName,
@@ -39,6 +41,7 @@ import {
 import { useDashboard } from "@/lib/dashboard-context";
 import { useDocumentTitle } from "@/lib/dom";
 import { tr } from "@/lib/i18n";
+import { useSession } from "@/lib/session";
 
 // files-section*: modified-at descending, the order the CLJS memo applies.
 function sortFiles(files: FileSummary[]): FileSummary[] {
@@ -64,6 +67,7 @@ export default function DashboardFilesPage() {
   } = useDashboard();
   const router = useRouter();
   const notifications = useNotifications();
+  const { profile } = useSession();
 
   const [files, setFiles] = useState<FileSummary[] | null>(null);
   const [layout, onLayoutChange] = useDashboardLayout();
@@ -109,6 +113,14 @@ export default function DashboardFilesPage() {
     }
     await Promise.all([refreshProjects(), refreshRecentFiles()]);
   }, [projectId, refreshProjects, refreshRecentFiles]);
+
+  // files-section*'s on-finish-import: dd/fetch-files + dd/clear-selected-files.
+  const onImported = useCallback(async () => {
+    clearSelection();
+    await onFilesChanged();
+  }, [clearSelection, onFilesChanged]);
+
+  const { openPicker } = useImportFile(projectId, onImported);
 
   const knownFileNames = useCallback(
     () => usedNames(files ?? []),
@@ -177,6 +189,7 @@ export default function DashboardFilesPage() {
       setTitleEdition(true);
     },
     onProjectsChanged: refreshProjects,
+    onImport: openPicker,
   });
 
   const otherTeams = useMemo(
@@ -195,6 +208,14 @@ export default function DashboardFilesPage() {
       recentFiles.some((row) => row["project-id"] !== projectId),
     [projects, recentFiles, projectId],
   );
+
+  // The default-project memo of dashboard*: where the template dialog lands
+  // when the section has no project of its own (drafts).
+  const defaultProjectId = useMemo(() => defaultProject(projects)?.id ?? null, [projects]);
+
+  // dashboard-content*'s show-templates?: the dashboard-templates-section
+  // flag plus edit rights.
+  const showTemplates = hasFlag("dashboard-templates-section") && canEdit;
 
   if (project === null || project === undefined) return null;
 
@@ -251,7 +272,7 @@ export default function DashboardFilesPage() {
               {"\u2691"}
             </button>
           ) : null}
-          {canEdit && !isDraft ? (
+          {canEdit ? (
             <>
               <button
                 type="button"
@@ -282,6 +303,7 @@ export default function DashboardFilesPage() {
                   otherTeams={otherTeams}
                   anchor={menuAnchor}
                   actions={projectActions}
+                  isDefault={isDraft}
                   onClose={() => setMenuAnchor(null)}
                 />
               ) : null}
@@ -317,9 +339,19 @@ export default function DashboardFilesPage() {
               void onCreateFile();
             }}
             hasOther={hasOther}
+            onImported={onImported}
           />
         )}
       </section>
+
+      {showTemplates ? (
+        <TemplatesSection
+          projectId={project.id}
+          defaultProjectId={defaultProjectId}
+          profileId={profile?.id ?? null}
+          onFinishImport={onImported}
+        />
+      ) : null}
     </>
   );
 }

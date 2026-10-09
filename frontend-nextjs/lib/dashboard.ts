@@ -40,6 +40,9 @@ export interface Team {
   "is-default"?: boolean;
   "organization-id"?: string | null;
   "organization-name"?: string | null;
+  // The settings page renders the team photo through teamPhotoUrl; the row
+  // carries the media id (get-teams joins team_profile_rel).
+  "photo-id"?: string | null;
   permissions?: TeamPermissions;
   features?: string[];
   // Only present when the backend runs with the :subscriptions flag

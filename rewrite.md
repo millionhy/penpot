@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
@@ -38,7 +38,7 @@
 | F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。F4 的 modal 需求由外壳自带的 `components/modal.tsx`（ModalProvider/ConfirmDialog）满足，profile 驱动的主题切换也已接上令牌；`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线推到 F5 dashboard（首个需要 menu/dropdown 的路由组） |
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 为占位）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes/shortcuts 未做（见 7.6） |
-| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.4 完成），见下与第 4 节 |
+| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.5 完成），见下与第 4 节 |
 | F6 | viewer（`/view`） | ⬜ | 集成 `render-wasm`（已是 Rust→WASM，可直接复用） |
 | F7 | 插件运行时 | ⬜ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`） |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
@@ -241,8 +241,11 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     `/dashboard/search`（三态占位 + 只读结果网格）；随附 SSE 传输层
     （`parseSseBlocks`/`drainSse`/`cmdSse`）与 `lib/progress.ts` 进度状态机。
   - **F5.4 fonts（完成）**：`/dashboard/fonts`（上传队列 + 已安装字体表：TTF/OTF/WOFF 元数据解析与高度告警、10 MiB 分块上传、字体族/字重合组、重命名/删除/下载、搜索）、`/dashboard/fonts/providers`（页头占位，同 CLJS）；随附分块上传层（`lib/uploads.ts`）与自定义字体 @font-face 注册表；补回 F5.3 推迟的 typography 样本字体加载。
-  - **F5.5 团队管理**：`/dashboard/settings`、`/dashboard/members`、`/dashboard/invitations`、
-    `/dashboard/webhooks`（加 change-owner、team-form）。
+  - **F5.5 团队管理（完成）**：`/dashboard/members`（成员表：角色变更、移出、三种离开流程）、
+    `/dashboard/invitations`（邀请表：排序、勾选工具栏、角色、复制链接、重发/删除）、
+    `/dashboard/webhooks`（列表与空态 hero、新建/编辑弹窗、无权限占位）、`/dashboard/settings`
+    （团队照片、资料块、owner 行、成员/项目计数）；随附 team-hero（recent 页横幅）、
+    team-form（新建/改名）、change-owner 与 no-permission 弹窗。
   - **F5.6** templates 分区、binfile 导入、dashboard 快捷键注册表（补齐 settings/shortcuts）。
   - **F5.7** organization/team switch、subscription/nitrate、comments、插件注册、WebSocket
     `subscribe-team` 实时刷新（依赖 F8）。
@@ -280,7 +283,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.4 完成 → F6..F9)
+阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.5 完成 → F6..F9)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -733,6 +736,86 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   下载与 @font-face 注入的交互走查留待在可用环境补做。
 - 下一步：F5.5 团队管理——`/dashboard/settings`、`/dashboard/members`、
   `/dashboard/invitations`、`/dashboard/webhooks`（含 change-owner 与 team-form）。
+
+### 7.12 本轮（2026-10-09，第十一批：F5.5 团队管理）
+
+- F5.5 完成：四个路由从 `RouteStub` 升级为完整页面。`/dashboard/members`
+  （`team-members-page*`：成员表按 owner→admin→editor→viewer 排序，角色下拉与移出
+  成员，三种离开流程（普通离开、转移后离开、离开即关闭）与确认弹窗）；
+  `/dashboard/invitations`（`invitation-section*`：按角色/状态排序的表、行勾选与选中
+  工具栏、角色变更、复制邀请链接、重发（`resend: true` 的单次 create）与删除确认）；
+  `/dashboard/webhooks`（`webhooks-page*`：空态 hero、列表（末次投递与错误摘要）、
+  新建/编辑弹窗、删除确认、无权限行的操作区占位）；`/dashboard/settings`
+  （`team-settings-page*`：团队照片上传（owner/admin）、资料块、owner 行、成员/项目
+  计数）。
+- 无头逻辑（`lib/team.ts`，691 行，`app.main.data.team` 与 `ui/dashboard/team.cljs`
+  派生逻辑的移植）：成员/邀请/webhook/统计的行形状；角色判定（`memberRole` 与
+  `can-change-member-role`/`can-leave-from-menu`/`can-remove-from-menu`/
+  `can-edit-webhook` 谓词）；`canSendInvitations`（admin-console 组织分支与
+  `profileId` 契约留给 F5.7，flag 关时走团队 flags 回退）；`orderedMembers`；
+  邀请排序状态机（`nextSortState`/`sortedInvitations`/`selectedInvitations`/
+  `invitationStatus`/`invitationUrl`）；webhook 错误摘要（`extractStatus`/
+  `translateErrorHint`/`webhookLastDeliveryText`）；team-hero 存储
+  （`read/writeTeamHeroVisible`，键 `show-team-hero` 与 CLJS 互通）；
+  `globalEnabledFeatures`（create-team 的 features 集）；`refreshTeamPermissions`
+  （`with-refreshed-team` 的移植）；`teamFormErrorMessage`。命令封装：
+  `get-team-members`、`update-team-member-role`、`delete-team-member`、`leave-team`、
+  `delete-team`、`create-team`、`update-team`、`update-team-photo`、
+  `get-team-invitations`、`create-team-invitations`、`update-team-invitation-role`、
+  `delete-team-invitation`、`get-team-invitation-token`、`get-webhooks`、
+  `create-webhook`、`update-webhook`、`delete-webhook`、`get-team-stats`。
+- 组件：`team-header.tsx`（页头 + 四个页签，按 flag 与权限裁剪）、`team-invite.tsx`
+  （invite-members 弹窗：邮箱 chips 输入（成员已在队的警示）、`:repeated-invitation`
+  横幅、五种 no-permission 弹窗；`useInviteMembers` 供页头/hero/空表复用）、
+  `team-form-modal.tsx`（新建/改名，F5.7 团队切换器复用）、
+  `leave-and-reassign-modal.tsx`（change-owner：挑选提升者）、
+  `webhook-modal.tsx`（新建/编辑）、`team-hero.tsx`（recent 页横幅）、
+  `member-avatar.tsx`（照片或生成头像）。
+- recent 页补口：挂 `TeamHero`，可见性 = 存储标志（mount 时读，SSR 安全）∧
+  可邀请 ∧ 非默认团队；关闭写存储；容器加 `pp-with-team-hero`。
+  `lib/dashboard-context.tsx` 增加团队切片（members/invitations/webhooks/stats
+  与 `refresh*`，切换团队时重置；`fetch-members` 的 `:not-found` 视为空列表）。
+- 样式：`styles/dashboard.css` 追加 team 块（+617 行，`team.scss`/`team_form.scss`/
+  `change_owner.scss` 与 `projects.scss` 的 team-hero 段移植）；容器覆盖统一用
+  双类（`.pp-dashboard-container.pp-dashboard-team-*`）压过 `settings.css` 的
+  同名单类，不依赖加载顺序；类名经差集审计清零（模板字符串拼出的假前缀除外）。
+- 与 CLJS 的有意偏差（代码注释均登记）：admin-console 组织分支
+  （`check-organization-members`、`all-organization-members-in-team`、组织名提示）、
+  members-cta 订阅横幅、settings 的组织块/订阅块 → F5.7；角色/操作下拉用
+  `DashboardMenu` 而非 ds dropdown（全站约定）；邀请成功的 attach 弹窗省略
+  （只留 tick 与 toast）；删邀请逐条 await 后统一刷新（CLJS 逐条刷新）；members
+  页的「转移后离开」把成员快照传给弹窗（modal host 在 dashboard provider 之外）；
+  team-hero 的 `dont-show-team-up-hero` 遥测省略；离开/删除失败走
+  `errors.generic`。
+- 测试：vitest 305 例（+43）：`lib/team.test.ts`——canSendInvitations、角色与菜单
+  谓词矩阵、`orderedMembers`、邀请排序与勾选、webhook 状态/末次投递/URL、hero
+  存储往返、命令封装参数、team-form 文案、`globalEnabledFeatures`、
+  `refreshTeamPermissions`。顺带清掉两处 lint 警告（`team-invite.tsx` 未用 import；
+  `canSendInvitations` 的 `profileId` 形参加注释说明契约）。
+- 验证：`pnpm translations`（470 词条，+117）、`pnpm typecheck`、`pnpm lint`
+  （无警告）、`pnpm test`（305 例）、`pnpm build`（30 路由全部预渲染；
+  `/dashboard/members` 4.19kB、`/dashboard/invitations` 3.77kB、
+  `/dashboard/webhooks` 3.57kB、`/dashboard/settings` 1.93kB、
+  `/dashboard/recent` 5.73kB）全部通过。
+- 浏览器端到端断言本轮未跑（本机没有 docker，后端栈起不来，同 7.11）：成员/
+  邀请/webhook/团队设置与 team-hero 的交互走查留待在可用环境补做。
+- 下一步：F5.6——templates 分区、binfile 导入/导出与 dashboard 快捷键注册表
+  （补齐 settings/shortcuts 占位）。
+- F5.5 收尾（同日补记）：CLJS 的团队管理入口是 organization-team-switch 关闭
+  控件右侧的「…」按钮（`aria-label` 即 "team management"），shell 把整个切换
+  控件推到 F5.7 时连入口一并搁置，四个团队页在页面上无路进入（用户报「团队管理
+  的入口在哪里」）。补口：新 `components/team-options-menu.tsx`
+  （`TeamOptionsButton`：侧边栏团队名旁「…」按钮 + `options-dropdown*` 的非
+  组织项——成员/邀请/webhook（flag）/设置/重命名/离开/删除；默认团队不显示，
+  同 CLJS `show-team-options-button?`）；新 `components/team-leave-flows.tsx`
+  （`useTeamLeaveFlows`：members 页的三种离开流程抽为共享 hook 两边复用；新增
+  `onDeleteTeam` 为 `check-and-delete-team` 移植——fetch 最新团队行判定
+  `permissions.is-owner`，通过弹删除确认、否则 no-permission 弹窗，组织分支留
+  F5.7）；members 页改引 hook（-128 行）；侧边栏头部改横向布局 + 新增
+  `.pp-sidebar-team-info`（+9 行 CSS）；补 4 个词条（`labels.team-management`、
+  `modals.delete-team-confirm.*`）。验证：lint/tsc 无警告、vitest 305 例、build
+  30 路由全过（构建前先停 dev、清 `.next`，后重启 dev 并审计资源 9/9 200）。
+  F5.7 剩：组织列、切换器控件本体与 leave-organization。
 
 ---
 

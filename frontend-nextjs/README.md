@@ -51,7 +51,10 @@ frontend-nextjs/
 │   ├── dashboard/deleted/ deleted-section*（F5.3 回收站：SSE 批量恢复/彻底删除 + 进度）
 │   ├── dashboard/fonts/   fonts-page*（F5.4 上传队列 + 已安装字体表）
 │   ├── dashboard/fonts/providers/ font-providers-page*（F5.4，与 CLJS 相同只有页头占位）
-│   ├── dashboard/{members,invitations,webhooks,settings}/ 占位（F5.5 逐片替换）
+│   ├── dashboard/members/ team-members-page*（F5.5 成员表：角色/移出/三种离开流程）
+│   ├── dashboard/invitations/ invitation-section*（F5.5 排序表 + 勾选 + 复制链接 + 重发）
+│   ├── dashboard/webhooks/ webhooks-page*（F5.5 列表/空态 hero + 新建/编辑弹窗）
+│   ├── dashboard/settings/ team-settings-page*（F5.5 团队照片/资料块/计数）
 │   ├── view/             占位（Viewer，后续集成 WASM 渲染）
 │   └── workspace/        占位（编辑器，最后迁移）
 ├── lib/
@@ -71,15 +74,16 @@ frontend-nextjs/
 │   ├── settings.ts       设置页无头逻辑（主题/语言、参数映射、错误分类、侧边栏清单）
 │   ├── dashboard.ts      dashboard 无头逻辑（team 解析、派生选择、timeAgo、回收站/共享库
 │   │                     派生、SSE 批量恢复与彻底删除、其余命令封装）
-│   ├── dashboard-context.tsx DashboardProvider（团队/项目/近期文件，对应 dd/initialize 链）
+│   ├── dashboard-context.tsx DashboardProvider（团队/项目/近期文件/字体/成员/邀请/webhook/统计，对应 dd/initialize 链）
 │   ├── progress.ts       批量操作进度状态机（对应 dcm/initialize-progress 一族）
 │   ├── fonts.ts          自定义字体无头逻辑（mtype/字重解析、上传队列合并、@font-face 注册、字体命令封装）
+│   ├── team.ts           团队管理无头逻辑（角色判定、邀请排序、webhook 摘要、hero 存储、团队命令封装）
 │   ├── uploads.ts        分块上传会话（create-upload-session → 双并发 upload-chunk）
 │   ├── check-updates.ts    check-for-updates 无头逻辑（版本比较、CHANGES.md 解析、highlights）
 │   ├── avatars.ts        canvas 首字母头像（仅客户端，对应 app.util.profile）
 │   ├── dom.ts            useDocumentTitle、triggerDownload（页面标题副作用与浏览器下载）
 │   └── types.ts          api-types 生成类型的桥接与别名
-├── components/           视图组件（form/tr/notifications/modal/theme/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification…）
+├── components/           视图组件（form/tr/notifications/modal/theme/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification/team-header/team-invite/team-hero/team-form-modal/team-options-menu/team-leave-flows/leave-and-reassign-modal/webhook-modal/member-avatar…）
 ├── styles/               tokens.css（ds 令牌）+ forms.css + auth.css + settings.css + dashboard.css
 ├── scripts/              extract-translations.mjs（词条抽取生成器）
 ├── public/               fonts/（worksans、vazirmatn、robotomono）+ images/
@@ -100,7 +104,7 @@ CLJS 用查询串路由（`?screen=<name>`）并保留一段 `#/...` 兼容期�
 | --- | --- | --- | --- |
 | auth | `/auth/login`、`/auth/register`、`/auth/recovery`、`/auth/verify-token` | `app.main.ui.auth` | 已迁移（SSO/OIDC 按钮除外） |
 | settings | `/settings/profile`、`/settings/password`、`/settings/notifications`、`/settings/options`、`/settings/feedback` | `app.main.ui.settings` | 已迁移（shortcuts 为占位，subscription/integrations 未建路由） |
-| dashboard | `/dashboard/recent`、`/dashboard/files`、`/dashboard/libraries`、`/dashboard/search`、`/dashboard/deleted`、`/dashboard/fonts`、`/dashboard/fonts/providers`，其余四路由占位 | `app.main.ui.dashboard` | F5 进行中（F5.1–F5.4 已迁移） |
+| dashboard | `/dashboard/recent`、`/dashboard/files`、`/dashboard/libraries`、`/dashboard/search`、`/dashboard/deleted`、`/dashboard/fonts`、`/dashboard/fonts/providers`、`/dashboard/members`、`/dashboard/invitations`、`/dashboard/webhooks`、`/dashboard/settings`（十一路由全部迁移） | `app.main.ui.dashboard` | F5 进行中（F5.1–F5.5 已迁移） |
 | viewer | `/view` | `app.main.ui.viewer` | 占位 |
 | workspace | `/workspace` | `app.main.ui.workspace` | 占位（最后迁移） |
 
@@ -223,11 +227,15 @@ WebSocket（`/ws/notifications`）不经 Next rewrite（rewrite 不转发 HTTP u
 （完整网格 `grid.cljs`：多选、右键/…菜单、重命名/复制/移动/删除、layout 切换、inline
 编辑、check-for-updates，与 `/dashboard/files`）、F5.3（`/dashboard/libraries` 摘要卡、
 `/dashboard/search` 三态占位、`/dashboard/deleted` 回收站：SSE 批量恢复/彻底删除 +
-进度组件 + 项目级菜单 + Recent/Deleted 页签）与 F5.4（`/dashboard/fonts`：上传队列 +
+进度组件 + 项目级菜单 + Recent/Deleted 页签）、F5.4（`/dashboard/fonts`：上传队列 +
 已安装字体表——TTF/OTF/WOFF 元数据解析与高度告警、分块上传、@font-face 注册表、
 重命名/删除/下载；`/dashboard/fonts/providers` 页头占位；补回 F5.3 推迟的 typography
-样本字体加载）已完成。缩略图暂只展示既有 media（media-worker 生成随 F9），binfile
-导入/导出与 templates 分区留到 F5.6，进度组件的 `:error` 分支同批。下一步 F5.5：
-团队管理（`/dashboard/settings`、`/dashboard/members`、`/dashboard/invitations`、
-`/dashboard/webhooks`，含 change-owner 与 team-form）。`@penpot/ui` 接线继续推迟
-（menu/modal 由外壳组件承担）。organization/team 切换留到 F5.7。
+样本字体加载）与 F5.5（团队管理：`/dashboard/members` 成员表与三种离开流程、
+`/dashboard/invitations` 排序表与重发/删除、`/dashboard/webhooks` 列表与新建/编辑、
+`/dashboard/settings` 团队照片与计数；recent 页 team-hero；change-owner 与 team-form
+弹窗；侧边栏团队名旁的「…」团队管理菜单——成员/邀请/webhook/设置/重命名/离开/
+删除）已完成。缩略图暂只展示既有 media（media-worker 生成随 F9），binfile 导入/导出
+与 templates 分区留到 F5.6，进度组件的 `:error` 分支同批。下一步 F5.6：templates
+分区、binfile 导入/导出与 dashboard 快捷键注册表（补齐 settings/shortcuts 占位）。
+`@penpot/ui` 接线继续推迟（menu/modal 由外壳组件承担）。organization/team 切换留到
+F5.7（其团队管理菜单已随 F5.5 收尾落地，余组织列与切换器）。

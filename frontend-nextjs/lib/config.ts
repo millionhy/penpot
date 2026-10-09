@@ -84,6 +84,7 @@ const defaultFlags: readonly string[] = [
   "custom-shortcuts",
   "token-lib-sync",
   "link-unfurl",
+  "export-link-later",
 ];
 
 // Port of flags/parse: "enable-x" adds x, "disable-x" removes x, and a bare
