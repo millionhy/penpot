@@ -55,7 +55,10 @@ describe("dashboardShortcuts", () => {
 });
 
 describe("dashboardShortcutSet", () => {
-  it("composes the three page sets", () => {
+  it("composes the page sets", () => {
+    expect(Object.keys(dashboardShortcutSet("base", false))).toEqual([
+      "toggle-theme",
+    ]);
     expect(Object.keys(dashboardShortcutSet("dashboard", false))).toEqual([
       "toggle-theme",
       "go-to-drafts",

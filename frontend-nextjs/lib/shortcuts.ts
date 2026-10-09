@@ -447,7 +447,6 @@ export interface ShortcutDefinitionShape {
   disabled?: boolean;
   originalCommand?: string | string[];
   showCommand?: string | string[];
-  [key: string]: unknown;
 }
 
 // apply-custom-overrides: replaces the command of every overridden key in one

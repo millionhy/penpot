@@ -88,13 +88,19 @@ export function dashboardShortcuts(macos: boolean): DashboardShortcuts {
   };
 }
 
-export type DashboardShortcutSetName = "dashboard" | "projects" | "drafts-libraries";
+export type DashboardShortcutSetName = "dashboard" | "projects" | "drafts-libraries" | "base";
 
-// The set compositions of sc/shortcuts-{dashboard,projects,drafts-libraries}:
-// the dashboard shell adds the sidebar navigation pair, projects adds search
-// and create-new-project, drafts/libraries adds search. Every set includes
-// toggle-theme.
+// The set compositions of the CLJS registry:
+// - sc/shortcuts-{dashboard,projects,drafts-libraries}: the dashboard shell
+//   adds the sidebar navigation pair, projects adds search and
+//   create-new-project, drafts/libraries adds search. Every set includes
+//   toggle-theme.
+// - "base" is sc/shortcuts itself (the dsc/shortcuts map, toggle-theme only):
+//   the settings layout mounts it for the :dashboard group
+//   (settings.cljs: `use-shortcuts ::dashboard sc/shortcuts :dashboard`) and
+//   the settings/shortcuts page renders it as the dashboard context tree.
 const setKeys: Record<DashboardShortcutSetName, readonly DashboardShortcutKey[]> = {
+  base: ["toggle-theme"],
   dashboard: ["toggle-theme", "go-to-drafts", "go-to-libs"],
   projects: [
     "toggle-theme",
