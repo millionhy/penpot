@@ -14,3 +14,14 @@ export function useDocumentTitle(title: string): void {
     document.title = title;
   }, [title]);
 }
+
+// dom/trigger-download in app.util.dom: an object URL on a synthetic anchor,
+// revoked right after the click.
+export function triggerDownload(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.download = filename;
+  anchor.href = url;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}

@@ -1,7 +1,7 @@
-import { RouteStub } from "@/components/route-stub";
+import { FontProvidersPage } from "@/components/fonts-page";
 
-// Rendered inside the F5.1 dashboard shell (layout.tsx); the page itself
-// migrates in F5.4.
+// Rendered inside the F5.1 dashboard shell (layout.tsx). Port of
+// font-providers-page* in app.main.ui.dashboard.fonts.
 export default function Page() {
-  return <RouteStub title="Dashboard / Font providers" cljs="app.main.ui.dashboard.fonts (font-providers-page*)" />;
+  return <FontProvidersPage />;
 }

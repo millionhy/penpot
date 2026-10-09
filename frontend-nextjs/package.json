@@ -22,6 +22,7 @@
   "dependencies": {
     "@penpot/api-types": "workspace:*",
     "next": "^15.5.0",
+    "opentype.js": "^2.0.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "transit-js": "^0.8.874"

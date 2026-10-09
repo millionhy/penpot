@@ -2,13 +2,14 @@
 
 // Dashboard state (F5.1). The shell has no Potok store, so the slice of
 // app.main.data.team and app.main.data.dashboard that the dashboard views read
-// lives in a React context: the current team, its projects and its recent files.
+// lives in a React context: the current team, its projects, its recent files
+// and its fonts.
 //
 // The CLJS chain this replaces is team-container* (initialize-team: fetch-teams,
 // then get-team only when the team is missing from the store, and write
 // ::current-team-id into the "penpot-global" storage) followed by dashboard*
 // (dd/initialize: fetch-projects, fetch-fonts and the websocket subscribe-team).
-// Fonts arrive with F5.4 and the websocket subscription with F8.
+// Fonts landed with F5.4; the websocket subscription arrives with F8.
 //
 // Query params come through the QueryParams Suspense boundary because Next.js
 // only allows useSearchParams inside one on a statically prerendered route.
@@ -48,6 +49,11 @@ import {
 import type { RouteName } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { tr } from "@/lib/i18n";
+import {
+  getFontVariants,
+  registerCustomFonts,
+  type FontVariantRow,
+} from "@/lib/fonts";
 
 export type DashboardStatus = "loading" | "ready" | "no-teams" | "error";
 
@@ -68,11 +74,16 @@ export interface DashboardState {
   projectId: string | null;
   recentFiles: FileSummary[];
   searchTerm: string | null;
+  // The get-font-variants rows of the current team, null while they load.
+  // Every fetch re-registers the custom families so the typography samples
+  // can resolve them (fonts-fetched in app.main.data.fonts).
+  fonts: FontVariantRow[] | null;
   section: RouteName | null;
   canEdit: boolean;
   navigate: (section: RouteName, params?: DashboardNavigateParams) => void;
   refreshProjects: () => Promise<void>;
   refreshRecentFiles: () => Promise<void>;
+  refreshFonts: () => Promise<void>;
   // Store-level :selected-files/:selected-project and the dashboard-local
   // inline-rename slot (:edition/:file-id), shared by every grid on the page
   // the way the Potok store shares them across sections (F5.2).
@@ -95,11 +106,13 @@ const defaultValue: DashboardState = {
   projectId: null,
   recentFiles: [],
   searchTerm: null,
+  fonts: null,
   section: null,
   canEdit: false,
   navigate: () => undefined,
   refreshProjects: async () => undefined,
   refreshRecentFiles: async () => undefined,
+  refreshFonts: async () => undefined,
   selection: emptyFileSelection(),
   toggleFileSelect: () => undefined,
   clearSelection: () => undefined,
@@ -148,6 +161,7 @@ function DashboardProviderInner({
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [projectRows, setProjectRows] = useState<Project[] | null>(null);
   const [recentFiles, setRecentFiles] = useState<FileSummary[] | null>(null);
+  const [fontRows, setFontRows] = useState<FontVariantRow[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [selection, setSelection] = useState<FileSelection>(emptyFileSelection);
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
@@ -245,17 +259,35 @@ function DashboardProviderInner({
     }
   }, [teamId]);
 
+  // dm/fetch-fonts followed by fonts-fetched: store the rows and let the
+  // custom-font registry pick them up (the effect fonts-fetched runs).
+  const loadFonts = useCallback(async () => {
+    if (teamId === null) return;
+    try {
+      const rows = await getFontVariants(teamId);
+      const list = Array.isArray(rows) ? rows : [];
+      setFontRows(list);
+      registerCustomFonts(list);
+    } catch {
+      // The CLJS store leaves :fonts nil on a failed fetch, so its page keeps
+      // spinning; the shell settles on the empty state instead.
+      setFontRows([]);
+    }
+  }, [teamId]);
+
   useEffect(() => {
     if (teamId === null) return;
     setProjectRows(null);
     setRecentFiles(null);
+    setFontRows(null);
     // dd/finalize drops the team slice on a team switch; the selection and
     // the inline rename belong to it.
     setSelection(emptyFileSelection());
     setEditingFileId(null);
     void loadProjects();
     void loadRecentFiles();
-  }, [teamId, loadProjects, loadRecentFiles]);
+    void loadFonts();
+  }, [teamId, loadProjects, loadRecentFiles, loadFonts]);
 
   const navigate = useCallback(
     (next: RouteName, navParams: DashboardNavigateParams = {}) => {
@@ -301,11 +333,13 @@ function DashboardProviderInner({
       projectId: queryProjectId,
       recentFiles: recentFiles ?? [],
       searchTerm: querySearchTerm,
+      fonts: fontRows,
       section: section === null ? null : effectiveSection(section, team),
       canEdit: teamCanEdit(team),
       navigate,
       refreshProjects: loadProjects,
       refreshRecentFiles: loadRecentFiles,
+      refreshFonts: loadFonts,
       selection,
       toggleFileSelect,
       clearSelection,
@@ -318,6 +352,7 @@ function DashboardProviderInner({
     teamId,
     projectRows,
     recentFiles,
+    fontRows,
     queryProjectId,
     querySearchTerm,
     section,
@@ -325,6 +360,7 @@ function DashboardProviderInner({
     navigate,
     loadProjects,
     loadRecentFiles,
+    loadFonts,
     selection,
     toggleFileSelect,
     clearSelection,

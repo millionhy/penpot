@@ -50,6 +50,22 @@ describe("richSegments", () => {
     expect(richSegments("no links here")).toEqual([{ text: "no links here" }]);
   });
 
+  it("turns **text** into a bold segment", () => {
+    expect(richSegments("a **b** c")).toEqual([
+      { text: "a " },
+      { text: "b", bold: true },
+      { text: " c" },
+    ]);
+  });
+
+  it("handles a bold run next to a link", () => {
+    expect(richSegments("**single family** and [terms](https://tos)")).toEqual([
+      { text: "single family", bold: true },
+      { text: " and " },
+      { text: "terms", href: "https://tos" },
+    ]);
+  });
+
   it("resolves the terms agreement into two links", () => {
     const segments = richSegments(
       tr("auth.terms-and-privacy-agreement", "https://tos", "https://privacy"),

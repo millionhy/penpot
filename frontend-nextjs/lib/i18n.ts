@@ -44,24 +44,30 @@ export function tr(key: string, ...args: unknown[]): string {
   return format(entry, args);
 }
 
-// The CLJS catalog writes inline links as [label](url) and renders them with
-// i18n/tr-html* through dangerouslySetInnerHTML. The shell parses the same
-// syntax into real anchors instead, so no translation string is ever injected
-// as markup. Everything outside a link becomes a text segment.
-const linkRe = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+// The CLJS catalog writes inline links as [label](url) and bold runs as
+// **text** (the #{markdown} entries), rendered by i18n/tr-html* through
+// dangerouslySetInnerHTML. The shell parses the same syntax into real anchors
+// and <strong> runs instead, so no translation string is ever injected as
+// markup. Everything outside a link or a bold run becomes a text segment.
+const richRe = /\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*/g;
 
 export interface RichSegment {
   text: string;
   href?: string;
+  bold?: boolean;
 }
 
 export function richSegments(content: string): RichSegment[] {
   const segments: RichSegment[] = [];
   let last = 0;
-  for (const match of content.matchAll(linkRe)) {
+  for (const match of content.matchAll(richRe)) {
     const start = match.index ?? 0;
     if (start > last) segments.push({ text: content.slice(last, start) });
-    segments.push({ text: match[1], href: match[2] });
+    if (match[3] !== undefined) {
+      segments.push({ text: match[3], bold: true });
+    } else {
+      segments.push({ text: match[1], href: match[2] });
+    }
     last = start + match[0].length;
   }
   if (last < content.length) segments.push({ text: content.slice(last) });

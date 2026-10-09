@@ -307,6 +307,19 @@ export async function cmd<T = unknown>(
 // upload-chunk) POST a FormData body instead of transit, but the response is
 // still transit-encoded. The content-type header must be left to the browser so
 // the multipart boundary is correct.
+//
+// A value that is a [Blob, filename] tuple appends as a named file part,
+// which is how upload-chunk sends its chunks ((list chunk "chunk-N") in
+// app.main.data.uploads).
+function isBlobFileTuple(value: unknown): value is [Blob, string] {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    value[0] instanceof Blob &&
+    typeof value[1] === "string"
+  );
+}
+
 export async function cmdUpload<T = unknown>(
   id: string,
   params: Record<string, unknown>,
@@ -317,7 +330,8 @@ export async function cmdUpload<T = unknown>(
   for (const key of Object.keys(params)) {
     const value = params[key];
     if (value === undefined || value === null) continue;
-    if (typeof value === "string" || value instanceof Blob) body.append(key, value);
+    if (isBlobFileTuple(value)) body.append(key, value[0], value[1]);
+    else if (typeof value === "string" || value instanceof Blob) body.append(key, value);
     else body.append(key, String(value));
   }
 

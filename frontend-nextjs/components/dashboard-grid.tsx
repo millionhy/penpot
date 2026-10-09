@@ -19,8 +19,12 @@
 //   import.cljs; drops are swallowed to keep the browser from navigating.
 // - The component samples of grid-item-library* render through
 //   render/component-svg, which needs the F9 renderer; the card draws the same
-//   icon box empty and keeps the component name. Loading the custom fonts
-//   behind the typography samples (fonts/ensure-loaded!) arrives with F5.4.
+//   icon box empty and keeps the component name.
+// - Loading the custom fonts behind the typography samples re-runs when the
+//   dashboard font slice changes (fonts/ensure-loaded! over the rows
+//   lib/dashboard-context.tsx registers), so the samples load even when the
+//   shared files resolved before the fonts; the CLJS with-effect only runs
+//   on the file.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
@@ -46,6 +50,7 @@ import {
   type SharedFile,
 } from "@/lib/dashboard";
 import { useDashboard } from "@/lib/dashboard-context";
+import { ensureLoaded } from "@/lib/fonts";
 import { config } from "@/lib/config";
 import { tr } from "@/lib/i18n";
 import { useNotifications } from "@/components/notifications";
@@ -163,6 +168,7 @@ function LibraryMoreItem() {
 }
 
 export function LibraryCard({ file, canRestore }: { file: SharedFile; canRestore?: boolean }) {
+  const { fonts } = useDashboard();
   const summary = file["library-summary"];
   const components = summary?.components;
   const colors = summary?.colors;
@@ -175,6 +181,15 @@ export function LibraryCard({ file, canRestore }: { file: SharedFile; canRestore
   const colorSample = colors?.sample ?? [];
   const typographySample = typographies?.sample ?? [];
   const empty = componentCount === 0 && colorCount === 0 && typographyCount === 0;
+
+  // grid-item-library*: load the custom fonts its typography samples render
+  // with (fonts/ensure-loaded!, a no-op for ids outside the custom registry).
+  useEffect(() => {
+    const sample = file["library-summary"]?.typographies?.sample ?? [];
+    for (const typography of sample) {
+      if (typography["font-id"] !== undefined) ensureLoaded(typography["font-id"]);
+    }
+  }, [file, fonts]);
 
   return (
     <div
