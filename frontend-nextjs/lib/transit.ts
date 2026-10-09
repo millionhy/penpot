@@ -98,19 +98,27 @@ export function encodeTransit(value: unknown): string {
   return writer.write(value);
 }
 
-// Encode a plain params object as a transit map whose keys are keywords, which
-// is what the Clojure RPC handlers expect (http/transit-data in repo.cljs).
+// A transit map with keyword keys, recursively composable: for command params
+// whose backend schema is [:map-of :keyword ...] (e.g. the nested
+// :custom-shortcuts prop) a plain JS object would arrive with string keys and
+// fail validation, so the nested maps are built with this too.
 // NOTE: transit-js's transit.map() takes NO variadic key/value arguments; the
 // map must be filled with .set(). Values may be transit scalars (see uuid())
 // when a command expects e.g. a uuid instead of a plain string.
-export function encodeParams(params: Record<string, unknown>): string {
+export function keywordMap(entries: Record<string, unknown>): unknown {
   const map = transit.map();
-  for (const key of Object.keys(params)) {
-    const value = params[key];
+  for (const key of Object.keys(entries)) {
+    const value = entries[key];
     if (value === undefined) continue;
     map.set(transit.keyword(key), value);
   }
-  return writer.write(map);
+  return map;
+}
+
+// Encode a plain params object as a transit map whose keys are keywords, which
+// is what the Clojure RPC handlers expect (http/transit-data in repo.cljs).
+export function encodeParams(params: Record<string, unknown>): string {
+  return writer.write(keywordMap(params));
 }
 
 export function keyword(name: string): unknown {
