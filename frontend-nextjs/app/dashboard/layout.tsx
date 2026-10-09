@@ -8,9 +8,10 @@
 // recent files live in DashboardProvider (lib/dashboard-context.tsx);
 // modal-container* is already mounted in the root layout (F4).
 //
-// Not here yet: the dashboard shortcuts registry
-// (app.main.data.dashboard.shortcuts) arrives with F5.6, together with the
-// onboarding and release-notes modals gated by the :onboarding flag.
+// The dashboard shortcuts registry (app.main.data.dashboard.shortcuts, F5.6)
+// mounts through DashboardShortcutsProvider inside DashboardProvider, which
+// owns the navigate and default-project actions the matcher needs. Not here
+// yet: the onboarding and release-notes modals gated by the :onboarding flag.
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -19,6 +20,7 @@ import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import { ProgressProvider } from "@/components/progress-notification";
 import { singleSelectedFileId, workspaceHref } from "@/lib/dashboard";
 import { DashboardProvider, useDashboard } from "@/lib/dashboard-context";
+import { DashboardShortcutsProvider } from "@/lib/dashboard-shortcuts-context";
 
 function DashboardFrame({ children }: { children: React.ReactNode }) {
   const { teamId, selection, clearSelection } = useDashboard();
@@ -62,7 +64,9 @@ export default function DashboardLayout({
   return (
     <AuthGuard>
       <DashboardProvider>
-        <DashboardFrame>{children}</DashboardFrame>
+        <DashboardShortcutsProvider>
+          <DashboardFrame>{children}</DashboardFrame>
+        </DashboardShortcutsProvider>
       </DashboardProvider>
     </AuthGuard>
   );

@@ -8,15 +8,18 @@
 // projects-section* renders above the rows for a profile that can edit.
 //
 // Deviations from the CLJS original, documented:
-// - The team-hero (invite-members banner) arrived with F5.5; the dashboard
-//   shortcuts registry still waits for F5.6. The dismissed flag lives in the
-//   same penpot-global key as the CLJS island, but the shell reads it on
-//   mount instead of during render (same trade-off as useDashboardLayout)
-//   and drops the dont-show-team-up-hero analytics event (the shell has no
-//   analytics seam yet).
+// - The team-hero (invite-members banner) arrived with F5.5. The dismissed
+//   flag lives in the same penpot-global key as the CLJS island, but the
+//   shell reads it on mount instead of during render (same trade-off as
+//   useDashboardLayout) and drops the dont-show-team-up-hero analytics
+//   event (the shell has no analytics seam yet).
 // - create-project enters inline rename through the page-level
 //   editingProjectId (the CLJS dashboard-local :project-for-edit), but the
 //   generated unique name stays until the user edits it, same as F5.1.
+// - The "+" shortcut (dd/create-element) enters through
+//   registerCreateElement: the page registers its onCreateProject while it
+//   mounts and edit rights hold, so the matcher of F5.6 runs the same
+//   handler the header button runs.
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -54,6 +57,7 @@ import {
   type Team,
 } from "@/lib/dashboard";
 import { useDashboard } from "@/lib/dashboard-context";
+import { useDashboardShortcuts } from "@/lib/dashboard-shortcuts-context";
 import { useDocumentTitle } from "@/lib/dom";
 import { tr } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
@@ -339,6 +343,8 @@ export default function DashboardRecentPage() {
   } = useDashboard();
   const { profile } = useSession();
   const notifications = useNotifications();
+  // The "+" shortcut handler owner (F5.6); the page below registers it.
+  const { registerCreateElement } = useDashboardShortcuts();
   // check-and-invite-members with the :hero origin, for the banner.
   const { openInvite } = useInviteMembers(team, profile?.id, "hero");
   const [busy, setBusy] = useState(false);
@@ -397,7 +403,7 @@ export default function DashboardRecentPage() {
 
   // dd/create-project: create the row and open inline rename on it (the CLJS
   // event stores the new id in dashboard-local :project-for-edit).
-  const onCreateProject = async () => {
+  const onCreateProject = useCallback(async () => {
     if (teamId === null) return;
     setBusy(true);
     try {
@@ -414,7 +420,18 @@ export default function DashboardRecentPage() {
     } finally {
       setBusy(false);
     }
-  };
+  }, [teamId, projects, refreshProjects, notifications]);
+
+  // dd/create-element: while the page mounts (and edit rights hold) the "+"
+  // matcher runs this same handler. The callback closes over the project
+  // list, so the registration follows its identity changes.
+  useEffect(() => {
+    if (!canEdit) return;
+    registerCreateElement(() => {
+      void onCreateProject();
+    });
+    return () => registerCreateElement(null);
+  }, [canEdit, registerCreateElement, onCreateProject]);
 
   return (
     <>

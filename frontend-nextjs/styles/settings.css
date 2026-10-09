@@ -516,3 +516,438 @@
   display: flex;
   gap: var(--sp-s);
 }
+
+/* --- shortcuts page and views (settings/shortcuts.scss plus
+   ui/shortcuts.scss, F5.6) --- */
+
+.pp-shortcuts-description {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  margin: 0;
+}
+
+.pp-shortcuts-tabs {
+  border-bottom: var(--b-1) solid var(--color-background-quaternary);
+  display: flex;
+  gap: var(--sp-l);
+}
+
+.pp-shortcuts-tab {
+  background: none;
+  border: var(--b-1) solid transparent;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  font-size: var(--fs-14);
+  padding: var(--sp-s);
+}
+
+.pp-shortcuts-tab.selected {
+  border-bottom: var(--b-1) solid var(--color-foreground-primary);
+  color: var(--color-foreground-primary);
+}
+
+.pp-shortcuts-section {
+  margin-block-end: var(--sp-l);
+}
+
+.pp-shortcuts-search-section {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+  padding-block-start: var(--sp-s);
+}
+
+.pp-shortcuts-search-input {
+  background: transparent;
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  block-size: var(--sz-40);
+  color: var(--color-foreground-primary);
+  flex: 1;
+  font-size: var(--fs-14);
+  min-inline-size: 0;
+  padding: var(--sp-xs) var(--sp-m);
+}
+
+.pp-shortcuts-search-input::placeholder {
+  color: var(--color-foreground-secondary);
+}
+
+.pp-shortcuts-search-input:focus,
+.pp-shortcuts-search-input:focus-visible {
+  border-color: var(--color-accent-primary);
+  outline: none;
+}
+
+.pp-shortcuts-search-clear {
+  background: none;
+  border: 0;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  font-size: var(--fs-14);
+}
+
+.pp-shortcuts-list {
+  color: var(--color-foreground-secondary);
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs-12);
+  padding-block: var(--sp-m);
+}
+
+.pp-shortcut-section {
+  margin-block-end: var(--sp-l);
+}
+
+.pp-shortcut-section-header,
+.pp-shortcut-subsection-header {
+  margin: 0;
+  padding: 0;
+}
+
+.pp-shortcut-section-title,
+.pp-shortcut-subsection-title {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-14);
+  font-weight: var(--fw-medium);
+  gap: var(--sp-xs);
+  inline-size: 100%;
+  padding: var(--sp-s) 0;
+}
+
+.pp-shortcut-section-title:hover,
+.pp-shortcut-subsection-title:hover {
+  color: var(--color-foreground-primary);
+}
+
+.pp-shortcut-subsection-title {
+  block-size: var(--sz-32);
+  font-weight: var(--fw-regular);
+  padding-inline-start: var(--sp-m);
+}
+
+.pp-shortcut-subsection-menu,
+.pp-shortcut-sub-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pp-shortcut-subsection-menu {
+  margin-block-end: var(--sp-s);
+}
+
+.pp-shortcut-sub-menu {
+  margin-block-end: var(--sp-s);
+}
+
+.pp-shortcuts-empty-state {
+  align-items: center;
+  color: var(--color-foreground-secondary);
+  display: flex;
+  font-size: var(--fs-14);
+  justify-content: center;
+  padding-block: var(--sp-xxxl);
+}
+
+.pp-shortcuts-footer {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-s);
+  justify-content: space-between;
+  margin-block-start: var(--sp-l);
+  padding-block: var(--sp-m) var(--sp-s);
+}
+
+.pp-shortcuts-info {
+  align-items: center;
+  color: var(--color-foreground-secondary);
+  display: flex;
+  font-size: var(--fs-12);
+  gap: var(--sp-m);
+}
+
+.pp-shortcuts-info-wrapper {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xxs);
+}
+
+.pp-shortcuts-customized-dot {
+  background-color: var(--color-accent-info);
+  block-size: 0.25rem;
+  border-radius: 50%;
+  inline-size: 0.25rem;
+}
+
+.pp-shortcuts-detach-icon {
+  color: var(--color-foreground-secondary);
+}
+
+.pp-shortcuts-text {
+  margin: 0;
+}
+
+.pp-shortcuts-footer-actions {
+  display: flex;
+  gap: var(--sp-s);
+}
+
+/* rows (ui/shortcuts.scss .shortcuts-name and friends) */
+
+.pp-shortcut-row,
+.pp-shortcut-row-editable {
+  align-items: center;
+  background-color: var(--color-background-tertiary);
+  border-radius: var(--br-8);
+  display: flex;
+  justify-content: space-between;
+  margin-block-end: var(--sp-s);
+  min-block-size: var(--sz-32);
+  padding: var(--sp-xs);
+}
+
+.pp-shortcut-row-editable:hover {
+  background-color: var(--color-background-quaternary);
+}
+
+.pp-shortcut-row-editing {
+  background-color: var(--color-background-quaternary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+}
+
+.pp-shortcut-row-editing:focus-within {
+  outline: var(--b-1) solid var(--color-accent-primary);
+}
+
+.pp-shortcut-button {
+  align-items: center;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  inline-size: 100%;
+  justify-content: space-between;
+  min-block-size: var(--sz-32);
+  padding: var(--sp-xs);
+}
+
+.pp-shortcut-button:disabled {
+  cursor: default;
+}
+
+.pp-shortcut-button-editing {
+  gap: var(--sp-s);
+}
+
+.pp-shortcut-command-name {
+  color: var(--color-foreground-primary);
+  flex: 1;
+  font-size: var(--fs-12);
+  margin-inline-start: var(--sp-xxs);
+  min-inline-size: 0;
+  text-align: start;
+}
+
+.pp-shortcut-not-customizable {
+  color: var(--color-foreground-secondary);
+  padding-inline-start: var(--sp-xs);
+}
+
+.pp-shortcut-actions {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xxs);
+}
+
+.pp-shortcut-option-text {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+}
+
+.pp-shortcut-detach-icon {
+  color: var(--color-foreground-secondary);
+}
+
+/* keycaps (ui/shortcuts.scss .keys .key and its variants) */
+
+.pp-shortcut-keys {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xxs);
+}
+
+.pp-shortcut-key {
+  align-items: center;
+  background-color: var(--color-background-primary);
+  border-radius: 0.25rem;
+  color: var(--color-foreground-primary);
+  display: flex;
+  font-size: var(--fs-12);
+  justify-content: center;
+  min-block-size: 1.25rem;
+  padding: 0.125rem var(--sp-xs);
+  text-transform: capitalize;
+}
+
+.pp-shortcut-key-customized {
+  background-color: var(--color-background-info);
+  color: var(--color-foreground-primary);
+}
+
+.pp-shortcut-key-conflict {
+  background-color: var(--color-background-error);
+  color: var(--color-foreground-error);
+}
+
+.pp-shortcut-key-light {
+  background-color: var(--color-background-tertiary);
+  color: var(--color-foreground-secondary);
+}
+
+.pp-shortcut-key-default {
+  background-color: var(--color-background-tertiary);
+  color: var(--color-foreground-secondary);
+}
+
+.pp-shortcut-space {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  margin: 0 var(--sp-xxs);
+}
+
+/* recording area (ui/shortcuts.scss .shortcut-editing and the messages) */
+
+.pp-shortcut-editing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+  outline: none;
+}
+
+.pp-shortcut-recording-area {
+  align-items: center;
+  background-color: var(--color-background-tertiary);
+  border: var(--b-1) dashed var(--color-foreground-secondary);
+  border-radius: var(--br-8);
+  display: flex;
+  inline-size: 100%;
+  justify-content: center;
+  padding: var(--sp-l);
+}
+
+.pp-shortcut-placeholder {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+}
+
+.pp-shortcut-recorded-keys {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xxs);
+  justify-content: center;
+}
+
+.pp-shortcut-recording-ellipsis {
+  color: var(--color-foreground-secondary);
+}
+
+.pp-shortcut-msg-info,
+.pp-shortcut-msg-warning,
+.pp-shortcut-msg-success {
+  border-radius: var(--br-8);
+  font-size: var(--fs-12);
+  padding: var(--sp-xs) var(--sp-s);
+}
+
+.pp-shortcut-msg-info {
+  background-color: var(--color-background-info);
+  color: var(--color-foreground-primary);
+}
+
+.pp-shortcut-msg-warning {
+  background-color: var(--color-background-error);
+  color: var(--color-foreground-error);
+}
+
+.pp-shortcut-msg-success {
+  background-color: var(--color-background-success);
+  color: var(--color-foreground-primary);
+}
+
+.pp-shortcut-edit-buttons {
+  align-items: center;
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+}
+
+.pp-shortcut-confirmation-buttons {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-s);
+  justify-content: flex-end;
+}
+
+/* restore and import diff tables (settings/shortcuts.scss .shortcuts-table) */
+
+.pp-shortcuts-table {
+  border-collapse: collapse;
+  inline-size: 100%;
+  table-layout: fixed;
+}
+
+.pp-shortcuts-list-header {
+  border-block-end: var(--b-1) solid var(--color-foreground-secondary);
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  text-align: start;
+}
+
+.pp-shortcut-header-name,
+.pp-shortcut-header-command {
+  font-weight: var(--fw-regular);
+  padding-block-end: var(--sp-s);
+  text-align: start;
+}
+
+.pp-shortcuts-list-body {
+  font-size: var(--fs-14);
+}
+
+.pp-shortcuts-list-item {
+  color: var(--color-foreground-primary);
+}
+
+.pp-shortcuts-list-item td {
+  padding-block: var(--sp-xs);
+  vertical-align: top;
+}
+
+.pp-shortcut-command {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-s);
+  text-align: start;
+}
+
+.pp-shortcut-context-label {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  padding-block: var(--sp-s) var(--sp-xs);
+  text-transform: uppercase;
+}
+
+.pp-shortcuts-no-changes {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+}
