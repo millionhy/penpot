@@ -6,13 +6,13 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search 完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | `frontend-nextjs` 完成对应功能迁移前，不改 `backend/`、不实现 `backend-rust` |
-| 最后更新 | 2026-10-03 |
+| 最后更新 | 2026-10-09 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -38,7 +38,7 @@
 | F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。F4 的 modal 需求由外壳自带的 `components/modal.tsx`（ModalProvider/ConfirmDialog）满足，profile 驱动的主题切换也已接上令牌；`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线推到 F5 dashboard（首个需要 menu/dropdown 的路由组） |
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 为占位）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes/shortcuts 未做（见 7.6） |
-| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.3 完成），见下与第 4 节 |
+| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.4 完成），见下与第 4 节 |
 | F6 | viewer（`/view`） | ⬜ | 集成 `render-wasm`（已是 Rust→WASM，可直接复用） |
 | F7 | 插件运行时 | ⬜ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`） |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
@@ -240,7 +240,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     `/dashboard/deleted`（SSE 批量恢复/彻底删除 + 进度组件 + 项目级菜单 + 页签）、
     `/dashboard/search`（三态占位 + 只读结果网格）；随附 SSE 传输层
     （`parseSseBlocks`/`drainSse`/`cmdSse`）与 `lib/progress.ts` 进度状态机。
-  - **F5.4** `/dashboard/fonts`、`/dashboard/fonts/providers`。
+  - **F5.4 fonts（完成）**：`/dashboard/fonts`（上传队列 + 已安装字体表：TTF/OTF/WOFF 元数据解析与高度告警、10 MiB 分块上传、字体族/字重合组、重命名/删除/下载、搜索）、`/dashboard/fonts/providers`（页头占位，同 CLJS）；随附分块上传层（`lib/uploads.ts`）与自定义字体 @font-face 注册表；补回 F5.3 推迟的 typography 样本字体加载。
   - **F5.5 团队管理**：`/dashboard/settings`、`/dashboard/members`、`/dashboard/invitations`、
     `/dashboard/webhooks`（加 change-owner、team-form）。
   - **F5.6** templates 分区、binfile 导入、dashboard 快捷键注册表（补齐 settings/shortcuts）。
@@ -280,7 +280,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.3 完成 → F6..F9)
+阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.4 完成 → F6..F9)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -676,6 +676,63 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   825B、`/dashboard/search` 1.01kB）、`pnpm test`（219 例）全部通过。
 - 下一步：F5.4——`/dashboard/fonts` 与 `/dashboard/fonts/providers`（自定义字体上传、
   字体族与变体、`team-font-variant` 资产），顺带补回 F5.3 推迟的 typography 样本字体加载。
+
+### 7.11 本轮（2026-10-09，第十批：F5.4 自定义字体）
+
+- F5.4 完成：`/dashboard/fonts` 从 `RouteStub` 升级为完整 `fonts-page*`（上传队列 +
+  已安装字体表）；`/dashboard/fonts/providers` 与 CLJS 的 `font-providers-page*` 一致，
+  只有页头加占位说明。
+- 无头逻辑（`lib/fonts.ts`，652 行，`app.main.data.fonts` 的移植）：mtype 由前 4 字节
+  签名判定（OTTO/0x00010000/wOFF/wOF2 → font/otf|ttf|woff|woff2）；TTF/OTF/WOFF 经
+  `opentype.js` 读 preferredFamily/preferredSubfamily 与 hhea/os2 垂直度量（两表不一致
+  即 `height-warning`），WOFF2 不可解析回退文件名去 token（`familyFromFilename` +
+  `parseFontWeight`/`parseFontStyle`）；`validFontFamily` 拦非法族名。上传队列：
+  `processUpload`（单趟读取 + 逐文件错误收集）→ `joinUploadedFonts`（同
+  family/weight/style 合并 mtype）→ `mergeAndGroupFonts`（与已安装字体同族时复用其
+  font-id）→ `uploadFontVariant`（10 MiB 分块、2 并发、`create-font-variant`）。
+  @font-face 注册表：`registerCustomFonts`/`customFontCss`/`ensureLoaded`
+  （`custom-<font-id>` 键、`font-display: block`、媒体 URI 经 `resolveMediaUri`，
+  注入单个 `<style id>` 并按 loadedFontIds 缓存）；命令封装 `get-font-variants`、
+  `update-font`、`delete-font`、`delete-font-variant`、`download-font`、
+  `download-font-family`。
+- 分块上传层（`lib/uploads.ts`，`app.main.data.uploads` 的移植）：`chunkRanges` 切片表 +
+  `uploadBlobChunked`（`create-upload-session` → 双并发 `upload-chunk` → 返回 session
+  id，第三步留给调用方）；`cmdUpload` 增加 `[Blob, filename]` 元组支持（对应 CLJS 的
+  `(list chunk "chunk-N")`），分片以命名文件部件发送。
+- 视图：`components/fonts-page.tsx`（794 行）——上传队列（文件选择、family 输入
+  校验、逐行上传与 upload-all 串行、dismiss、最短 2000ms 的 “Uploading…”、bad-font
+  toast 单/复数分支）与已安装字体表（按 family 分组、不区分大小写的搜索、inline
+  重命名、删除字体/变体的 ConfirmDialog、下载单变体/整族）；`lib/dashboard-context.tsx`
+  增加 fonts 切片（`fonts`/`refreshFonts`；`loadFonts` = `get-font-variants` +
+  `registerCustomFonts`，切换团队时重置）；`components/dashboard-grid.tsx` 的 LibraryCard
+  补 typography 样本字体加载（F5.3 推迟项；deps `[file, fonts]`，字体到达后重跑）；
+  `lib/dom.ts` 增加 `triggerDownload`；`components/tr.tsx` + `lib/i18n.ts` 支持
+  `**bold**` 段（hero/warning 文案用）；新增依赖 `opentype.js@^2.0.0` 与
+  `types/opentype.js.d.ts` 垫片。
+- 样式：`styles/dashboard.css` 追加 fonts 块（+340 行，fonts.scss 的移植，全部作用域在
+  `.pp-dashboard-fonts` 下）。
+- 修掉三个上传错误路径缺陷（CLJS 原样存在，代码注释均登记）：① 单行上传失败不清理
+  `:uploading`，按钮永久卡在 “Uploading…”——外壳失败后清 uploading 且保留行可重试；
+  ② `on-upload-all` 失败的 `[id nil]` 分支 dissoc 掉行，用户无法重试——外壳保留行；
+  ③ `disable-upload-all?` 的 `(some bad-font-family-tmp? fonts)` 遍历 MapEntry，
+  `contains? :font-family-tmp` 恒 false，按钮从不禁用——外壳改为检查 values。
+- 与 CLJS 的有意偏差（代码注释均登记）：`update-font`/`delete-font`/
+  `delete-font-variant` 成功后 refetch，不用乐观更新；上传成功后也 refetch
+  （CLJS `add-font` 只 patch store，不重注册 @font-face 注册表）；bad-font toast 在整批
+  解析完成后发（CLJS 从第二个订阅里边读边发）；文件选择器是隐藏 `<input type="file">`
+  （同 CLJS file-uploader 的等价物），搜索框受控。
+- 测试：vitest 262 例（+43）：`lib/fonts.test.ts` 33 例（mtype 四签名、weight/style/
+  family 解析与文件名回退、同族合并/分组/重命名、processUpload 错误与高度告警、
+  @font-face 模板、ensureLoaded no-op）、`lib/uploads.test.ts` 6 例（切片数学、fetch stub
+  的会话链、命名分片与截尾、空 blob 跳过）、`lib/rpc.test.ts` +2（cmdUpload 元组/裸
+  Blob/丢弃 undefined）、`lib/i18n.test.ts` +2（`**bold**` 段）。
+- 验证：`pnpm translations`（353 词条，+30）、`pnpm typecheck`、`pnpm lint`（无警告）、
+  `pnpm test`（262 例）、`pnpm build`（30 路由全部预渲染；`/dashboard/fonts` 与
+  `/dashboard/fonts/providers` 各 182 B、First Load 216 kB）全部通过。
+- 浏览器端到端断言本轮未跑（本机没有 docker，后端栈起不来）：字体上传/重命名/删除/
+  下载与 @font-face 注入的交互走查留待在可用环境补做。
+- 下一步：F5.5 团队管理——`/dashboard/settings`、`/dashboard/members`、
+  `/dashboard/invitations`、`/dashboard/webhooks`（含 change-owner 与 team-form）。
 
 ---
 
