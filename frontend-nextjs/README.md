@@ -110,7 +110,7 @@ CLJS 用查询串路由（`?screen=<name>`）并保留一段 `#/...` 兼容期�
 | 路由组 | 路径示例 | CLJS 参考 | 状态 |
 | --- | --- | --- | --- |
 | auth | `/auth/login`、`/auth/register`、`/auth/recovery`、`/auth/verify-token` | `app.main.ui.auth` | 已迁移（SSO/OIDC 按钮除外） |
-| settings | `/settings/profile`、`/settings/password`、`/settings/notifications`、`/settings/options`、`/settings/feedback`、`/settings/shortcuts` | `app.main.ui.settings` | 已迁移（F5.6 补齐 shortcuts；subscription/integrations 未建路由） |
+| settings | `/settings/profile`、`/settings/password`、`/settings/notifications`、`/settings/options`、`/settings/feedback`、`/settings/shortcuts`、`/settings/subscriptions` | `app.main.ui.settings` | 已迁移（F5.6 补齐 shortcuts，F5.7 补齐 subscription；integrations 未建路由） |
 | dashboard | `/dashboard/recent`、`/dashboard/files`、`/dashboard/libraries`、`/dashboard/search`、`/dashboard/deleted`、`/dashboard/fonts`、`/dashboard/fonts/providers`、`/dashboard/members`、`/dashboard/invitations`、`/dashboard/webhooks`、`/dashboard/settings`（十一路由全部迁移） | `app.main.ui.dashboard` | F5 进行中（F5.1–F5.6 已迁移） |
 | viewer | `/view` | `app.main.ui.viewer` | 占位 |
 | workspace | `/workspace` | `app.main.ui.workspace` | 占位（最后迁移） |
@@ -226,6 +226,7 @@ WebSocket（`/ws/notifications`）不经 Next rewrite（rewrite 不转发 HTTP u
 | `NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI` | 空 | 注册页条款链接，对应 `cf/terms-of-service-uri` |
 | `NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI` | 空 | 注册页隐私链接，对应 `cf/privacy-policy-uri` |
 | `NEXT_PUBLIC_PENPOT_VERSION` | 空（隐藏版本行与 check-for-updates 入口） | dashboard profile 菜单「关于 Penpot」显示的版本号，对应 `(:base cf/version)`；编译期内联，须在 dev/build 启动时设置 |
+| `NEXT_PUBLIC_PENPOT_IS_SAAS` | 空（自托管） | SaaS 判定，对应 CLJS 的全局 `penpotIsSaas`（`cf/saas?`）；`"true"` 时订阅页展示 unlimited/enterprise 计划卡 |
 
 ## 下一步
 
@@ -245,7 +246,8 @@ WebSocket（`/ws/notifications`）不经 Next rewrite（rewrite 不转发 HTTP u
 导入——files 页导出弹窗、项目菜单/OS 拖入/空项目卡导入流；dashboard 快捷键注册表——
 settings/shortcuts 三页签树 + 录制编辑 + 导入/导出 + 路由级运行时）已完成；缩略图暂
 只展示既有 media（media-worker 生成随 F9），进度组件的 `:error` 分支未动（导入/导出
-失败在弹窗行内呈现）。`@penpot/ui` 接线继续推迟（menu/modal 由外壳组件承担）。下一步
-F5.7：organization/team switch、subscription/nitrate、comments、插件注册、WebSocket
-`subscribe-team` 实时刷新（依赖 F8；团队切换的切换器控件本体与 leave-organization 是
-其收尾项）。
+失败在弹窗行内呈现）。`@penpot/ui` 接线继续推迟（menu/modal 由外壳组件承担）。F5.7 的
+organization/team switch（两级组织/团队切换器、leave-organization 与转让流程）与
+subscription/nitrate（侧边栏、members 与团队设置的订阅横幅、`/settings/subscriptions`
+订阅页与五个对话框、nitrate 激活弹窗、trash 的 90 天保留分支）已完成。下一步 F5.7
+收尾：comments、插件注册、WebSocket `subscribe-team` 实时刷新（依赖 F8）。

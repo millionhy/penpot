@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
@@ -38,7 +38,7 @@
 | F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。F4 的 modal 需求由外壳自带的 `components/modal.tsx`（ModalProvider/ConfirmDialog）满足，profile 驱动的主题切换也已接上令牌；`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线推到 F5 dashboard（首个需要 menu/dropdown 的路由组） |
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 占位后随 F5.6 补齐）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes 未做（见 7.6） |
-| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.6 完成），见下与第 4 节 |
+| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.6 完成；F5.7 进行中，organization/team switch 与 subscription/nitrate 已完成），见下与第 4 节 |
 | F6 | viewer（`/view`） | ⬜ | 集成 `render-wasm`（已是 Rust→WASM，可直接复用） |
 | F7 | 插件运行时 | ⬜ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`） |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
@@ -250,8 +250,11 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     库链接）、binfile 导出/导入（files 页导出弹窗、项目菜单/OS 拖入/空项目卡导入流）、
     dashboard 快捷键注册表（补齐 settings/shortcuts：三页签 + 录制编辑 + 导入/导出 +
     路由级运行时）。
-  - **F5.7** organization/team switch、subscription/nitrate、comments、插件注册、WebSocket
-    `subscribe-team` 实时刷新（依赖 F8）。
+  - **F5.7（进行中）** organization/team switch（已完成：nitrate/org-switch 无头逻辑、
+    leave-organization 全流程与转让弹窗、org/team 两级切换器与侧边栏接线）、
+    subscription/nitrate（已完成：订阅无头逻辑、nitrate 激活弹窗、侧边栏/members/团队设置
+    的订阅横幅、`/settings/subscriptions` 订阅页与五个对话框、trash 的 90 天保留分支）、
+    comments、插件注册、WebSocket `subscribe-team` 实时刷新（依赖 F8）。
 - **F6 viewer**：`/view` + `frame-preview` + `render-sprite`；集成 render-wasm 渲染画布（复用
   `app.render_wasm.api` 的加载方式）。
 - **F7 插件**：复用 SES 运行时与 Plugin API（`app.plugins`），保持 `plugins → mcp`（WS :4402）连线。
@@ -286,7 +289,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.6 完成 → F6..F9)
+阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.6 完成、F5.7 过半 → F6..F9)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -881,6 +884,42 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   导入/模板克隆与快捷键录制/导入/恢复的交互走查留待在可用环境补做。
 - 下一步：F5.7——organization/team switch、subscription/nitrate、comments、插件
   注册、WebSocket `subscribe-team` 实时刷新（依赖 F8）。
+
+### 7.14 本轮（2026-10-10，第十三批：F5.7 organization/team switch 与 subscription/nitrate）
+
+- F5.7 两片完成（13 个提交，`38902899c6`–`7dabf4884c`）。F5.7 剩 comments、插件注册与
+  `subscribe-team` 实时刷新。
+- organization/team switch：无头模块 `lib/org-switch.ts`（381 行：组织列表与切换状态机）
+  与 `lib/nitrate.ts`（nitrate 域命令与许可判定）；`components/org-team-switch.tsx`
+  （961 行：两级组织/团队下拉、门控的组织行）替换侧边栏占位并重构
+  `team-options-menu.tsx`；leave flows 补全——`org-leave-flows.tsx`、
+  `leave-and-reassign-org-modal.tsx`（离开/转让两条路径）与 `team-leave-flows.tsx`
+  扩展；侧边栏接线与 `styles/dashboard.css`（+447 行）。翻译随 `2ea0a8f187`。
+- subscription/nitrate：无头模块 `lib/subscription.ts`（plan-type、侧边栏/members 两种
+  横幅谓词、坐席数学、nitrate 许可读取、deletion-days 条件、账号龄与日期格式）；
+  `lib/nitrate.ts` 扩展（checkout 链接、connectivity、激活码、billing 上下文）；弹窗
+  五件套 `components/subscription-dialogs.tsx`（管理/成功/nitrate 订阅/联系销售/取消联系
+  销售 + popup hook）与 `components/nitrate-modals.tsx`（欢迎/激活码/成功）；
+  `components/subscription.tsx`（519 行：侧边栏订阅横幅 + 额外坐席横幅 + 团队 plan 块）；
+  `components/subscription-plan-card.tsx` 与 `/settings/subscriptions`
+  （`app/settings/subscriptions/page.tsx`，四张计划卡与全部对话框接线）；`lib/config.ts`
+  增 `isSaas`（`NEXT_PUBLIC_PENPOT_IS_SAAS`，对应全局 `penpotIsSaas`）；trash 90 天分支
+  接线（`deleted/page.tsx` 改用 `deletionDaysFor`，`lib/dashboard.ts` 的旧三分支函数
+  删除）。样式：`styles/settings.css` +646 行、`styles/dashboard.css` 追加订阅横幅块。
+  翻译随 `7dabf4884c`（742/742 全解析）。
+- 与 CLJS 的有意偏差（代码注释均登记）：SPA 外导航一律绝对路径（billing/admin
+  console/payments 链接）；订阅页对未知 plan 渲染 null（CLJS case 无 default）；遥测
+  省略；`saas?` 由全局注入改为 `NEXT_PUBLIC_PENPOT_IS_SAAS`；弹窗宽度用
+  `.pp-modal:has(...)` 选择器（ModalShell 无 className）；`lib/forms` 补 number 字段
+  类型（坐席输入）；弹窗按钮统一进 ModalShell footer（CLJS 在内容区）。
+- 测试：vitest 585 例（较 F5.6 的 485 增 100），新增 `lib/org-switch.test.ts`（408 行）、
+  `lib/subscription.test.ts`、`lib/nitrate.test.ts` 扩展等。
+- 验证：`pnpm translations`（742/742 全解析）、`pnpm typecheck`、`pnpm lint`（无警告）、
+  `pnpm test`（585 例）全部通过；`pnpm build` 未在本轮重跑（构建需先停 dev、清 `.next`），
+  新增 `/settings/subscriptions` 路由留待下次构建确认。
+- 浏览器端到端断言本轮未跑（本机没有 docker，后端栈起不来）：组织切换/离开流程、订阅页
+  四卡与五个对话框的交互走查留待在可用环境补做。
+- 下一步：F5.7 收尾——comments、插件注册、WebSocket `subscribe-team` 实时刷新（依赖 F8）。
 
 ---
 
