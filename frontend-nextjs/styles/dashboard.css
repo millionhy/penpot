@@ -46,37 +46,456 @@
   padding: var(--sp-m) 0;
 }
 
-.pp-sidebar-team-header {
-  align-items: center;
-  display: flex;
-  gap: var(--sp-xs);
-  justify-content: space-between;
-  min-inline-size: 0;
-  padding: var(--sp-s) var(--sp-l);
+/* --- organization/team switcher (dashboard/organization_team_switch.scss,
+   F5.7a). It replaced the plain sidebar header of the first slices. Color
+   mapping onto the shell tokens: the SCSS --menu-background-color pair lands
+   on --color-background-primary / --color-background-quaternary (the shell
+   menu pair, see .pp-menu-popup), and the dropdown keeps the CLJS metrics
+   (two 257px columns, 416px tall; 267px in single-column mode). --- */
+
+.pp-org-switch {
+  inline-size: 100%;
+  padding: var(--sp-s);
+  position: relative;
 }
 
-.pp-sidebar-team-info {
+.pp-org-switch-button-row {
+  align-items: center;
+  block-size: var(--sz-64);
+  border-radius: var(--br-8);
+  display: grid;
+  gap: var(--sp-xxs);
+  grid-template-columns: 1fr auto;
+  inline-size: 100%;
+}
+
+.pp-org-switch-current {
+  align-items: center;
+  background: var(--color-background-primary);
+  border: 0;
+  border-radius: var(--br-8) 0 0 var(--br-8);
+  block-size: 100%;
+  cursor: pointer;
+  display: grid;
+  gap: var(--sp-s);
+  grid-template-columns: auto 1fr;
+  inline-size: 100%;
+  padding: 0 var(--sp-m) 0 var(--sp-l);
+  text-align: start;
+}
+
+.pp-org-switch-current:hover {
+  background: var(--color-background-quaternary);
+}
+
+.pp-org-switch-current.pp-org-switch-no-options {
+  border-radius: var(--br-8);
+}
+
+/* TeamOptionsButton renders the shared .pp-icon-btn; inside the button row it
+   becomes the switcher's own options button (SCSS .options-button). */
+.pp-org-switch-button-row .pp-icon-btn {
+  align-items: center;
+  background: var(--color-background-primary);
+  block-size: 100%;
+  border-radius: 0 var(--br-8) var(--br-8) 0;
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-16);
+  inline-size: var(--sz-40);
+  justify-content: center;
+  padding: 0;
+}
+
+.pp-org-switch-button-row .pp-icon-btn:hover:not(:disabled) {
+  background: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+}
+
+.pp-org-switch-current-text {
+  min-inline-size: 0;
+}
+
+.pp-org-switch-current-team-group {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-s);
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.pp-org-switch-current-team-name {
+  color: var(--color-foreground-primary);
+  flex-shrink: 1;
+  font-size: var(--fs-16);
+  line-height: var(--lh-normal);
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-org-switch-current-org-name {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  line-height: var(--lh-compact);
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-org-switch-personal-icon {
+  align-items: center;
+  block-size: var(--sp-xxxl);
+  display: flex;
+  inline-size: var(--sp-xxxl);
+  justify-content: center;
+}
+
+.pp-org-switch-team-personal-icon {
+  align-items: center;
+  block-size: var(--sp-xxl);
+  display: flex;
+  inline-size: var(--sp-xxl);
+  justify-content: center;
+}
+
+.pp-org-switch-personal-icon-svg {
+  color: transparent;
+  fill: none;
+  flex-shrink: 0;
+  stroke: var(--color-foreground-secondary);
+  stroke-width: 1.2px;
+}
+
+.pp-org-switch-team-picture {
+  block-size: var(--sp-xxxl);
+  border-radius: var(--br-circle);
+  flex-shrink: 0;
+  inline-size: var(--sp-xxxl);
+  object-fit: cover;
+}
+
+.pp-org-switch-team-item-picture {
+  block-size: var(--sp-xxl);
+  border-radius: var(--br-circle);
+  flex-shrink: 0;
+  inline-size: var(--sp-xxl);
+  object-fit: cover;
+}
+
+/* menu-team-icon* (subscription.scss .subscription-icon-wrapper/-icon); the
+   shell renders the plan letter instead of the CLJS icon font. */
+.pp-org-switch-sub-icon-wrapper {
+  align-items: center;
+  background: var(--color-background-primary);
+  border: 1.75px solid var(--color-foreground-secondary);
+  border-radius: var(--br-6);
+  block-size: var(--sp-xl);
+  display: flex;
+  flex-shrink: 0;
+  inline-size: var(--sp-xl);
+  justify-content: center;
+}
+
+.pp-org-switch-sub-icon {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.pp-org-switch-dropdown {
+  background: var(--color-background-primary);
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  block-size: 26rem;
+  box-shadow: 0 0 var(--sp-m) 0 var(--color-shadow-dark);
+  color: var(--color-foreground-primary);
+  display: grid;
+  gap: var(--sp-s);
+  grid-template-columns: 16.0625rem 16.0625rem;
+  grid-template-rows: minmax(0, 1fr);
+  inset-block-start: calc(var(--sp-s) + var(--sz-64) + var(--sp-xs));
+  inset-inline-start: var(--sp-s);
+  margin: 0;
+  overflow: hidden;
+  padding: var(--sp-s);
+  position: absolute;
+  z-index: var(--z-index-dropdown);
+}
+
+.pp-org-switch-single-column {
+  grid-template-columns: 16.6875rem;
+  max-block-size: var(--sz-520);
+  overflow-y: auto;
+}
+
+.pp-org-switch-single-column .pp-org-switch-teams-column {
+  border-inline-start: none;
+  padding-inline-start: 0;
+}
+
+.pp-org-switch-column {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  min-block-size: 0;
+  min-inline-size: 0;
+  padding: 0;
+}
+
+.pp-org-switch-teams-column {
+  border-inline-start: var(--b-1) solid var(--color-background-quaternary);
+  padding-inline-start: var(--sp-s);
+}
+
+.pp-org-switch-column-scroll {
+  flex: 0 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.pp-org-switch-fade::after {
+  background: linear-gradient(transparent, var(--color-background-primary));
+  block-size: 2.75rem;
+  content: "";
+  display: block;
+  inset-block-end: 0;
+  margin-block-start: -2.75rem;
+  pointer-events: none;
+  position: sticky;
+}
+
+.pp-org-switch-column-label {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-dense);
+  margin-block-end: var(--sp-xxs);
+  padding: var(--sp-s) var(--sz-6) var(--sz-6) var(--sp-m);
+  text-transform: uppercase;
+}
+
+.pp-org-switch-column-list,
+.pp-org-switch-column-bucket,
+.pp-org-switch-column-actions {
   display: flex;
   flex-direction: column;
   gap: var(--sp-xxs);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pp-org-switch-column-bucket {
+  flex-shrink: 0;
+}
+
+.pp-org-switch-column-actions {
+  flex-shrink: 0;
+  margin-block-start: auto;
+}
+
+.pp-org-switch-column-separator {
+  border-block-start: var(--b-1) solid var(--color-background-quaternary);
+  list-style: none;
+  margin-block: var(--sp-xxs);
+}
+
+/* The fade ends right on these lines, with no gap above them. */
+.pp-org-switch-column-bucket > .pp-org-switch-column-separator,
+.pp-org-switch-column-actions > .pp-org-switch-column-separator {
+  margin-block-start: 0;
+}
+
+.pp-org-switch-empty-state {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
+  list-style: none;
+  padding: var(--sp-m);
+}
+
+.pp-org-switch-item {
+  align-items: center;
+  block-size: var(--sz-40);
+  border-radius: var(--br-8);
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  display: grid;
+  flex-shrink: 0;
+  font-size: var(--fs-12);
+  gap: var(--sp-s);
+  grid-template-columns: auto 1fr auto;
+  line-height: var(--lh-compact);
+  padding-inline-start: var(--sp-m);
+}
+
+.pp-org-switch-item:hover {
+  background: var(--color-background-quaternary);
+}
+
+.pp-org-switch-selected {
+  background: var(--color-background-quaternary);
+}
+
+.pp-org-switch-organizations-column .pp-org-switch-item {
+  padding-inline-end: var(--sp-m);
+}
+
+.pp-org-switch-teams-column .pp-org-switch-item {
+  padding-inline-end: var(--sp-s);
+}
+
+.pp-org-switch-with-link {
+  display: block;
+  padding-inline-start: 0;
+}
+
+.pp-org-switch-item-link {
+  align-items: center;
+  block-size: 100%;
+  color: inherit;
+  display: grid;
+  gap: var(--sp-s);
+  grid-template-columns: auto 1fr;
+  padding-inline-start: var(--sp-m);
+  text-decoration: none;
+}
+
+.pp-org-switch-org-text-group,
+.pp-org-switch-team-text-group {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-s);
   min-inline-size: 0;
 }
 
-.pp-team-name {
+.pp-org-switch-org-text,
+.pp-org-switch-team-text {
   color: var(--color-foreground-primary);
-  font-size: var(--fs-16);
-  font-weight: var(--fw-medium);
+  flex-shrink: 1;
+  min-inline-size: 0;
   overflow: hidden;
+  text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pp-organization-name {
+.pp-org-switch-tick,
+.pp-org-switch-chevron {
+  align-items: center;
+  block-size: var(--sz-16);
+  display: flex;
+  inline-size: var(--sz-16);
+  justify-content: center;
+}
+
+.pp-org-switch-tick .pp-org-switch-icon,
+.pp-org-switch-chevron .pp-org-switch-icon {
   color: var(--color-foreground-secondary);
-  font-size: var(--fs-12);
+}
+
+.pp-org-switch-icon {
+  flex-shrink: 0;
+}
+
+.pp-org-switch-my-teams-icon {
+  block-size: var(--sz-24);
+  display: flex;
+  inline-size: var(--sz-24);
+}
+
+.pp-org-switch-my-teams-svg {
+  block-size: var(--sz-24);
+  fill: var(--color-foreground-primary);
+  inline-size: var(--sz-24);
+  stroke: none;
+}
+
+/* organization-avatar* at the xxl size (organization_avatar.scss). */
+.pp-org-switch-org-avatar {
+  block-size: var(--sp-xxl);
+  border-radius: 0.3125rem;
+  flex-shrink: 0;
+  inline-size: var(--sp-xxl);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  position: relative;
+}
+
+.pp-org-switch-org-avatar-custom {
+  object-fit: cover;
+}
+
+.pp-org-switch-org-avatar-bg {
+  block-size: 100%;
+  inline-size: 100%;
+  inset: 0;
+  object-fit: cover;
+  position: absolute;
+}
+
+.pp-org-switch-org-avatar-initials {
+  align-items: center;
+  color: var(--pp-gray-950);
+  display: flex;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  inset: 0;
+  justify-content: center;
+  line-height: var(--lh-dense);
+  position: absolute;
+  text-transform: uppercase;
+}
+
+/* Action rows (create team / create organization / admin console): the SCSS
+   --sidebar-action-icon-color pair, hover swaps icon and puck colors. */
+.pp-org-switch-action {
+  --pp-org-switch-action-bg-color: var(--color-background-secondary);
+  --pp-org-switch-action-icon-color: var(--color-foreground-secondary);
+
+  display: block;
+  padding-inline-start: 0;
+}
+
+.pp-org-switch-action:hover {
+  --pp-org-switch-action-bg-color: var(--color-accent-primary);
+  --pp-org-switch-action-icon-color: var(--color-background-secondary);
+}
+
+.pp-org-switch-action-button {
+  align-items: center;
+  background: none;
+  block-size: 100%;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  font-size: var(--fs-12);
+  gap: var(--sp-s);
+  grid-template-columns: auto 1fr;
+  inline-size: 100%;
+  line-height: var(--lh-compact);
+  padding: 0 0 0 var(--sp-m);
+  text-align: start;
+}
+
+.pp-org-switch-action .pp-org-switch-icon-wrapper {
+  align-items: center;
+  background: var(--pp-org-switch-action-bg-color);
+  block-size: var(--sp-xxl);
+  border-radius: var(--br-circle);
+  display: flex;
+  inline-size: var(--sp-xxl);
+  justify-content: center;
+}
+
+.pp-org-switch-action .pp-org-switch-icon {
+  color: var(--pp-org-switch-action-icon-color);
 }
 
 .pp-sidebar-content-section {
@@ -1023,6 +1442,12 @@
 .pp-modal-scd-msg,
 .pp-modal-hint {
   color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  margin: var(--sp-s) 0;
+}
+
+.pp-modal-error {
+  color: var(--color-foreground-error);
   font-size: var(--fs-12);
   margin: var(--sp-s) 0;
 }

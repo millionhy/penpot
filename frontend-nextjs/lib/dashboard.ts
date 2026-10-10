@@ -38,8 +38,6 @@ export interface Team {
   id: string;
   name: string;
   "is-default"?: boolean;
-  "organization-id"?: string | null;
-  "organization-name"?: string | null;
   // The settings page renders the team photo through teamPhotoUrl; the row
   // carries the media id (get-teams joins team_profile_rel).
   "photo-id"?: string | null;

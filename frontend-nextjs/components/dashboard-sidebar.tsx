@@ -3,13 +3,13 @@
 // Dashboard sidebar (F5.1). View over sidebar-content* and profile-section* in
 // app.main.ui.dashboard.sidebar.
 //
-// organization-team-switch* (the organization/team picker dropdown) arrives
-// with F5.7; its "..." team-management menu landed early with F5.5 as
-// TeamOptionsButton (components/team-options-menu.tsx), so the team name now
-// renders next to that button instead of as a plain header. The rest of the
-// CLJS sidebar is deliberately not here yet: the project context menu (rename,
-// duplicate, move, delete) arrives with the full grid in F5.2, so a pinned
-// project only offers the pin toggle that put it in the list; and the
+// organization-team-switch* (the organization/team picker dropdown) is ported
+// with F5.7a (components/org-team-switch.tsx), replacing the plain team header
+// of the first slices; it renders the active team and its "..." management
+// menu (components/team-options-menu.tsx) like the CLJS version does. The rest
+// of the CLJS sidebar is deliberately not here yet: the project context menu
+// (rename, duplicate, move, delete) arrives with the full grid in F5.2, so a
+// pinned project only offers the pin toggle that put it in the list; and the
 // subscription/nitrate blocks plus the comments panel are flag-gated SaaS
 // features that stay out of the shell.
 //
@@ -19,7 +19,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardProfileMenu } from "@/components/dashboard-profile-menu";
-import { TeamOptionsButton } from "@/components/team-options-menu";
+import { OrgTeamSwitch } from "@/components/org-team-switch";
 import {
   dashboardHref,
   isDraftsSection,
@@ -137,7 +137,7 @@ function SidebarProject({ item, isSelected }: { item: Project; isSelected: boole
 }
 
 export function DashboardSidebar() {
-  const { team, teamId, projects, defaultProject, section, projectId } = useDashboard();
+  const { teamId, projects, defaultProject, section, projectId } = useDashboard();
 
   const pinned = useMemo(() => pinnedProjects(projects), [projects]);
   const draftsSelected = isDraftsSection(section, projectId, defaultProject?.id ?? null);
@@ -148,15 +148,7 @@ export function DashboardSidebar() {
   return (
     <nav className="pp-dashboard-sidebar" data-testid="dashboard-sidebar">
       <div className="pp-sidebar-content">
-        <div className="pp-sidebar-team-header" data-testid="team-header">
-          <div className="pp-sidebar-team-info">
-            <span className="pp-team-name">{team?.name ?? ""}</span>
-            {team?.["organization-name"] ? (
-              <span className="pp-organization-name">{team["organization-name"]}</span>
-            ) : null}
-          </div>
-          <TeamOptionsButton />
-        </div>
+        <OrgTeamSwitch />
 
         <SidebarSearch />
 
