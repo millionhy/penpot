@@ -76,6 +76,33 @@ const readerOptions = {
       const pair = Array.isArray(rep) ? rep : [];
       return new Pointer(String(pair[0]), pair[1]);
     },
+    // "~#penpot/objects-map/v2": the page objects of the fdata format. The
+    // rep is uuid -> transit-encoded shape string (app.common.types.objects_map
+    // decodes each value lazily through t/decode-str); the shell decodes every
+    // value eagerly into a plain objects map.
+    "penpot/objects-map/v2": (rep: unknown) => {
+      const out: MutableRecord = {};
+      if (rep !== null && typeof rep === "object" && !Array.isArray(rep)) {
+        for (const [key, value] of Object.entries(rep as MutableRecord)) {
+          out[key] = typeof value === "string" ? decodeTransitString(value) : value;
+        }
+      }
+      return out;
+    },
+    // "~#shape" / "~#matrix" / "~#point" / "~#rect" / "~#penpot/fills":
+    // the record types of app.common.types.shape, geom.{matrix,point,rect}
+    // and types.fills. Their JSON read handlers (map->Shape, pos->Matrix,
+    // map->Point, map->Rect, from-plain) rewrap the same data; the shell
+    // keeps plain maps and vectors instead of record instances.
+    shape: (rep: unknown) => rep,
+    matrix: (rep: unknown) => rep,
+    point: (rep: unknown) => rep,
+    rect: (rep: unknown) => rep,
+    "penpot/fills": (rep: unknown) => (Array.isArray(rep) ? rep : []),
+    // "penpot/path-data" carries encoded path command bytes (types.path.impl);
+    // parsing them lands with the render-wasm port (F6.4). Until then the raw
+    // bytes travel instead of a TaggedValue wrapper.
+    "penpot/path-data": (rep: unknown) => rep,
   },
   mapBuilder: {
     init: () => ({} as MutableRecord),
@@ -89,6 +116,14 @@ const readerOptions = {
 
 const reader = transit.reader("json", readerOptions);
 const writer = transit.writer("json");
+
+// t/decode-str in app.common.transit builds a fresh reader for every call.
+// The nested decode of the objects-map shapes must do the same: the shared
+// `reader` clears its cache after each read, so a nested read through it
+// would corrupt the cache references of the outer document mid-decode.
+function decodeTransitString(text: string): unknown {
+  return transit.reader("json", readerOptions).read(text);
+}
 
 export function decodeTransit<T = unknown>(text: string): T {
   return reader.read(text) as T;
