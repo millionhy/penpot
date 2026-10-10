@@ -42,10 +42,10 @@ frontend-nextjs/
 │   ├── settings/notifications/ update-profile-notifications（三组单选）
 │   ├── settings/options/ 语言与主题 select + `:render-switch` 的 webgl 开关
 │   ├── settings/feedback/ send-user-feedback（受 `:user-feedback` 开关控制）
-│   ├── settings/shortcuts/ 占位（依赖 dashboard/workspace 的快捷键注册表）
+│   ├── settings/shortcuts/ 快捷键页*（F5.6：三页签树 + 录制编辑 + 导入/导出，注册表 base 集）
 │   ├── dashboard/layout.tsx AuthGuard + DashboardProvider + 侧边栏 + 内容槽
-│   ├── dashboard/recent/  projects-section*（项目行：网格/列表、拖拽移动、inline 重命名）
-│   ├── dashboard/files/   files-section*（F5.2 完整网格：多选/菜单/重命名/移动/删除）
+│   ├── dashboard/recent/  projects-section*（项目行：网格/列表、拖拽移动、inline 重命名；templates 抽屉）
+│   ├── dashboard/files/   files-section*（F5.2 完整网格：多选/菜单/重命名/移动/删除；F5.6 导出弹窗）
 │   ├── dashboard/libraries/ libraries-page*（F5.3 共享库摘要卡）
 │   ├── dashboard/search/  search-page*（F5.3 三态占位 + 只读结果网格）
 │   ├── dashboard/deleted/ deleted-section*（F5.3 回收站：SSE 批量恢复/彻底删除 + 进度）
@@ -78,12 +78,19 @@ frontend-nextjs/
 │   ├── progress.ts       批量操作进度状态机（对应 dcm/initialize-progress 一族）
 │   ├── fonts.ts          自定义字体无头逻辑（mtype/字重解析、上传队列合并、@font-face 注册、字体命令封装）
 │   ├── team.ts           团队管理无头逻辑（角色判定、邀请排序、webhook 摘要、hero 存储、团队命令封装）
+│   ├── binfile.ts        binfile 导入/导出无头逻辑（导出类型集与 SSE、ZIP 分析、导入管线、模板克隆）
+│   ├── templates.ts      templates 抽屉无头逻辑（折叠标志、缩略图 URL、可见模板集）
+│   ├── shortcuts.ts      快捷键注册表（定义集、序列匹配、覆盖变换、冲突查找、transit 键映射）
+│   ├── shortcuts-page.ts settings/shortcuts 无头逻辑（树构建/过滤、导入校验与 diff/merge）
+│   ├── dashboard-shortcuts.ts dashboard 快捷键集组合（五个定义与 base 等页面 set）
+│   ├── dashboard-shortcuts-runtime.ts 路由→集解析（dashboardSetForPath）与 matcher 绑定
+│   ├── dashboard-shortcuts-context.tsx DashboardShortcutsProvider（自定义快捷键持久化 + create-element 注册）
 │   ├── uploads.ts        分块上传会话（create-upload-session → 双并发 upload-chunk）
 │   ├── check-updates.ts    check-for-updates 无头逻辑（版本比较、CHANGES.md 解析、highlights）
 │   ├── avatars.ts        canvas 首字母头像（仅客户端，对应 app.util.profile）
-│   ├── dom.ts            useDocumentTitle、triggerDownload（页面标题副作用与浏览器下载）
+│   ├── dom.ts            useDocumentTitle、triggerDownload/Uri、normalizeWheel、pickFiles（标题副作用与浏览器交互助手）
 │   └── types.ts          api-types 生成类型的桥接与别名
-├── components/           视图组件（form/tr/notifications/modal/theme/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification/team-header/team-invite/team-hero/team-form-modal/team-options-menu/team-leave-flows/leave-and-reassign-modal/webhook-modal/member-avatar…）
+├── components/           视图组件（form/tr/notifications/modal/theme/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/import-dialog/export-dialog/templates-section/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification/team-header/team-invite/team-hero/team-form-modal/team-options-menu/team-leave-flows/leave-and-reassign-modal/webhook-modal/member-avatar/shortcut-keys/shortcut-row/restore-shortcuts-modal/import-shortcuts-diff-modal…）
 ├── styles/               tokens.css（ds 令牌）+ forms.css + auth.css + settings.css + dashboard.css
 ├── scripts/              extract-translations.mjs（词条抽取生成器）
 ├── public/               fonts/（worksans、vazirmatn、robotomono）+ images/
@@ -103,8 +110,8 @@ CLJS 用查询串路由（`?screen=<name>`）并保留一段 `#/...` 兼容期�
 | 路由组 | 路径示例 | CLJS 参考 | 状态 |
 | --- | --- | --- | --- |
 | auth | `/auth/login`、`/auth/register`、`/auth/recovery`、`/auth/verify-token` | `app.main.ui.auth` | 已迁移（SSO/OIDC 按钮除外） |
-| settings | `/settings/profile`、`/settings/password`、`/settings/notifications`、`/settings/options`、`/settings/feedback` | `app.main.ui.settings` | 已迁移（shortcuts 为占位，subscription/integrations 未建路由） |
-| dashboard | `/dashboard/recent`、`/dashboard/files`、`/dashboard/libraries`、`/dashboard/search`、`/dashboard/deleted`、`/dashboard/fonts`、`/dashboard/fonts/providers`、`/dashboard/members`、`/dashboard/invitations`、`/dashboard/webhooks`、`/dashboard/settings`（十一路由全部迁移） | `app.main.ui.dashboard` | F5 进行中（F5.1–F5.5 已迁移） |
+| settings | `/settings/profile`、`/settings/password`、`/settings/notifications`、`/settings/options`、`/settings/feedback`、`/settings/shortcuts` | `app.main.ui.settings` | 已迁移（F5.6 补齐 shortcuts；subscription/integrations 未建路由） |
+| dashboard | `/dashboard/recent`、`/dashboard/files`、`/dashboard/libraries`、`/dashboard/search`、`/dashboard/deleted`、`/dashboard/fonts`、`/dashboard/fonts/providers`、`/dashboard/members`、`/dashboard/invitations`、`/dashboard/webhooks`、`/dashboard/settings`（十一路由全部迁移） | `app.main.ui.dashboard` | F5 进行中（F5.1–F5.6 已迁移） |
 | viewer | `/view` | `app.main.ui.viewer` | 占位 |
 | workspace | `/workspace` | `app.main.ui.workspace` | 占位（最后迁移） |
 
@@ -234,8 +241,11 @@ WebSocket（`/ws/notifications`）不经 Next rewrite（rewrite 不转发 HTTP u
 `/dashboard/invitations` 排序表与重发/删除、`/dashboard/webhooks` 列表与新建/编辑、
 `/dashboard/settings` 团队照片与计数；recent 页 team-hero；change-owner 与 team-form
 弹窗；侧边栏团队名旁的「…」团队管理菜单——成员/邀请/webhook/设置/重命名/离开/
-删除）已完成。缩略图暂只展示既有 media（media-worker 生成随 F9），binfile 导入/导出
-与 templates 分区留到 F5.6，进度组件的 `:error` 分支同批。下一步 F5.6：templates
-分区、binfile 导入/导出与 dashboard 快捷键注册表（补齐 settings/shortcuts 占位）。
-`@penpot/ui` 接线继续推迟（menu/modal 由外壳组件承担）。organization/team 切换留到
-F5.7（其团队管理菜单已随 F5.5 收尾落地，余组织列与切换器）。
+删除）已完成。F5.6（templates 抽屉——recent/files 页内建模板与库链接；binfile 导出/
+导入——files 页导出弹窗、项目菜单/OS 拖入/空项目卡导入流；dashboard 快捷键注册表——
+settings/shortcuts 三页签树 + 录制编辑 + 导入/导出 + 路由级运行时）已完成；缩略图暂
+只展示既有 media（media-worker 生成随 F9），进度组件的 `:error` 分支未动（导入/导出
+失败在弹窗行内呈现）。`@penpot/ui` 接线继续推迟（menu/modal 由外壳组件承担）。下一步
+F5.7：organization/team switch、subscription/nitrate、comments、插件注册、WebSocket
+`subscribe-team` 实时刷新（依赖 F8；团队切换的切换器控件本体与 leave-organization 是
+其收尾项）。

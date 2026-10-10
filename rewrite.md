@@ -6,13 +6,13 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | `frontend-nextjs` 完成对应功能迁移前，不改 `backend/`、不实现 `backend-rust` |
-| 最后更新 | 2026-10-09 |
+| 最后更新 | 2026-10-10 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -37,8 +37,8 @@
 | F1.4 | 会话与引导 | ✅ | `lib/session.tsx`（SessionProvider：get-profile 引导，zero-uuid=匿名）+ `components/auth-guard.tsx`；dashboard/settings 布局与 workspace/view 页加守卫；根路径复刻空 token 分支；登录页接入 `session.refresh` |
 | F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。F4 的 modal 需求由外壳自带的 `components/modal.tsx`（ModalProvider/ConfirmDialog）满足，profile 驱动的主题切换也已接上令牌；`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线推到 F5 dashboard（首个需要 menu/dropdown 的路由组） |
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
-| F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 为占位）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes/shortcuts 未做（见 7.6） |
-| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.5 完成），见下与第 4 节 |
+| F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 占位后随 F5.6 补齐）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes 未做（见 7.6） |
+| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.6 完成），见下与第 4 节 |
 | F6 | viewer（`/view`） | ⬜ | 集成 `render-wasm`（已是 Rust→WASM，可直接复用） |
 | F7 | 插件运行时 | ⬜ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`） |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
@@ -221,7 +221,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - **F3 auth**：login（样板已通）→ register/register-validate/register-success → recovery-request/
   recovery → verify-token。命令：`login-with-password`、`create-profile`、`request-profile-recovery`、
   `update-profile-password` 等。
-- **F4 settings（本轮已完成）**：profile/password/notifications/options/feedback 已移植，shortcuts 为占位，
+- **F4 settings（本轮已完成）**：profile/password/notifications/options/feedback 已移植（shortcuts 占位后随 F5.6 补齐），
   subscription/integrations 未建路由（`settingsNav` 已按 flag 门控留位）。命令：`update-profile`、
   `update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、
   `delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`。详见 7.6。
@@ -246,7 +246,10 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     `/dashboard/webhooks`（列表与空态 hero、新建/编辑弹窗、无权限占位）、`/dashboard/settings`
     （团队照片、资料块、owner 行、成员/项目计数）；随附 team-hero（recent 页横幅）、
     team-form（新建/改名）、change-owner 与 no-permission 弹窗。
-  - **F5.6** templates 分区、binfile 导入、dashboard 快捷键注册表（补齐 settings/shortcuts）。
+  - **F5.6 templates / binfile / 快捷键（完成）**：templates 抽屉（recent/files 页内建模板与
+    库链接）、binfile 导出/导入（files 页导出弹窗、项目菜单/OS 拖入/空项目卡导入流）、
+    dashboard 快捷键注册表（补齐 settings/shortcuts：三页签 + 录制编辑 + 导入/导出 +
+    路由级运行时）。
   - **F5.7** organization/team switch、subscription/nitrate、comments、插件注册、WebSocket
     `subscribe-team` 实时刷新（依赖 F8）。
 - **F6 viewer**：`/view` + `frame-preview` + `render-sprite`；集成 render-wasm 渲染画布（复用
@@ -283,7 +286,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.5 完成 → F6..F9)
+阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.6 完成 → F6..F9)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -816,6 +819,68 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   `modals.delete-team-confirm.*`）。验证：lint/tsc 无警告、vitest 305 例、build
   30 路由全过（构建前先停 dev、清 `.next`，后重启 dev 并审计资源 9/9 200）。
   F5.7 剩：组织列、切换器控件本体与 leave-organization。
+
+### 7.13 本轮（2026-10-10，第十二批：F5.6 templates / binfile / 快捷键注册表）
+
+- F5.6 完成：三块收口（file flows 随 `4c56076fd2` 落地、快捷键注册表随后六个提交）。
+  导出：`/dashboard/files` 文件菜单进入导出弹窗——无共享库的选中项开弹窗即导出，有
+  则先选四种类型（include/merge/detach libraries、link-later 受 `export-link-later`
+  flag 门控）；SSE `export-binfile` 的 end 载荷即下载 URI（一小时有效）。导入：项目
+  菜单、网格 OS 拖入与空项目卡三入口 → 弹窗按 analyze → 勾选 → 导入 → 库链接解析
+  状态机推进（v3 zip 按 manifest.files 展开、v1 单条目；模板克隆走同一弹窗）。
+  templates 分区：recent/files 页底部可折叠抽屉（内建模板卡 + 库与模板链接卡），
+  折叠标志存 `penpot-global` 与 CLJS 互通。
+- 无头逻辑（file flows）：`lib/binfile.ts`（547 行：导出类型集与 SSE 封装、ZIP
+  v1/v3 嗅探与条目分析、逐文件导入管线、`clone-template`/`get-builtin-templates`、
+  `link-file-to-library`、导入错误消息解析）；`lib/templates.ts`（折叠标志读写、
+  缩略图 URL、可见模板集）；`lib/dom.ts` 增 `triggerDownloadUri`/`normalizeWheel`/
+  `pickFiles`。
+- 快捷键注册表：`lib/shortcuts.ts`（622 行：cMod/aMod/metaLabel 显示助手、Mousetrap
+  keydown 归一化与序列匹配（只发最长匹配、未匹配 keydown 重置 pending、未完成序列
+  1 秒超时）、自定义覆盖变换与冲突查找、`customShortcutsWire`（profile props 双级
+  transit 关键字键；`lib/transit.ts` 增 `keywordMap`））；`lib/dashboard-shortcuts.ts`
+  （171 行：五个定义 toggle-theme/go-to-drafts/go-to-libs/go-to-search/
+  create-new-project 与页面 set 组合、base 集仅 toggle-theme）；
+  `lib/dashboard-shortcuts-runtime.ts`（109 行：`dashboardSetForPath`——/dashboard/
+  recent→projects、files/libraries→drafts-libraries、其余 dashboard→shell、/settings→
+  base；绑定与 dispatch）；`lib/shortcuts-page.ts`（569 行：树构建与翻译排序、剪枝
+  过滤、三页签行过滤、导入校验与 diff/merge、恢复部件抽取、导出文件名）。
+- 组件与页面：`shortcut-keys.tsx`（键帽）、`shortcut-row.tsx`（只读/可编辑行 + 录制
+  流）、`restore-shortcuts-modal.tsx`、`import-shortcuts-diff-modal.tsx`、
+  `dashboard-shortcuts-context.tsx`（Provider 以 ref 保最新 customs，profile 往返
+  期间两次连续编辑不丢第一个）；settings/shortcuts 页面（三页签、搜索 + 恢复全部、
+  可折叠 dashboard 树、导入/导出 footer）；dashboard 与 settings 布局挂 Provider
+  （`dashboardSetForPath` 解析 `/settings`→base）、recent 页注册 create-project
+  handler（"+" 快捷键，canEdit 门控）。样式：`styles/settings.css` 追加快捷键块
+  （+435 行，pp-shortcuts-* 全套）、`styles/dashboard.css` 追加 templates 与
+  导入/导出块。
+- 与 CLJS 的有意偏差（代码注释均登记）：file flows 侧——`export-binfile` 不带
+  `:version 3`（2.12 起 schema 已删）、worker 的 200ms 节流与对象 URI 生命周期
+  省略（直接读 File）、worker 池换成逐文件顺序 analyze、legacy-zip 的改名路径与
+  `:libraries` 渲染未移植（该格式已不存在）、zip 无 manifest 用一条 plain Error
+  文案、模板卡 Enter 绑在可聚焦容器（CLJS 绑在不可聚焦的内层 `<a>`）、模板 fetch
+  每挂载一次（ref 防 StrictMode 双效应）、导入/导出失败在弹窗行内呈现（共享进度
+  组件的 `:error` 分支未动）。快捷键侧——tab strip 为页面本地控件、导入/导出是
+  两个按钮（CLJS 为 dropdown）、expand-all 效果不再把手动收起弹回、footer 在树后
+  （CLJS fixed 到视口）、折叠体条件渲染（CLJS 用 hidden）、默认展开 dashboard
+  （CLJS 默认 workspace，shell 树中不存在）、录制监听用目标节点原生 keydown、
+  录制命令以 null 判定（"" 走禁用流）、行内通知自绘、tooltip 用 title 属性、
+  "+" 亦接受 Shift+=（US 主排）、导入校验对 workspace/viewer 上下文只查形状
+  （注册表未迁移）、导出序列化用 plain JSON.stringify（keywordMap 不可 JSON
+  序列化）。
+- 测试：vitest 485 例（较 F5.5 的 305 增 180）：`lib/binfile.test.ts`、
+  `lib/templates.test.ts`、`lib/shortcuts.test.ts`（序列匹配/覆盖/冲突）、
+  `lib/dashboard-shortcuts.test.ts`、`lib/dashboard-shortcuts-runtime.test.ts`、
+  `lib/shortcuts-page.test.ts`。
+- 验证：`pnpm translations`（579/579 全解析）、`pnpm typecheck`、`pnpm lint`
+  （无警告）、`pnpm test`（485 例）、`pnpm build`（30 路由全部预渲染；
+  `/settings/shortcuts` 7.73kB/229kB、`/dashboard/recent` 3.18kB/250kB）全部通过；
+  dev 重启后 `/`、`/settings/shortcuts`、`/dashboard/recent`、`/dashboard/files`
+  审计 200。
+- 浏览器端到端断言本轮未跑（本机没有 docker，后端栈起不来，同 7.11/7.12）：导出/
+  导入/模板克隆与快捷键录制/导入/恢复的交互走查留待在可用环境补做。
+- 下一步：F5.7——organization/team switch、subscription/nitrate、comments、插件
+  注册、WebSocket `subscribe-team` 实时刷新（依赖 F8）。
 
 ---
 
