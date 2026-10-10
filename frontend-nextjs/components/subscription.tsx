@@ -1,19 +1,19 @@
 "use client";
 
-// Subscription blocks of the dashboard sidebar (F5.7b). Port of the
+// Subscription blocks of the dashboard (F5.7b). Port of the
 // :subscriptions / :admin-console branches of profile-section* in
 // app.main.ui.dashboard.sidebar plus the views they mount from
 // app.main.ui.dashboard.subscription: the power-up CTA of the free plans, the
 // growth CTA once the seat window breaks (dashboard-cta*), the nitrate
-// sidebar with its three banners, the current-plan block and the
-// extra-editors banner of the members and invitations sections (members-cta*,
-// mounted by those pages when show-subscription-members-banner? holds).
+// sidebar with its three banners, the current-plan block, the extra-editors
+// banner of the members and invitations sections (members-cta*) and the
+// team-plan block of the settings page (team*).
 //
 // Deviations from the CLJS original, documented:
-// - ev/event telemetry (open-subscription-modal, start-nitrate-checkout) is
-//   not sent; the shell has no analytics seam yet (same note as
-//   components/org-leave-flows.tsx). The account-age read of the event goes
-//   with it.
+// - ev/event telemetry (open-subscription-modal, start-nitrate-checkout,
+//   open-subscription-management) is not sent; the shell has no analytics
+//   seam yet (same note as components/org-leave-flows.tsx). The account-age
+//   read of the event goes with it.
 // - The renewal warning hides on /settings/subscriptions, the shell path of
 //   the :settings-subscription route. The dashboard sidebar renders only
 //   under /dashboard, so the guard is inert for now; it stays for parity.
@@ -33,6 +33,7 @@ import {
 } from "@/components/nitrate-modals";
 import { Tr } from "@/components/tr";
 import { hasFlag } from "@/lib/config";
+import type { Team } from "@/lib/dashboard";
 import { useDashboard } from "@/lib/dashboard-context";
 import { tr } from "@/lib/i18n";
 import {
@@ -509,6 +510,60 @@ export function NitrateCurrentPlan({ profile }: { profile: SubscriptionProfile |
       >
         {planName}
       </button>
+    </div>
+  );
+}
+
+// --- team* -------------------------------------------------------------------
+
+// The team-plan block of team-settings-page*; the settings page mounts it
+// behind the :subscriptions flag. The manage link goes to the billing portal:
+// rt/nav-raw assigns location.href, so the CLJS relative href resolves
+// against its hash-routed page (path /). The port uses the absolute path;
+// both land on the same route.
+export function TeamPlanBlock({ isOwner, team }: { isOwner: boolean; team: Team }) {
+  const subscription = team.subscription ?? null;
+  const type = subscriptionType(subscription);
+  const isTrial = subscription?.status === "trialing";
+
+  // go-to-manage-subscription: the telemetry goes unsent (see the header
+  // note).
+  const onManageSubscription = () => {
+    window.location.href =
+      "/payments/subscriptions/show?returnUrl=" + encodeURIComponent(window.location.href);
+  };
+
+  let planDescription: string | null;
+  switch (type) {
+    case "professional":
+      planDescription = tr("subscription.settings.professional");
+      break;
+    case "unlimited":
+      planDescription = isTrial
+        ? tr("subscription.settings.unlimited-trial")
+        : tr("subscription.settings.unlimited");
+      break;
+    case "enterprise":
+      planDescription = tr("subscription.settings.enterprise");
+      break;
+    default:
+      planDescription = null;
+  }
+
+  return (
+    <div className="pp-team-plan">
+      <div className="pp-team-plan-label">{tr("subscription.dashboard.team-plan")}</div>
+      <span className="pp-team-plan-text">{planDescription}</span>
+      {isOwner && type !== "professional" ? (
+        <button
+          type="button"
+          className="pp-manage-subscription-link"
+          data-testid="manage-subscription-link"
+          onClick={onManageSubscription}
+        >
+          {tr("subscription.settings.manage-your-subscription")}
+        </button>
+      ) : null}
     </div>
   );
 }

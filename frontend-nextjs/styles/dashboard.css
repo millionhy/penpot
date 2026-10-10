@@ -885,6 +885,43 @@
   padding: 0;
 }
 
+/* team* block of the settings page (subscription.scss .team and its rows);
+   mounted by the settings page behind the :subscriptions flag. The label
+   runs headline-small, the text title-medium and the link body-medium. */
+.pp-team-plan {
+  display: grid;
+  gap: var(--sp-s);
+  grid-auto-rows: min-content;
+  inline-size: 100%;
+  max-inline-size: var(--sz-1000);
+}
+
+.pp-team-plan-label {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-dense);
+  text-transform: uppercase;
+}
+
+.pp-team-plan-text {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-20);
+  line-height: var(--lh-normal);
+}
+
+.pp-manage-subscription-link {
+  background: none;
+  border: none;
+  color: var(--color-accent-tertiary);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
+  margin-block-start: -0.5rem;
+  padding: 0;
+}
+
 /* --- profile section (sidebar.scss profile-section + dropdown) --- */
 
 .pp-dashboard-sidebar .pp-profile-section {

@@ -5,9 +5,8 @@
 // the team info block, the owner row and the member/project counters.
 //
 // Deviations from the CLJS original, documented:
-// - The organization block and the subscriptions team* block sit behind the
-//   :admin-console and :subscriptions flags; the shell runs with the flags
-//   off, so both wait for F5.7.
+// - The organization block sits behind the :admin-console flag; the shell
+//   runs with the flag off, so it waits for F5.7.
 // - The CLJS fetch effect is []; the shell depends on teamId because App
 //   Router keeps a mounted page across search-param navigation.
 // - (dec (:projects stats)) would throw on the nil stats of a first render;
@@ -18,10 +17,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MemberAvatar } from "@/components/member-avatar";
 import { useNotifications } from "@/components/notifications";
+import { TeamPlanBlock } from "@/components/subscription";
 import { TeamHeader } from "@/components/team-header";
 import { useInviteMembers } from "@/components/team-invite";
 import { generateAvatar } from "@/lib/avatars";
-import { config } from "@/lib/config";
+import { config, hasFlag } from "@/lib/config";
 import { useDashboard } from "@/lib/dashboard-context";
 import { useDocumentTitle } from "@/lib/dom";
 import { tr } from "@/lib/i18n";
@@ -187,6 +187,10 @@ export default function DashboardSettingsPage() {
               </>
             ) : null}
           </div>
+
+          {hasFlag("subscriptions") ? (
+            <TeamPlanBlock isOwner={permissions?.["is-owner"] === true} team={team} />
+          ) : null}
         </div>
       </section>
     </>
