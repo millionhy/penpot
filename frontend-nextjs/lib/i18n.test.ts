@@ -66,6 +66,19 @@ describe("richSegments", () => {
     ]);
   });
 
+  it("strips the |target:self suffix and marks the segment", () => {
+    expect(richSegments("see [plans|target:self](/settings/subscription) now")).toEqual([
+      { text: "see " },
+      { text: "plans", href: "/settings/subscription", self: true },
+      { text: " now" },
+    ]);
+  });
+
+  it("leaves self unset on plain links", () => {
+    const [segment] = richSegments("[b](https://example.com)");
+    expect(segment.self).toBeUndefined();
+  });
+
   it("resolves the terms agreement into two links", () => {
     const segments = richSegments(
       tr("auth.terms-and-privacy-agreement", "https://tos", "https://privacy"),

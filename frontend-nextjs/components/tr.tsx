@@ -19,7 +19,12 @@ export function Tr({ k, args = [], tagName: Tag = "span", className }: TrProps) 
       {segments.map((segment, index) => {
         if (segment.href !== undefined) {
           return (
-            <a key={index} href={segment.href} target="_blank" rel="noreferrer noopener">
+            <a
+              key={index}
+              href={segment.href}
+              target={segment.self === true ? "_self" : "_blank"}
+              rel="noreferrer noopener"
+            >
               {segment.text}
             </a>
           );

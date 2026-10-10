@@ -6,12 +6,13 @@
 // organization-team-switch* (the organization/team picker dropdown) is ported
 // with F5.7a (components/org-team-switch.tsx), replacing the plain team header
 // of the first slices; it renders the active team and its "..." management
-// menu (components/team-options-menu.tsx) like the CLJS version does. The rest
-// of the CLJS sidebar is deliberately not here yet: the project context menu
-// (rename, duplicate, move, delete) arrives with the full grid in F5.2, so a
-// pinned project only offers the pin toggle that put it in the list; and the
-// subscription/nitrate blocks plus the comments panel are flag-gated SaaS
-// features that stay out of the shell.
+// menu (components/team-options-menu.tsx) like the CLJS version does. The
+// subscription and nitrate blocks arrived with F5.7b
+// (components/subscription.tsx), flag-gated exactly like profile-section*:
+// the rest of the CLJS sidebar is deliberately not here yet: the project
+// context menu (rename, duplicate, move, delete) arrives with the full grid in
+// F5.2, so a pinned project only offers the pin toggle that put it in the
+// list; and the comments panel is a SaaS feature that stays out of the shell.
 //
 // The CLJS list items are clickable <li>; the shell uses real links so they are
 // keyboard reachable and the App Router owns the navigation.
@@ -20,6 +21,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardProfileMenu } from "@/components/dashboard-profile-menu";
 import { OrgTeamSwitch } from "@/components/org-team-switch";
+import { SubscriptionSection } from "@/components/subscription";
 import {
   dashboardHref,
   isDraftsSection,
@@ -222,6 +224,8 @@ export function DashboardSidebar() {
           )}
         </div>
       </div>
+
+      <SubscriptionSection />
 
       <DashboardProfileMenu />
     </nav>

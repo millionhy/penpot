@@ -17,8 +17,9 @@
 //   components/check-updates.tsx); its entry renders only when
 //   NEXT_PUBLIC_PENPOT_VERSION is set, since without an installed version
 //   there is nothing to compare against.
-// - nitrate/subscription blocks and comments-section are flag-gated SaaS
-//   features and stay out of the shell.
+// - nitrate/subscription blocks (profile-section*, F5.7b) render above this
+//   menu in components/subscription.tsx; comments-section is still out of the
+//   shell.
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";

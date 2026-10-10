@@ -646,6 +646,232 @@
   font-size: var(--fs-12);
 }
 
+/* --- subscription blocks (dashboard/subscription.scss + ds/product/cta.scss,
+   F5.7b). profile-section* mounts them between the content grid and the
+   profile menu: the power-up CTA, the ds growth CTA, the nitrate banners and
+   the current-plan box. --- */
+
+.pp-cta-power-up {
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--sp-s);
+  display: flex;
+  flex-direction: column;
+  margin: var(--sp-m);
+  padding: var(--sp-m);
+}
+
+.pp-cta-power-up.pp-highlighted {
+  background: var(--color-background-quaternary);
+  border-color: var(--color-accent-primary-muted);
+  padding: var(--sp-l);
+}
+
+.pp-cta-top-section {
+  background: none;
+  border: 0;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  grid-template-columns: 1fr auto;
+  padding: 0;
+  text-align: start;
+}
+
+.pp-cta-top-section.pp-cta-without-dropdown {
+  cursor: default;
+}
+
+.pp-cta-top-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-cta-icon-dropdown {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  width: var(--sp-l);
+}
+
+.pp-cta-icon {
+  stroke: var(--color-icon-default);
+  transform: rotate(90deg);
+}
+
+.pp-cta-bottom-section {
+  border-block-start: var(--b-1) solid var(--color-background-quaternary);
+  color: var(--color-foreground-secondary);
+  margin-block-start: var(--sp-m);
+  padding-block-start: var(--sp-m);
+}
+
+.pp-cta-power-up.pp-highlighted .pp-cta-bottom-section {
+  border-block-start-color: var(--color-accent-primary-muted);
+}
+
+.pp-cta-bottom-content {
+  color: var(--color-foreground-secondary);
+  display: inline-block;
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
+  text-align: start;
+}
+
+.pp-cta-bottom-content a {
+  color: var(--color-accent-tertiary);
+  margin-inline-start: var(--sp-xs);
+}
+
+.pp-cta-bottom-button {
+  margin-block-start: var(--sp-s);
+}
+
+.pp-cta-power-up.pp-highlighted .pp-cta-bottom-button {
+  margin-block-start: var(--sp-m);
+}
+
+.pp-cta-power-up .pp-cta-title,
+.pp-cta-power-up .pp-cta-text {
+  text-align: start;
+}
+
+/* body-small, then body-medium under .highlighted. */
+.pp-cta-power-up .pp-cta-title {
+  font-size: var(--fs-12);
+  line-height: var(--lh-compact);
+  margin-block-end: var(--sp-xs);
+}
+
+.pp-cta-power-up.pp-highlighted .pp-cta-title {
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
+  margin-block-end: 0;
+}
+
+/* title-small, then body-large under .highlighted. */
+.pp-cta-power-up .pp-cta-text {
+  font-size: var(--fs-14);
+  line-height: var(--lh-dense);
+}
+
+.pp-cta-power-up.pp-highlighted .pp-cta-text {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-16);
+  line-height: var(--lh-normal);
+}
+
+/* The ds cta* frame (ds/product/cta.scss). */
+.pp-cta {
+  background: var(--color-accent-select);
+  border: var(--b-1) solid var(--color-accent-primary-muted);
+  border-radius: var(--br-8);
+  padding: var(--sp-m);
+}
+
+.pp-cta .pp-cta-title {
+  color: var(--color-foreground-primary);
+  line-height: var(--lh-dense);
+  margin-block-end: var(--sp-m);
+}
+
+/* The text* headline-small run of cta*. */
+.pp-cta .pp-cta-placeholder-title {
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-dense);
+  text-transform: uppercase;
+}
+
+.pp-cta .pp-cta-message {
+  line-height: 100%;
+}
+
+/* dashboard-cta* and its cta-message* run (subscription.scss). */
+.pp-dashboard-cta {
+  height: fit-content;
+  margin: var(--sp-l);
+}
+
+.pp-dashboard-cta .pp-cta-title {
+  line-height: var(--lh-dense);
+}
+
+.pp-subscription-cta-message {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  line-height: 1;
+}
+
+.pp-subscription-cta-message a {
+  color: var(--color-accent-primary);
+  overflow-wrap: break-word;
+}
+
+/* nitrate-sidebar* banners (every variant carries .highlighted, which has no
+   rules of its own in the SCSS). */
+.pp-nitrate-banner {
+  background: var(--color-accent-select);
+  border: var(--b-1) solid var(--color-accent-primary-muted);
+  border-radius: var(--sp-s);
+  display: flex;
+  flex-direction: column;
+  margin: var(--sp-m) var(--sp-m) 0;
+  padding: var(--sp-l);
+}
+
+.pp-nitrate-title {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-16);
+  line-height: var(--lh-normal);
+}
+
+.pp-nitrate-info {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
+  margin-block: var(--sp-s) var(--sp-xxl);
+}
+
+.pp-nitrate-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-nitrate-bottom-button {
+  height: fit-content;
+  padding: var(--sp-s) var(--sp-m);
+  width: fit-content;
+}
+
+/* nitrate-current-plan* (admin-console flag). */
+.pp-nitrate-current-plan {
+  background: var(--color-background-tertiary);
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--sp-s);
+  margin-block: var(--sp-s) var(--sp-m);
+  margin-inline: var(--sp-m);
+  padding: var(--sp-m) var(--sp-l);
+}
+
+.pp-nitrate-current-plan-label {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  line-height: var(--lh-compact);
+  padding-block-end: var(--sp-xs);
+}
+
+.pp-nitrate-current-plan-text {
+  background: none;
+  border: none;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
+  padding: 0;
+}
+
 /* --- profile section (sidebar.scss profile-section + dropdown) --- */
 
 .pp-dashboard-sidebar .pp-profile-section {

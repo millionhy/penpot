@@ -49,12 +49,18 @@ export function tr(key: string, ...args: unknown[]): string {
 // dangerouslySetInnerHTML. The shell parses the same syntax into real anchors
 // and <strong> runs instead, so no translation string is ever injected as
 // markup. Everything outside a link or a bold run becomes a text segment.
+// A label ending in |target:self marks an in-app link: the marked renderer in
+// frontend/scripts/_helpers.js strips the suffix and emits target="_self".
 const richRe = /\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*/g;
+
+const selfSuffix = "|target:self";
 
 export interface RichSegment {
   text: string;
   href?: string;
   bold?: boolean;
+  // Only set when the label declared target:self; plain links leave it off.
+  self?: boolean;
 }
 
 export function richSegments(content: string): RichSegment[] {
@@ -65,6 +71,12 @@ export function richSegments(content: string): RichSegment[] {
     if (start > last) segments.push({ text: content.slice(last, start) });
     if (match[3] !== undefined) {
       segments.push({ text: match[3], bold: true });
+    } else if (match[1].endsWith(selfSuffix)) {
+      segments.push({
+        text: match[1].slice(0, -selfSuffix.length),
+        href: match[2],
+        self: true,
+      });
     } else {
       segments.push({ text: match[1], href: match[2] });
     }
