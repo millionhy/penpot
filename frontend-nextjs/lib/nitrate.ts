@@ -1,9 +1,11 @@
-// Nitrate (admin console) helpers (F5.7a). Headless port of the slice of
-// app.main.data.nitrate that the organization/team switcher, its
-// leave-organization flow and the create-organization action need: the
-// admin-console URL builders, the licence check, the organization team and
-// leave derivations, the leave-organization command with its summary-driven
-// modal decision, and the leave error mapping.
+// Nitrate (admin console) helpers (F5.7a, extended in F5.7b). Headless port of
+// the slices of app.main.data.nitrate the organization/team switcher, its
+// leave-organization flow, the create-organization action and the nitrate
+// subscription flows need: the admin-console URL builders, the licence check,
+// the organization team and leave derivations, the leave-organization command
+// with its summary-driven modal decision, the leave error mapping, the
+// checkout callback URLs and the connectivity and subscription-warning
+// fetches.
 //
 // Kept free of JSX so it runs in vitest's node environment, like lib/team.ts
 // and lib/org-switch.ts; the views live in components/org-team-switch.tsx
@@ -12,6 +14,9 @@
 // Deviations from the CLJS original, documented:
 // - The nitrate-audit events (delete-organization-member-event) are
 //   telemetry; the shell does not send them.
+// - go-to-buy-nitrate-license also waits for the ::ev/chunk-persisted event
+//   (2s timeout) before navigating and emits start-nitrate-checkout; the shell
+//   navigates right away and sends nothing.
 // - The rt/nav-raw :href events become href strings and the caller
 //   navigates: an admin-console target leaves the SPA, so the caller assigns
 //   window.location instead of pushing a route.
@@ -41,14 +46,16 @@ export interface AdminConsoleOrganization {
 }
 
 // Port of lambdaisland.uri (parse / join / uri-str) limited to what the
-// admin-console URLs need: scheme, authority, path and query. Fragments are
-// not part of either builder and are dropped; user, password and port stay
-// inside the authority string untouched.
+// admin-console and checkout URLs need: scheme, authority, path, query and
+// fragment; user, password and port stay inside the authority string
+// untouched. A join drops the base fragment (join* always ends taking the ref
+// one); append-query-param keeps it.
 interface ParsedUri {
   scheme: string | null;
   authority: string | null;
   path: string | null;
   query: string | null;
+  fragment: string | null;
 }
 
 const uriRe = /^(([^:/?#]+):)?(\/\/([^/?#\\]*))?([^?#]*)?(\?([^#]*))?(#(.*))?$/;
@@ -56,7 +63,7 @@ const uriRe = /^(([^:/?#]+):)?(\/\/([^/?#\\]*))?([^?#]*)?(\?([^#]*))?(#(.*))?$/;
 function parseUri(input: string): ParsedUri {
   const match = uriRe.exec(input);
   if (match === null) {
-    return { scheme: null, authority: null, path: null, query: null };
+    return { scheme: null, authority: null, path: null, query: null, fragment: null };
   }
   const scheme = match[2] ?? null;
   const authority = match[4] ?? null;
@@ -64,7 +71,10 @@ function parseUri(input: string): ParsedUri {
   // (when (seq path) path): an empty path is no path at all.
   const path = rawPath.length > 0 ? rawPath : null;
   const query = match[7] ?? null;
-  return { scheme, authority, path, query };
+  // A trailing "#" still yields the empty-string fragment the CLJS regex
+  // reads, which append-query-param treats as no fragment (str/blank?).
+  const fragment = match[9] ?? null;
+  return { scheme, authority, path, query, fragment };
 }
 
 // RFC 3986 section 5.2.4, port of remove-dot-segments.
@@ -114,10 +124,11 @@ function joinUriRef(base: ParsedUri, ref: ParsedUri): ParsedUri {
       authority: ref.authority,
       path: ref.path,
       query: ref.query,
+      fragment: ref.fragment,
     };
   }
   if (ref.path === null) {
-    return { ...base, query: ref.query ?? base.query };
+    return { ...base, query: ref.query ?? base.query, fragment: ref.fragment };
   }
   const path = ref.path.startsWith("/") ? ref.path : mergePaths(base.path, ref.path);
   return {
@@ -125,6 +136,7 @@ function joinUriRef(base: ParsedUri, ref: ParsedUri): ParsedUri {
     authority: base.authority,
     path: removeDotSegments(path),
     query: ref.query,
+    fragment: ref.fragment,
   };
 }
 
@@ -133,8 +145,10 @@ function uriToString(uri: ParsedUri): string {
   if (uri.scheme !== null) out += uri.scheme + ":";
   if (uri.authority !== null) out += "//" + uri.authority;
   out += uri.path ?? "";
-  // uri-str checks `query` for truth; an empty string still renders the "?".
+  // uri-str checks `query` and `fragment` for truth; an empty string still
+  // renders the "?" (or "#").
   if (uri.query !== null) out += "?" + uri.query;
+  if (uri.fragment !== null) out += "#" + uri.fragment;
   return out;
 }
 
@@ -145,6 +159,63 @@ function joinUri(base: string, ...refs: string[]): string {
     current = joinUriRef(current, parseUri(ref));
   }
   return uriToString(current);
+}
+
+// --- Query param append ------------------------------------------------------
+//
+// Port of app.common.uri/append-query-param over the parsing above: decode the
+// query to pairs, assoc, re-render. Re-encoding uses the query-encode rules
+// below, so values round-trip without double-encoding. Duplicate keys in the
+// input (never produced by the call sites) collapse to the last value instead
+// of the vector the CLJS builds; malformed escapes stay as written instead of
+// throwing the URIError the CLJS would.
+
+function percentDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function parseQueryPairs(query: string): Array<[string, string]> {
+  if (query.length === 0) return [];
+  const pairs: Array<[string, string]> = [];
+  for (const part of query.split("&")) {
+    const eq = part.indexOf("=");
+    const rawKey = eq === -1 ? part : part.slice(0, eq);
+    const rawValue = eq === -1 ? "" : part.slice(eq + 1);
+    // decode-param-pair: both sides percent-decode, only the value turns "+"
+    // back into a space.
+    const key = percentDecode(rawKey);
+    const value = percentDecode(rawValue.replace(/\+/g, " "));
+    const existing = pairs.findIndex(([k]) => k === key);
+    if (existing === -1) pairs.push([key, value]);
+    else pairs[existing][1] = value;
+  }
+  return pairs;
+}
+
+function withAppendedQueryParam(uri: ParsedUri, key: string, value: string): ParsedUri {
+  const pairs = parseQueryPairs(uri.query ?? "");
+  const existing = pairs.findIndex(([k]) => k === key);
+  if (existing === -1) pairs.push([key, value]);
+  else pairs[existing][1] = value;
+  const query = pairs.map(([k, v]) => queryEncode(k) + "=" + queryEncode(v)).join("&");
+  return { ...uri, query };
+}
+
+// append-query-param: an assoc into the decoded query map, re-rendered with
+// map->query-string. A fragment-based URL carries its query inside the
+// fragment, which the CLJS transforms on its own (str/blank? check).
+export function appendQueryParam(url: string, key: string, value: string): string {
+  const parsed = parseUri(url);
+  const fragment = parsed.fragment;
+  if (fragment === null || fragment.trim().length === 0) {
+    return uriToString(withAppendedQueryParam(parsed, key, value));
+  }
+  const inner = withAppendedQueryParam(parseUri(fragment), key, value);
+  return uriToString({ ...parsed, fragment: uriToString(inner) });
 }
 
 // lambdaisland's one-arity percent-encode: every byte of the UTF-8 encoding
@@ -220,6 +291,76 @@ export function adminConsoleCreateOrganizationHref(origin: string): string {
   return buildAdminConsoleUrl("", { action: "create-organization", origin });
 }
 
+// --- Checkout URLs -----------------------------------------------------------
+
+export const nitrateCheckoutErrorToken = "nitrate-checkout-error";
+export const nitrateCheckoutFinishErrorToken = "nitrate-checkout-finish-error";
+export const nitrateCheckoutCancelledToken = "nitrate-checkout-cancelled";
+
+// go-to-subscription-url: where a checkout returns the buyer. The screen
+// query is the CLJS-era route shape; the shell resolves it through
+// resolveScreenQuery (lib/legacy-routes.ts).
+export function goToSubscriptionUrl(): string {
+  return config.publicUri + "?screen=settings-subscription";
+}
+
+// go-to-nitrate-billing: the billing section of the admin console.
+export function goToNitrateBillingHref(): string {
+  return buildAdminConsoleUrl("licenses/billing", { callback: goToSubscriptionUrl() });
+}
+
+export interface NitrateCallbackUrls {
+  successCallback: string;
+  errorCallback: string;
+  finishErrorCallback: string;
+  cancelCallback: string;
+}
+
+// build-nitrate-callback-urls: append the `subscription` query param that
+// identifies the checkout outcome to the two base URLs.
+export function buildNitrateCallbackUrls(
+  baseUrl: string,
+  baseErrorUrl: string,
+): NitrateCallbackUrls {
+  return {
+    successCallback: appendQueryParam(baseUrl, "subscription", "subscribed-to-penpot-nitrate"),
+    errorCallback: appendQueryParam(baseErrorUrl, "subscription", nitrateCheckoutErrorToken),
+    finishErrorCallback: appendQueryParam(
+      baseErrorUrl,
+      "subscription",
+      nitrateCheckoutFinishErrorToken,
+    ),
+    cancelCallback: appendQueryParam(baseUrl, "subscription", nitrateCheckoutCancelledToken),
+  };
+}
+
+export interface NitrateCheckoutParams {
+  // The billing period ("monthly" / "yearly").
+  subscription: string;
+  // Where the checkout returns on success/cancel and on errors.
+  baseUrl: string;
+  baseErrorUrl: string;
+}
+
+// go-to-buy-nitrate-license: the admin-console checkout URL carrying the
+// billing period and the four callbacks. The event-origin and the
+// subscription-mode/start-origin arguments of the CLJS only feed the
+// start-nitrate-checkout telemetry the shell does not send.
+export function nitrateCheckoutHref({
+  subscription,
+  baseUrl,
+  baseErrorUrl,
+}: NitrateCheckoutParams): string {
+  const urls = buildNitrateCallbackUrls(baseUrl, baseErrorUrl);
+  return buildAdminConsoleUrl("licenses/start", {
+    subscription,
+    callback: urls.successCallback,
+    error_callback: urls.errorCallback,
+    finish_error_callback: urls.finishErrorCallback,
+    cancel_callback: urls.cancelCallback,
+  });
+}
+
 // --- Licence check -----------------------------------------------------------
 
 // The shape with-nitrate-licence (backend profile.clj / nitrate.clj) adds to
@@ -236,6 +377,47 @@ export function isValidLicense(profile: LicensedProfile | null | undefined): boo
   if (!hasFlag("admin-console")) return false;
   const status = profile?.subscription?.status;
   return typeof status === "string" && validLicenseStatuses.includes(status);
+}
+
+// --- Connectivity & subscription warnings ------------------------------------
+
+// schema:connectivity (backend rpc/commands/nitrate.clj).
+export interface NitrateConnectivity {
+  licenses: boolean;
+}
+
+// offline-connectivity: what show-nitrate-popup merges into the modal under
+// the air-gapped-conf flag, when nitrate is unreachable by design.
+export const offlineConnectivity: NitrateConnectivity = { licenses: false };
+
+// fetch-connectivity.
+export function fetchConnectivity(): Promise<NitrateConnectivity> {
+  return cmd<NitrateConnectivity>("get-nitrate-connectivity", {});
+}
+
+// The connectivity the nitrate popups open with: offline under the
+// air-gapped-conf flag, a fetch otherwise (show-nitrate-popup).
+export function nitrateConnectivity(): Promise<NitrateConnectivity> {
+  return hasFlag("air-gapped-conf") ? Promise.resolve(offlineConnectivity) : fetchConnectivity();
+}
+
+// schema:subscription-warning (backend rpc/commands/nitrate.clj). The CLJS
+// reads the kebab-case and camelCase spellings of both keys defensively, so
+// the type keeps all of them; subscriptionWarningInfo (lib/subscription.ts)
+// does the picks.
+export interface SubscriptionWarning {
+  "days-from-expiry"?: number;
+  "days-until-expiry"?: number;
+  daysFromExpiry?: number;
+  daysUntilExpiry?: number;
+  "expiration-date"?: InstantValue | null;
+  expirationDate?: InstantValue | null;
+}
+
+// fetch-subscription-warning: the nitrate licence expiry warning, or null when
+// there is none.
+export function fetchSubscriptionWarning(): Promise<SubscriptionWarning | null> {
+  return cmd<SubscriptionWarning | null>("get-subscription-warning", {});
 }
 
 // --- Organization team slices ------------------------------------------------

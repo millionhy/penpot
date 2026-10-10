@@ -1,20 +1,30 @@
-// Pin down the headless half of F5.7a: the admin-console URL builders (the
-// lambdaisland join and the byte-for-byte percent-encoding), the licence
-// check, the organization team and leave derivations, the leave error mapping,
-// the summary-driven modal decision and the wire shape of the two
-// leave-organization commands.
+// Pin down the headless half of F5.7a/F5.7b: the admin-console URL builders
+// (the lambdaisland join and the byte-for-byte percent-encoding), the
+// append-query-param port, the checkout callback URLs, the licence check, the
+// organization team and leave derivations, the leave error mapping, the
+// summary-driven modal decision, the wire shape of the two leave-organization
+// commands and the connectivity and subscription-warning fetches.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { config } from "@/lib/config";
 import {
   adminConsoleCreateOrganizationHref,
+  appendQueryParam,
   buildAdminConsoleHref,
   buildAdminConsoleUrl,
+  buildNitrateCallbackUrls,
   buildTeamsToLeave,
+  fetchConnectivity,
+  fetchSubscriptionWarning,
   getLeaveOrganizationSummary,
+  goToNitrateBillingHref,
+  goToSubscriptionUrl,
   isValidLicense,
   leaveOrganization,
   leaveOrganizationModalKind,
+  nitrateCheckoutHref,
+  nitrateConnectivity,
+  offlineConnectivity,
   organizationLeaveInfo,
   organizationTeams,
   orgLeaveErrorMessage,
@@ -92,6 +102,72 @@ describe("admin console URLs", () => {
   it("tags the create-organization action with the origin", () => {
     expect(adminConsoleCreateOrganizationHref("dashboard:organization-switcher")).toBe(
       "/admin-console/?action=create-organization&origin=dashboard%3Aorganization-switcher",
+    );
+  });
+});
+
+describe("appendQueryParam", () => {
+  it("appends to a bare path and after the existing pairs", () => {
+    expect(appendQueryParam("/foo", "subscription", "token")).toBe("/foo?subscription=token");
+    expect(appendQueryParam("/foo?x=1", "subscription", "token")).toBe(
+      "/foo?x=1&subscription=token",
+    );
+  });
+
+  it("replaces an existing key in place", () => {
+    expect(appendQueryParam("/foo?subscription=old&x=1", "subscription", "new")).toBe(
+      "/foo?subscription=new&x=1",
+    );
+  });
+
+  it("decodes and re-encodes the existing pairs", () => {
+    // decode-param-pair: escapes decode and "+" becomes a space; the render
+    // encodes both again (space back to "+").
+    expect(appendQueryParam("/foo?a%20b=c+d", "k", "v")).toBe("/foo?a+b=c+d&k=v");
+    // Malformed escapes stay as written instead of throwing.
+    expect(appendQueryParam("/foo?a=%zz", "k", "v")).toBe("/foo?a=%25zz&k=v");
+  });
+
+  it("lands inside the fragment of hash URLs", () => {
+    expect(appendQueryParam("http://h/p?x=1#/frag?y=2", "subscription", "t")).toBe(
+      "http://h/p?x=1#/frag?y=2&subscription=t",
+    );
+    // A trailing "#" is the blank fragment str/blank? rejects: the pair goes
+    // on the URL itself and the "#" stays rendered.
+    expect(appendQueryParam("/foo#", "k", "v")).toBe("/foo?k=v#");
+  });
+});
+
+describe("checkout URLs", () => {
+  const originalPublicUri = config.publicUri;
+
+  afterEach(() => {
+    config.publicUri = originalPublicUri;
+  });
+
+  it("builds the four callback URLs from the two bases", () => {
+    expect(buildNitrateCallbackUrls("/ok", "/err")).toEqual({
+      successCallback: "/ok?subscription=subscribed-to-penpot-nitrate",
+      errorCallback: "/err?subscription=nitrate-checkout-error",
+      finishErrorCallback: "/err?subscription=nitrate-checkout-finish-error",
+      cancelCallback: "/ok?subscription=nitrate-checkout-cancelled",
+    });
+  });
+
+  it("requests the licenses/start page with the period and the callbacks", () => {
+    config.publicUri = "";
+    expect(
+      nitrateCheckoutHref({ subscription: "monthly", baseUrl: "/ok", baseErrorUrl: "/err" }),
+    ).toBe(
+      "/admin-console/licenses/start?subscription=monthly&callback=/ok%3Fsubscription%3Dsubscribed-to-penpot-nitrate&error_callback=/err%3Fsubscription%3Dnitrate-checkout-error&finish_error_callback=/err%3Fsubscription%3Dnitrate-checkout-finish-error&cancel_callback=/ok%3Fsubscription%3Dnitrate-checkout-cancelled",
+    );
+  });
+
+  it("points the return URLs at the settings screen", () => {
+    config.publicUri = "http://localhost:3449";
+    expect(goToSubscriptionUrl()).toBe("http://localhost:3449?screen=settings-subscription");
+    expect(goToNitrateBillingHref()).toBe(
+      "http://localhost:3449/admin-console/licenses/billing?callback=http%3A//localhost%3A3449%3Fscreen%3Dsettings-subscription",
     );
   });
 });
@@ -311,5 +387,36 @@ describe("leaveOrganizationModalKind", () => {
 
   it("plainly confirms otherwise", () => {
     expect(leaveOrganizationModalKind(summary())).toBe("confirm");
+  });
+});
+
+describe("nitrate connectivity and warnings", () => {
+  const originalFlags = config.flags;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    config.flags = originalFlags;
+  });
+
+  it("fetches the connectivity with a GET", async () => {
+    const calls = stubFetch(jsonResponse({ licenses: true }));
+    const result = await fetchConnectivity();
+    expect(calls[0].init.method).toBe("GET");
+    expect(calls[0].url).toBe("/api/main/methods/get-nitrate-connectivity");
+    expect(result).toEqual({ licenses: true });
+  });
+
+  it("short-circuits to the offline default under air-gapped-conf", async () => {
+    config.flags = [...config.flags, "air-gapped-conf"];
+    const calls = stubFetch(jsonResponse({ licenses: true }));
+    expect(await nitrateConnectivity()).toEqual(offlineConnectivity);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("fetches the subscription warning with a GET", async () => {
+    const calls = stubFetch(jsonResponse(null));
+    expect(await fetchSubscriptionWarning()).toBeNull();
+    expect(calls[0].init.method).toBe("GET");
+    expect(calls[0].url).toBe("/api/main/methods/get-subscription-warning");
   });
 });
