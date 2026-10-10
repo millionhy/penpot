@@ -7,11 +7,9 @@
 // app.main.data.team.
 //
 // Deviations from the CLJS original, documented:
-// - check-and-delete-team also fetches the team to re-check organization
-//   permissions (cto/allowed? :delete-team) before offering the confirm; the
-//   shell runs without organizations, so the no-organization branch
-//   (permissions.is-owner) is the whole check. The organization branch
-//   arrives with F5.7.
+// - check-and-delete-team resolves can-delete? on the freshly fetched team
+//   row: the organization rules of cto/allowed? behind the :admin-console
+//   flag, the is-owner fallback otherwise (see onDeleteTeam).
 // - on-change-owner-and-leave emits fetch-members then opens the modal in one
 //   tick in CLJS; the shell's modal host lives outside the dashboard
 //   providers, so the flow fetches the member rows and hands them to the
@@ -26,10 +24,12 @@ import { LeaveAndReassignModal } from "@/components/leave-and-reassign-modal";
 import { ConfirmDialog, useModal } from "@/components/modal";
 import { useNotifications } from "@/components/notifications";
 import { NoPermissionModal } from "@/components/team-invite";
+import { hasFlag } from "@/lib/config";
 import { dashboardHref } from "@/lib/dashboard";
 import { useDashboard } from "@/lib/dashboard-context";
 import { RpcError } from "@/lib/errors";
 import { tr } from "@/lib/i18n";
+import { organizationAllowed } from "@/lib/org-switch";
 import { useSession } from "@/lib/session";
 import {
   deleteTeam,
@@ -168,7 +168,8 @@ export function useTeamLeaveFlows() {
   );
 
   // check-and-delete-team: fetch the teams, decide can-delete? on the fresh
-  // row (the no-organization branch of cto/allowed?), then confirm or open
+  // row (the organization rules when the admin-console runs and the team has
+  // an organization, the is-owner fallback otherwise), then confirm or open
   // the no-permission modal.
   const onDeleteTeam = useCallback(async () => {
     if (teamId === null) return;
@@ -183,7 +184,18 @@ export function useTeamLeaveFlows() {
     }
     // teams-fetched: the same answer updates the stored teams list.
     void refreshTeams();
-    const canDelete = freshTeam !== null && freshTeam.permissions?.["is-owner"] === true;
+    const organization = freshTeam?.organization ?? null;
+    const inOrganization =
+      hasFlag("admin-console") && organization !== null && organization !== undefined;
+    const canDelete =
+      freshTeam !== null &&
+      (inOrganization
+        ? organizationAllowed("delete-team", {
+            organizationPerms: organization,
+            profileId: profile?.id,
+            teamPerms: freshTeam.permissions,
+          })
+        : freshTeam.permissions?.["is-owner"] === true);
     if (!canDelete) {
       modal.open(
         <NoPermissionModal
@@ -196,7 +208,11 @@ export function useTeamLeaveFlows() {
     modal.open(
       <ConfirmDialog
         title={tr("modals.delete-team-confirm.title")}
-        message={tr("modals.delete-team-confirm.message")}
+        message={
+          inOrganization
+            ? tr("modals.delete-organization-team-confirm.message", organization.name ?? "")
+            : tr("modals.delete-team-confirm.message")
+        }
         acceptLabel={tr("modals.delete-team-confirm.accept")}
         cancelLabel={tr("labels.cancel")}
         onAccept={() => {
