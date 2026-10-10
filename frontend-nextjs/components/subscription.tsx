@@ -5,7 +5,9 @@
 // app.main.ui.dashboard.sidebar plus the views they mount from
 // app.main.ui.dashboard.subscription: the power-up CTA of the free plans, the
 // growth CTA once the seat window breaks (dashboard-cta*), the nitrate
-// sidebar with its three banners and the current-plan block.
+// sidebar with its three banners, the current-plan block and the
+// extra-editors banner of the members and invitations sections (members-cta*,
+// mounted by those pages when show-subscription-members-banner? holds).
 //
 // Deviations from the CLJS original, documented:
 // - ev/event telemetry (open-subscription-modal, start-nitrate-checkout) is
@@ -220,6 +222,26 @@ export function DashboardCta({ profile }: { profile: SubscriptionProfile | null 
     );
   }
   return null;
+}
+
+// --- members-cta* ------------------------------------------------------------
+
+// The extra-editors banner; show-subscription-members-banner? decides when to
+// mount it (lib/subscription.ts), the same predicate the CLJS applies at both
+// call sites.
+export function MembersCta() {
+  return (
+    <DsCta
+      className="pp-members-cta"
+      title={tr("subscription.dashboard.unlimited-members-extra-editors-cta-title")}
+    >
+      <Tr
+        k="subscription.dashboard.unlimited-members-extra-editors-cta-text"
+        tagName="span"
+        className="pp-subscription-cta-message"
+      />
+    </DsCta>
+  );
 }
 
 // --- subscription-sidebar* ---------------------------------------------------

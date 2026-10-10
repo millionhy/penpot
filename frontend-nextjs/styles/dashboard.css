@@ -788,6 +788,19 @@
   line-height: 100%;
 }
 
+/* members-cta* (subscription.scss); the $s-52 / $s-220 literals keep their
+   deprecated pixel values. */
+.pp-members-cta {
+  height: fit-content;
+  margin-block-start: var(--sp-s);
+  margin-inline-start: 3.25rem;
+  max-width: 13.75rem;
+}
+
+.pp-members-cta .pp-cta-title {
+  line-height: var(--lh-dense);
+}
+
 /* dashboard-cta* and its cta-message* run (subscription.scss). */
 .pp-dashboard-cta {
   height: fit-content;

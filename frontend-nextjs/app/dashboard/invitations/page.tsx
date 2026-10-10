@@ -27,13 +27,19 @@ import {
 } from "@/components/dashboard-menu";
 import { ModalShell, useModal } from "@/components/modal";
 import { useNotifications } from "@/components/notifications";
+import { MembersCta } from "@/components/subscription";
 import { TeamHeader } from "@/components/team-header";
 import { useInviteMembers } from "@/components/team-invite";
+import { hasFlag } from "@/lib/config";
 import { useDashboard } from "@/lib/dashboard-context";
 import { useDocumentTitle } from "@/lib/dom";
 import { RpcError } from "@/lib/errors";
 import { tr } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
+import {
+  showSubscriptionMembersBanner,
+  type SubscriptionProfile,
+} from "@/lib/subscription";
 import {
   canSendInvitations,
   copyInvitationLink,
@@ -320,6 +326,8 @@ export default function DashboardInvitationsPage() {
 
   if (team === null || teamId === null) return null;
 
+  const runtime = (profile ?? null) as SubscriptionProfile | null;
+
   const sortIcon = (field: InvitationSortField): string => {
     if (sortState.field === field && sortState.direction === "desc") return "\u2191";
     return "\u2193";
@@ -530,6 +538,11 @@ export default function DashboardInvitationsPage() {
             </div>
           )}
         </div>
+
+        {hasFlag("subscriptions") &&
+        showSubscriptionMembersBanner(team.subscription, team.permissions, runtime) ? (
+          <MembersCta />
+        ) : null}
       </section>
 
       {roleSelector !== null ? (

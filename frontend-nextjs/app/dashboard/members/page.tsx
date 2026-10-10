@@ -7,8 +7,6 @@
 // components/team-leave-flows.tsx, shared with the sidebar team menu.
 //
 // Deviations from the CLJS original, documented:
-// - members-cta* (the subscriptions banner) belongs to the :subscriptions
-//   flag; the shell runs with the flag off (F5.7).
 // - The role and actions dropdowns use DashboardMenu instead of the CLJS ds
 //   dropdown, like every migrated menu.
 // - update-member-role and delete-member failures surface as errors.generic
@@ -24,13 +22,19 @@ import {
 import { MemberAvatar } from "@/components/member-avatar";
 import { ConfirmDialog, useModal } from "@/components/modal";
 import { useNotifications } from "@/components/notifications";
+import { MembersCta } from "@/components/subscription";
 import { TeamHeader } from "@/components/team-header";
 import { useInviteMembers } from "@/components/team-invite";
 import { useTeamLeaveFlows } from "@/components/team-leave-flows";
+import { hasFlag } from "@/lib/config";
 import { useDashboard } from "@/lib/dashboard-context";
 import { useDocumentTitle } from "@/lib/dom";
 import { tr } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
+import {
+  showSubscriptionMembersBanner,
+  type SubscriptionProfile,
+} from "@/lib/subscription";
 import {
   canChangeMemberRole,
   canLeaveFromMenu,
@@ -139,6 +143,7 @@ export default function DashboardMembersPage() {
 
   if (team === null || teamId === null) return null;
 
+  const runtime = (profile ?? null) as SubscriptionProfile | null;
   const rows = orderedMembers(members ?? []);
   const totalMembers = rows.length;
 
@@ -304,6 +309,11 @@ export default function DashboardMembersPage() {
             })}
           </div>
         </div>
+
+        {hasFlag("subscriptions") &&
+        showSubscriptionMembersBanner(team.subscription, team.permissions, runtime) ? (
+          <MembersCta />
+        ) : null}
       </section>
 
       {roleMenu !== null && roleMenuMember !== null ? (
