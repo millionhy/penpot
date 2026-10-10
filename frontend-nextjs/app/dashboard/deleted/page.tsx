@@ -7,9 +7,6 @@
 // progress widget.
 //
 // Deviations from the CLJS original, documented:
-// - The retention notice uses the plan-derived day count only. The nitrate
-//   branch (90 days behind a valid nitrate licence) needs the subscription
-//   slice that arrives with F5.7.
 // - dd/restore-files and dd/delete-files end with fetch-projects,
 //   fetch-deleted-files and a second fetch-projects; the shell runs each
 //   refresh once.
@@ -41,7 +38,6 @@ import {
   dashboardHref,
   deletedFilesOf,
   deletedProjectsFor,
-  deletionDays,
   getTeamDeletedFiles,
   permanentlyDeleteTeamFiles,
   restoreDeletedTeamFiles,
@@ -54,6 +50,8 @@ import {
 } from "@/lib/dashboard";
 import { useDashboard } from "@/lib/dashboard-context";
 import { tr } from "@/lib/i18n";
+import { useSession } from "@/lib/session";
+import { deletionDaysFor, type SubscriptionProfile } from "@/lib/subscription";
 
 interface BulkLabels {
   success: string;
@@ -180,6 +178,7 @@ function DeletedProjectItem({
 export default function DashboardDeletedPage() {
   const router = useRouter();
   const { team, teamId, canEdit, projects, refreshProjects, clearSelection } = useDashboard();
+  const { profile } = useSession();
   const { success: notifySuccess, error: notifyError } = useNotifications();
   const { start: startProgress, update: updateProgress, clear: clearProgress } = useProgress();
   const modal = useModal();
@@ -220,7 +219,12 @@ export default function DashboardDeletedPage() {
     [projects, deletedFiles],
   );
 
-  const days = deletionDays(subscriptionType(team?.subscription));
+  // deletion-days of deleted-section*: the nitrate branch (90 days behind a
+  // valid licence on enterprise or nitrate) plus the SaaS windows.
+  const days = deletionDaysFor(
+    subscriptionType(team?.subscription),
+    profile as SubscriptionProfile | null,
+  );
 
   // dd/restore-files and dd/delete-files: initialize the progress widget, feed
   // it every progress block, then refresh both lists and raise the toast. An

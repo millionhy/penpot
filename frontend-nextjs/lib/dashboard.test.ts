@@ -14,7 +14,6 @@ import {
   defaultProject,
   deletedFilesOf,
   deletedProjectsFor,
-  deletionDays,
   effectiveSection,
   fileFeatures,
   firstPageId,
@@ -449,15 +448,6 @@ describe("subscriptionType", () => {
   it("keeps the plan type otherwise", () => {
     expect(subscriptionType({ type: "unlimited", status: "active" })).toBe("unlimited");
     expect(subscriptionType({ type: "enterprise" })).toBe("enterprise");
-  });
-});
-
-describe("deletionDays", () => {
-  it("keeps the trash 30 days on unlimited, 90 on enterprise and 7 otherwise", () => {
-    expect(deletionDays("unlimited")).toBe(30);
-    expect(deletionDays("enterprise")).toBe(90);
-    expect(deletionDays("professional")).toBe(7);
-    expect(deletionDays("whatever")).toBe(7);
   });
 });
 

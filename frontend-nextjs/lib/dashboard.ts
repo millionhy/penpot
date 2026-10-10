@@ -817,15 +817,6 @@ export function subscriptionType(subscription: Subscription | null | undefined):
   return type;
 }
 
-// The deletion-days cond of deleted-section*. The nitrate branch (90 days for a
-// valid nitrate licence on an enterprise or nitrate plan) needs the F5.7
-// subscription slice and is deferred.
-export function deletionDays(type: string): number {
-  if (type === "unlimited") return 30;
-  if (type === "enterprise") return 90;
-  return 7;
-}
-
 // --- Shared libraries (F5.3) ---------------------------------------------------------
 //
 // get-team-shared-files answers the published files of a team, each row
