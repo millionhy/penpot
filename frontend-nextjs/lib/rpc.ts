@@ -26,12 +26,41 @@ function joinUrl(base: string, path: string): string {
   return b.length > 0 ? b + "/" + p : "/" + p;
 }
 
+// GET query params follow the repo.cljs -> app.util.http -> u/map->query-string
+// chain: a collection value repeats the key once per element (the set of
+// supported features, a set of ids), every other value stringifies. The
+// transit-js set of lib/transit.ts is not a JS iterable, so it is enumerated
+// through its value-only forEach (a JS Set or Map has the same size/forEach
+// shape; those are excluded and handled natively).
+interface TransitSetLike {
+  size: number;
+  forEach(callback: (item: unknown) => void): void;
+}
+
+function isTransitSetLike(value: unknown): value is TransitSetLike {
+  if (value === null || typeof value !== "object") return false;
+  if (value instanceof Map || value instanceof Set || Array.isArray(value)) return false;
+  const candidate = value as { size?: unknown; forEach?: unknown };
+  return typeof candidate.forEach === "function" && typeof candidate.size === "number";
+}
+
+function appendQueryParam(usp: URLSearchParams, key: string, value: unknown): void {
+  if (value === undefined || value === null) return;
+  if (Array.isArray(value) || value instanceof Set) {
+    for (const item of value) usp.append(key, String(item));
+    return;
+  }
+  if (isTransitSetLike(value)) {
+    value.forEach((item) => usp.append(key, String(item)));
+    return;
+  }
+  usp.append(key, String(value));
+}
+
 function toQuery(params: Record<string, unknown>): string {
   const usp = new URLSearchParams();
   for (const key of Object.keys(params)) {
-    const value = params[key];
-    if (value === undefined || value === null) continue;
-    usp.append(key, String(value));
+    appendQueryParam(usp, key, params[key]);
   }
   const s = usp.toString();
   return s.length > 0 ? "?" + s : "";

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cmd, cmdUpload, parseSseBlocks } from "@/lib/rpc";
-import { encodeTransit } from "@/lib/transit";
+import { encodeTransit, set as transitSet } from "@/lib/transit";
 
 // The blocks the backend sends for the bulk trash commands
 // (app.rpc.commands.files): a "progress" block per file, then "end".
@@ -166,5 +166,78 @@ describe("cmdUpload", () => {
     expect(body.get("caption")).toBe("hello");
     // undefined (and null) params are dropped, like send! in repo.cljs.
     expect(body.get("missing")).toBeNull();
+  });
+});
+
+// GET query encoding: send! in repo.cljs hands the whole params map to
+// u/map->query-string, where a collection value repeats the key once per
+// element (lambdaisland/uri) and nil values disappear. The viewer bundle call
+// sends its feature set this way; String(value) collapsed the transit set
+// into a single "TransitSet {...}" entry and the backend answered
+// :feature-not-supported.
+describe("GET query encoding", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubGetFetch(): RecordedCall[] {
+    const calls: RecordedCall[] = [];
+    vi.stubGlobal("fetch", async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init: init ?? {} });
+      return new Response(null, { status: 204 });
+    });
+    return calls;
+  }
+
+  // The recorded URL is relative: config.publicUri defaults to "" and
+  // same-origin requests are proxied by the Next rewrites.
+  function sentParams(url: string): URLSearchParams {
+    return new URL(url, "http://localhost").searchParams;
+  }
+
+  it("repeats the key once per element of a transit set", async () => {
+    const calls = stubGetFetch();
+
+    await cmd("get-view-only-bundle", {
+      "file-id": "f1",
+      features: transitSet(["fdata/path-data", "layout/grid"]),
+      "share-id": "s1",
+    });
+
+    const params = sentParams(calls[0].url);
+    expect(params.getAll("features").sort()).toEqual(["fdata/path-data", "layout/grid"]);
+    expect(params.get("file-id")).toBe("f1");
+    expect(params.get("share-id")).toBe("s1");
+  });
+
+  it("applies the same rule to arrays and JS sets", async () => {
+    const calls = stubGetFetch();
+
+    await cmd("get-file-fragment", { ids: ["a", "b"], other: new Set(["c", "d"]) });
+
+    const params = sentParams(calls[0].url);
+    expect(params.getAll("ids")).toEqual(["a", "b"]);
+    expect(params.getAll("other")).toEqual(["c", "d"]);
+  });
+
+  it("drops undefined and null values", async () => {
+    const calls = stubGetFetch();
+
+    await cmd("get-file-fragment", { "file-id": "f1", missing: undefined, gone: null });
+
+    const params = sentParams(calls[0].url);
+    expect(params.has("missing")).toBe(false);
+    expect(params.has("gone")).toBe(false);
+    expect(params.get("file-id")).toBe("f1");
+  });
+
+  it("stringifies every other value", async () => {
+    const calls = stubGetFetch();
+
+    await cmd("get-file-fragment", { index: 0, flag: false });
+
+    const params = sentParams(calls[0].url);
+    expect(params.get("index")).toBe("0");
+    expect(params.get("flag")).toBe("false");
   });
 });
