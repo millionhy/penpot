@@ -1,0 +1,894 @@
+/* Viewer route group (F6.2). Port of frontend/src/app/main/ui/viewer.scss,
+   frontend/src/app/main/ui/viewer/header.scss and the used parts of
+   frontend/src/app/main/ui/ds/product/loader.scss onto the tokens in
+   styles/tokens.css. Class names map 1:1 from the SCSS modules with the
+   pp- prefix; the deprecated functional tokens (design-tokens.scss) resolve
+   to the --color-* pairs of the shell theme.
+
+   Stand-ins until later F6 slices: .pp-viewport-placeholder fills the frame
+   area until F6.4 renders it with render-wasm; the thumbnails panel styles
+   arrive with F6.3.
+
+   Deviations, documented: the CLJS .viewer-bottom carries a padding-right
+   with four values, which no browser accepts (the declaration is dropped at
+   parse time); it is omitted here. The CLJS $.force-visible variant class on
+   the layout has no rules yet (F6.3), so .pp-force-visible is unused. */
+
+/* --- layout (viewer.scss .viewer-layout / .viewer-content) --- */
+
+.pp-viewer-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: var(--sz-48) auto;
+  height: 100vh;
+  user-select: none;
+}
+
+.pp-viewer-content {
+  /* --viewer-background-color */
+  background-color: var(--color-background-secondary);
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: var(--sz-252) auto;
+  grid-row: 2 / span 1;
+  overflow: hidden;
+}
+
+.pp-empty-state {
+  /* body-small-typography + --empty-message-foreground-color */
+  color: var(--color-foreground-secondary);
+  display: grid;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  height: 100%;
+  line-height: var(--lh-normal);
+  place-items: center;
+  width: 100%;
+}
+
+.pp-thumbnails-close {
+  /* button-style + --overlay-color */
+  background-color: var(--color-overlay-default);
+  border: none;
+  cursor: pointer;
+  grid-column: 1 / span 1;
+  grid-row: 1 / span 2;
+  z-index: 10; /* $z-index-10 */
+}
+
+.pp-thumbnails-close.pp-invisible {
+  display: none;
+}
+
+.pp-viewer-section {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / span 1;
+  grid-row: 1 / span 2;
+  height: calc(100vh - var(--sz-48));
+  overflow: auto;
+  /* %new-scrollbar */
+  scrollbar-color: rgb(170 181 186 / 0.3) transparent;
+  scrollbar-width: thin;
+}
+
+.pp-viewer-section:hover {
+  scrollbar-color: rgb(170 181 186 / 0.7) transparent;
+}
+
+/* The webkit rules do not apply on Chrome 121+; kept for backward
+   compatibility like %new-scrollbar. */
+.pp-viewer-section::-webkit-scrollbar {
+  background-color: transparent;
+  cursor: pointer;
+  height: var(--sz-12);
+  width: var(--sz-12);
+}
+
+.pp-viewer-section::-webkit-scrollbar-track,
+.pp-viewer-section::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+
+.pp-viewer-section::-webkit-scrollbar-thumb {
+  background-clip: content-box;
+  background-color: rgb(170 181 186 / 0.3);
+  border: var(--b-2) solid transparent;
+  border-radius: var(--br-8);
+}
+
+.pp-viewer-section::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(170 181 186 / 0.7);
+  outline: none;
+}
+
+/* --- frame pagination (viewer.scss .viewer-go-prev / .viewer-go-next) ---
+   %button-secondary + $flex-center; the svgs come back to %button-icon with
+   the icon-foreground stroke. --- */
+
+.pp-viewer-go-prev,
+.pp-viewer-go-next {
+  align-items: center;
+  /* --button-secondary-background-color-rest */
+  background-color: var(--color-background-tertiary);
+  border: var(--b-1) solid var(--color-background-tertiary);
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-64);
+  justify-content: center;
+  position: absolute;
+  right: var(--sp-s);
+  top: calc(50vh - var(--sz-32));
+  transition: transform 400ms ease 300ms;
+  width: var(--sz-32);
+  z-index: 2; /* $z-index-2 */
+}
+
+.pp-viewer-go-prev:hover,
+.pp-viewer-go-next:hover {
+  background-color: var(--color-background-quaternary);
+  border-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+}
+
+.pp-viewer-go-prev:active,
+.pp-viewer-go-next:active {
+  background-color: var(--color-background-secondary);
+  border-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+  outline: none;
+}
+
+.pp-viewer-go-prev svg,
+.pp-viewer-go-next svg {
+  /* %button-icon */
+  color: transparent;
+  fill: none;
+  height: var(--sz-16);
+  stroke: var(--color-foreground-secondary); /* --icon-foreground */
+  stroke-width: 1px;
+  width: var(--sz-16);
+}
+
+.pp-viewer-go-prev:hover svg,
+.pp-viewer-go-next:hover svg {
+  stroke: var(--color-accent-primary);
+}
+
+.pp-viewer-go-prev:active svg,
+.pp-viewer-go-next:active svg {
+  stroke: var(--color-accent-primary);
+}
+
+.pp-viewer-go-prev {
+  left: var(--sp-s);
+  right: unset;
+}
+
+.pp-viewer-go-prev svg {
+  transform: rotate(180deg);
+}
+
+/* --- bottom bar (viewer.scss .viewer-bottom / .reset-button / .counter) --- */
+
+.pp-viewer-bottom {
+  align-items: flex-start;
+  bottom: 0;
+  display: flex;
+  height: var(--sz-40);
+  justify-content: space-between;
+  pointer-events: none;
+  position: fixed;
+  transition: transform 400ms ease 300ms;
+  width: 100%;
+  z-index: 2; /* $z-index-2 */
+}
+
+.pp-reset-button {
+  align-items: center;
+  /* --viewer-controls-background-color */
+  background-color: var(--color-background-primary);
+  border: var(--b-1) solid var(--color-background-tertiary);
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-32);
+  justify-content: center;
+  margin-left: var(--sp-s);
+  pointer-events: all;
+  width: var(--sz-28);
+}
+
+.pp-reset-button:hover {
+  background-color: var(--color-background-quaternary);
+  border-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+}
+
+.pp-reset-button:active {
+  background-color: var(--color-background-secondary);
+  border-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+  outline: none;
+}
+
+.pp-reset-button svg {
+  color: transparent;
+  fill: none;
+  height: var(--sz-16);
+  stroke: var(--color-foreground-secondary); /* --icon-foreground */
+  stroke-width: 1px;
+  width: var(--sz-16);
+}
+
+.pp-reset-button:hover svg {
+  stroke: var(--color-accent-primary);
+}
+
+.pp-counter {
+  align-items: center;
+  /* --viewer-controls-background-color */
+  background-color: var(--color-background-primary);
+  border-radius: var(--br-8);
+  /* --viewer-thumbnails-control-foreground-color */
+  color: var(--color-foreground-secondary);
+  display: flex;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  height: var(--sz-32);
+  justify-content: center;
+  line-height: var(--lh-normal);
+  width: var(--sz-64);
+}
+
+/* --- frame viewport (viewer.scss .viewer-wrapper / .viewer-clipper /
+   .viewport-container) --- */
+
+.pp-viewer-wrapper {
+  margin: 0 auto;
+  position: relative;
+}
+
+.pp-viewer-clipper {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  place-items: center center;
+}
+
+.pp-viewport-container {
+  clip-path: inset(0 0 0 0);
+  grid-column: 1 / 1;
+  grid-row: 1 / 1;
+}
+
+/* Placeholder of the frame area until F6.4 renders the frame with the WASM
+   canvas; it shows the frame name and the zoomed size. */
+.pp-viewport-placeholder {
+  border: var(--b-2) dashed var(--color-background-quaternary);
+  color: var(--color-foreground-secondary);
+  display: grid;
+  font-size: var(--fs-12);
+  gap: var(--sp-xs);
+  inset: 0;
+  place-content: center;
+  position: absolute;
+  text-align: center;
+}
+
+/* --- fullscreen / forced visibility (viewer.scss FULLSCREEN block) --- */
+
+[data-fullscreen="true"] .pp-viewer-bottom {
+  transform: translateY(var(--sz-40));
+}
+
+[data-force-visible="true"] .pp-viewer-bottom {
+  transform: translateY(0);
+}
+
+[data-fullscreen="true"] .pp-viewer-go-next {
+  transform: translateX(var(--sz-40));
+}
+
+[data-fullscreen="true"] .pp-viewer-go-prev {
+  transform: translateX(calc(-1 * var(--sz-40)));
+}
+
+[data-fullscreen="true"] .pp-viewer-content {
+  height: 100vh;
+  transform: translateY(calc(-1 * var(--sz-48)));
+}
+
+[data-fullscreen="true"] .pp-viewer-section {
+  height: 100vh;
+}
+
+[data-force-visible="true"] .pp-viewer-go-next,
+[data-force-visible="true"] .pp-viewer-go-prev {
+  transform: translateX(0);
+}
+
+/* --- header (viewer/header.scss .viewer-header) --- */
+
+.pp-viewer-header {
+  align-items: center;
+  /* --panel-background-color */
+  background-color: var(--color-background-primary);
+  display: grid;
+  grid-column: 1 / span 1;
+  grid-row: 1 / span 1;
+  grid-template-columns: 1fr 5.75rem 1fr; /* $s-92 without a token */
+  height: var(--sz-48);
+  justify-content: space-between;
+  padding: var(--sp-s) var(--sp-m);
+  position: absolute;
+  top: 0;
+  transition: transform 400ms ease 300ms;
+  width: 100vw;
+}
+
+/* FILE NAVIGATION */
+
+.pp-nav-zone {
+  display: flex;
+  flex-basis: min-content;
+  gap: var(--sp-m); /* $s-12 */
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.pp-home-link {
+  display: grid;
+  padding: 0;
+  place-content: center;
+}
+
+.pp-logo-icon {
+  fill: var(--color-foreground-primary); /* --icon-foreground-hover */
+  height: var(--sz-28);
+  width: var(--sz-28);
+}
+
+.pp-sitemap-zone {
+  /* flex-column ($s-4 gap) */
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  position: relative;
+  width: 100%;
+}
+
+.pp-project-name {
+  /* uppercase-title-typography: $fs-11 has no token */
+  color: var(--color-foreground-secondary); /* --title-foreground-color */
+  font-size: 0.6875rem;
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-dense);
+  text-transform: uppercase;
+}
+
+.pp-sitemap-text {
+  /* flex-row ($s-4 gap) */
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+}
+
+.pp-breadcrumb {
+  align-items: center;
+  color: var(--color-foreground-secondary); /* --title-foreground-color */
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  gap: var(--sp-xs);
+  line-height: var(--lh-normal);
+}
+
+.pp-breadcrumb-text {
+  /* text-ellipsis */
+  display: block;
+  max-width: 99%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 12vw; /* fallback for browsers without container units */
+  max-width: 12cqw;
+}
+
+.pp-icon {
+  align-items: center;
+  display: flex;
+  height: var(--sz-16);
+  justify-content: center;
+  width: var(--sz-16);
+}
+
+.pp-icon svg {
+  /* %button-icon-small + --icon-foreground */
+  color: transparent;
+  fill: none;
+  height: var(--sz-12);
+  stroke: var(--color-foreground-secondary);
+  stroke-width: 1.33px;
+  transform: rotate(90deg);
+  width: var(--sz-12);
+}
+
+.pp-dropdown-sitemap {
+  /* %menu-dropdown with the header offsets */
+  background-color: var(--color-background-tertiary); /* --menu-background-color */
+  border: var(--b-2) solid var(--color-background-quaternary); /* --panel-border-color */
+  border-radius: var(--br-8);
+  box-shadow: 0 0 var(--sp-m) 0 var(--color-shadow-dark); /* menu-shadow */
+  color: var(--color-foreground-primary); /* --title-foreground-color-hover */
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  left: 0;
+  margin: 0;
+  padding: var(--sz-6);
+  position: absolute;
+  top: calc(0.125rem + var(--sz-48)); /* $s-2 + $s-48 */
+  width: 17rem; /* $s-272 without a token */
+  z-index: var(--z-index-dropdown);
+}
+
+.pp-dropdown-element {
+  /* %dropdown-element-base */
+  align-items: center;
+  border-radius: var(--br-6);
+  color: var(--color-foreground-secondary); /* --menu-foreground-color-rest */
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  gap: var(--sp-s);
+  height: var(--sz-32);
+  line-height: var(--lh-normal);
+  padding: 0 var(--sp-s);
+}
+
+.pp-dropdown-element span {
+  display: block;
+  max-width: 99%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-dropdown-element span svg {
+  /* %button-icon-small + --icon-foreground */
+  color: transparent;
+  fill: none;
+  height: var(--sz-12);
+  stroke: var(--color-foreground-secondary);
+  stroke-width: 1.33px;
+  width: var(--sz-12);
+}
+
+.pp-dropdown-element:hover {
+  background-color: var(--color-background-quaternary); /* --menu-background-color-hover */
+  color: var(--color-foreground-primary); /* --menu-foreground-color */
+}
+
+.pp-dropdown-element:hover svg {
+  stroke: var(--color-foreground-primary); /* --menu-foreground-color-hover */
+}
+
+.pp-dropdown-element .pp-icon-check {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  width: var(--sz-16);
+}
+
+.pp-dropdown-element .pp-icon-check svg {
+  color: transparent;
+  fill: none;
+  height: var(--sz-12);
+  stroke: var(--color-foreground-secondary); /* --icon-foreground */
+  stroke-width: 1.33px;
+  width: var(--sz-12);
+}
+
+.pp-dropdown-element:hover .pp-label {
+  color: var(--color-foreground-primary); /* --input-foreground-color-active */
+}
+
+.pp-current-frame {
+  align-items: center;
+  color: var(--color-foreground-primary); /* --title-foreground-color-hover */
+  cursor: pointer;
+  display: flex;
+  flex-grow: 1;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  gap: var(--sp-xs);
+  line-height: var(--lh-normal);
+}
+
+.pp-current-frame .pp-icon svg {
+  stroke: var(--color-foreground-primary); /* --title-foreground-color-hover */
+}
+
+.pp-frame-name {
+  /* text-ellipsis */
+  display: block;
+  max-width: 99%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 17vw; /* fallback for browsers without container units */
+  max-width: 17cqw;
+}
+
+/* SECTION BUTTONS */
+
+.pp-mode-zone {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs); /* flex-row ($s-4 gap) */
+  height: 100%;
+}
+
+.pp-mode-zone-btn {
+  /* %button-tertiary */
+  align-items: center;
+  background-color: transparent;
+  border: var(--b-2) solid transparent;
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary); /* --button-tertiary-foreground-color-rest */
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-32);
+  justify-content: center;
+  padding: 0;
+  width: var(--sz-28);
+}
+
+.pp-mode-zone-btn:hover {
+  background-color: var(--color-background-quaternary); /* --button-tertiary-background-color-hover */
+  border-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary); /* --button-tertiary-foreground-color-hover */
+}
+
+.pp-mode-zone-btn:active {
+  background-color: var(--color-background-secondary);
+  border-color: transparent;
+  color: var(--color-accent-primary);
+  outline: none;
+}
+
+.pp-mode-zone-btn svg {
+  /* %button-icon + --button-tertiary-foreground-color-rest */
+  color: transparent;
+  fill: none;
+  height: var(--sz-16);
+  stroke: var(--color-foreground-secondary);
+  stroke-width: 1px;
+  width: var(--sz-16);
+}
+
+.pp-mode-zone-btn:hover svg {
+  stroke: var(--color-accent-primary);
+}
+
+.pp-selected {
+  /* %button-icon-selected */
+  background-color: var(--color-background-quaternary); /* --button-icon-background-color-selected */
+  border-color: var(--color-background-quaternary); /* --button-icon-border-color-selected */
+  color: var(--color-accent-primary); /* --button-icon-foreground-color-selected */
+  outline: none;
+}
+
+.pp-selected svg {
+  stroke: var(--color-accent-primary);
+}
+
+/* The light theme lifts the selected pair to the page background
+   (design-tokens.scss .light overrides). */
+.light .pp-selected {
+  background-color: var(--color-background-primary);
+  border-color: var(--color-background-secondary);
+}
+
+/* OPTION AREA */
+
+.pp-options-zone {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-s); /* flex-row, overriden gap */
+  justify-content: flex-end;
+  position: relative;
+  z-index: 10; /* $z-index-10 */
+}
+
+.pp-edit-btn,
+.pp-fullscreen-btn {
+  /* %button-tertiary */
+  align-items: center;
+  background-color: transparent;
+  border: var(--b-2) solid transparent;
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-32);
+  justify-content: center;
+  width: var(--sz-28);
+}
+
+.pp-edit-btn:hover,
+.pp-fullscreen-btn:hover {
+  background-color: var(--color-background-quaternary);
+  border-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+}
+
+.pp-edit-btn:active,
+.pp-fullscreen-btn:active {
+  background-color: var(--color-background-secondary);
+  border-color: transparent;
+  color: var(--color-accent-primary);
+  outline: none;
+}
+
+.pp-edit-btn svg,
+.pp-fullscreen-btn svg {
+  color: transparent;
+  fill: none;
+  height: var(--sz-16);
+  stroke: var(--color-foreground-secondary); /* --icon-foreground */
+  stroke-width: 1px;
+  width: var(--sz-16);
+}
+
+.pp-edit-btn:hover svg,
+.pp-fullscreen-btn:hover svg {
+  stroke: var(--color-accent-primary);
+}
+
+/* ZOOM WIDGET */
+
+.pp-zoom-widget {
+  /* button-style + flex-center */
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: var(--br-8);
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-28);
+  justify-content: center;
+  min-width: var(--sz-64);
+}
+
+.pp-zoom-widget .pp-label {
+  color: var(--color-foreground-secondary); /* --button-tertiary-foreground-color-rest */
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
+}
+
+.pp-zoom-widget:hover .pp-label,
+.pp-zoom-widget.pp-selected .pp-label {
+  color: var(--color-foreground-primary); /* --button-tertiary-foreground-color-focus */
+}
+
+.pp-dropdown {
+  /* %menu-dropdown under the zoom widget */
+  background-color: var(--color-background-tertiary); /* --menu-background-color */
+  border: var(--b-2) solid var(--color-background-quaternary); /* --panel-border-color */
+  border-radius: var(--br-8);
+  box-shadow: 0 0 var(--sp-m) 0 var(--color-shadow-dark); /* menu-shadow */
+  color: var(--color-foreground-primary); /* --title-foreground-color-hover */
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  margin: 0;
+  padding: var(--sp-xs);
+  position: absolute;
+  right: 0.125rem; /* $s-2 */
+  top: calc(0.125rem + var(--sz-48)); /* $s-2 + $s-48 */
+  width: 17rem; /* $s-272 without a token */
+  z-index: var(--z-index-dropdown);
+}
+
+.pp-basic-zoom-bar {
+  cursor: auto;
+  display: flex;
+  justify-content: space-between;
+  padding: var(--sz-6);
+}
+
+.pp-zoom-btns {
+  display: flex;
+}
+
+.pp-zoom-btn {
+  /* %button-tertiary */
+  align-items: center;
+  background-color: transparent;
+  border: var(--b-2) solid transparent;
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-28);
+  justify-content: center;
+  width: var(--sz-28);
+}
+
+.pp-zoom-btn:hover {
+  background-color: var(--color-background-quaternary);
+  border-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+}
+
+.pp-zoom-btn:active {
+  background-color: var(--color-background-secondary);
+  border-color: transparent;
+  color: var(--color-accent-primary);
+  outline: none;
+}
+
+.pp-zoom-btn .pp-zoom-icon {
+  align-items: center;
+  display: flex;
+  height: var(--sz-32);
+  justify-content: center;
+  width: var(--sz-24);
+}
+
+.pp-zoom-btn .pp-zoom-icon svg {
+  color: transparent;
+  fill: none;
+  height: var(--sz-16);
+  stroke: var(--color-foreground-secondary); /* --icon-foreground */
+  stroke-width: 1px;
+  width: var(--sz-16);
+}
+
+.pp-zoom-btn:hover .pp-zoom-icon svg {
+  stroke: var(--color-accent-primary); /* --button-tertiary-foreground-color-hover */
+}
+
+.pp-zoom-text {
+  align-items: center;
+  color: var(--color-foreground-primary); /* --modal-title-foreground-color */
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  margin: 0 0.125rem; /* $s-2 */
+  min-width: var(--sz-64);
+  padding: 0;
+}
+
+.pp-reset-btn {
+  /* %button-tertiary with a permanent hover color */
+  align-items: center;
+  background-color: transparent;
+  border: var(--b-2) solid transparent;
+  border-radius: var(--br-8);
+  color: var(--color-accent-primary); /* --button-tertiary-foreground-color-hover */
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-28);
+  justify-content: center;
+}
+
+.pp-reset-btn:hover {
+  background-color: var(--color-background-quaternary);
+  border-color: var(--color-background-quaternary);
+}
+
+.pp-zoom-option {
+  /* %menu-item-base */
+  align-items: center;
+  border-radius: var(--br-8);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  height: var(--sz-28);
+  justify-content: space-between;
+  line-height: var(--lh-normal);
+  padding: var(--sz-6);
+  width: 100%;
+}
+
+.pp-zoom-option:hover {
+  background-color: var(--color-background-quaternary); /* --menu-background-color-hover */
+  color: var(--color-foreground-primary); /* --menu-foreground-color-hover */
+}
+
+.pp-zoom-option .pp-shortcuts {
+  /* %shortcut-base */
+  align-items: center;
+  color: var(--color-foreground-secondary); /* --menu-shortcut-foreground-color */
+  display: flex;
+  gap: 0.125rem; /* $s-2 */
+  justify-content: center;
+}
+
+.pp-zoom-option .pp-shortcut-key {
+  /* %shortcut-key-base: $s-20 has no token */
+  align-items: center;
+  background-color: var(--color-background-primary); /* --menu-shortcut-background-color */
+  border-radius: var(--br-6);
+  display: flex;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  height: 1.25rem;
+  justify-content: center;
+  line-height: var(--lh-normal);
+  padding: 0.125rem 0.375rem; /* $s-2 $s-6 */
+}
+
+.pp-zoom-option:hover .pp-shortcuts .pp-shortcut-key {
+  color: var(--color-foreground-primary); /* --menu-foreground-color-hover */
+}
+
+/* --- header fullscreen (viewer/header.scss FULLSCREEN block) --- */
+
+/* The ::after strip keeps the header hover surface alive while it is
+   translated out in fullscreen. */
+[data-fullscreen="true"] .pp-viewer-header::after {
+  content: " ";
+  height: var(--sz-48);
+  left: 0;
+  position: absolute;
+  top: var(--sz-48);
+  width: 100%;
+}
+
+[data-fullscreen="true"] .pp-viewer-header {
+  transform: translateY(calc(-1 * var(--sz-48)));
+}
+
+[data-force-visible="true"] .pp-viewer-header,
+[data-fullscreen="true"] .pp-viewer-header:hover {
+  transform: translateY(0);
+}
+
+/* --- loader (ds/product/loader.scss, the :overlay variant) --- */
+
+@keyframes pp-line-pencil {
+  0% {
+    transform: translateY(0);
+  }
+
+  100% {
+    transform: translateY(-150px);
+  }
+}
+
+.pp-viewer-loader {
+  /* .wrapper + .wrapper-overlay; 100vh because the page is not a sized
+     container */
+  color: var(--color-foreground-secondary); /* --loader-color-foreground */
+  display: grid;
+  height: 100vh;
+  place-content: center;
+  row-gap: var(--sp-s);
+  width: 100%;
+}
+
+.pp-loader {
+  fill: currentcolor;
+}
+
+.pp-loader-line {
+  animation: pp-line-pencil 0.8s infinite linear;
+}
+
+.pp-viewer-message {
+  height: 100vh;
+}

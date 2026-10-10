@@ -9,6 +9,7 @@ import {
   decreaseZoom,
   fillZoom,
   fitZoom,
+  formatPercent,
   frameIndexById,
   getParentIdsWithIndex,
   getViewerFrames,
@@ -22,6 +23,8 @@ import {
   shouldUpdateZoomQuery,
   showInteractionsFor,
   sortZIndexObjects,
+  viewerHref,
+  viewerQueryToHrefParams,
   type ViewerFileData,
   type ViewerFileSummary,
   type ViewerPage,
@@ -319,5 +322,89 @@ describe("resolveFileMedia", () => {
     expect(resolveFileMedia("", { id: "m1" }, { shareId: "s1" })).toBe(
       "/assets/by-file-media-id/m1?share-id=s1",
     );
+  });
+});
+
+describe("formatPercent", () => {
+  it("renders a fraction as a rounded percentage", () => {
+    expect(formatPercent(0.5)).toBe("50%");
+    expect(formatPercent(1)).toBe("100%");
+    expect(formatPercent(1 / 3)).toBe("33.33%");
+  });
+
+  it("honours the precision argument", () => {
+    expect(formatPercent(1 / 3, 0)).toBe("33%");
+    expect(formatPercent(1 / 3, 4)).toBe("33.3333%");
+  });
+
+  it("renders null for non-finite and missing values", () => {
+    expect(formatPercent(Number.NaN)).toBeNull();
+    expect(formatPercent(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(formatPercent(null)).toBeNull();
+    expect(formatPercent(undefined)).toBeNull();
+  });
+});
+
+const FILE_ID = "11111111-1111-1111-1111-111111111111";
+const PAGE_ID = "22222222-2222-2222-2222-222222222222";
+const SHARE_ID = "33333333-3333-3333-3333-333333333333";
+const FRAME_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
+describe("viewerHref", () => {
+  it("serializes the viewer fields in the CLJS order", () => {
+    expect(
+      viewerHref({ fileId: FILE_ID, pageId: PAGE_ID, shareId: SHARE_ID, index: 0, section: "interactions" }),
+    ).toBe(
+      "/view?file-id=" + FILE_ID + "&page-id=" + PAGE_ID + "&share-id=" + SHARE_ID +
+        "&index=0&section=interactions",
+    );
+  });
+
+  it("drops null fields, down to a bare path for the file id alone", () => {
+    expect(viewerHref({ fileId: FILE_ID, index: null, zoom: null })).toBe("/view?file-id=" + FILE_ID);
+  });
+
+  it("round-trips through parseViewerQuery", () => {
+    const href = viewerHref({
+      fileId: FILE_ID,
+      pageId: PAGE_ID,
+      shareId: SHARE_ID,
+      index: 2,
+      frameId: FRAME_ID,
+      section: "interactions",
+      zoom: "fit",
+      interactionsMode: "show",
+    });
+    const query = parseViewerQuery(new URLSearchParams(href.split("?")[1]));
+    expect(query.fileId).toBe(FILE_ID);
+    expect(query.pageId).toBe(PAGE_ID);
+    expect(query.shareId).toBe(SHARE_ID);
+    expect(query.index).toBe(2);
+    expect(query.frameId).toBe(FRAME_ID);
+    expect(query.section).toBe("interactions");
+    expect(query.zoom).toBe("fit");
+    expect(query.interactionsMode).toBe("show");
+  });
+});
+
+describe("viewerQueryToHrefParams", () => {
+  it("copies every parsed field into the href shape", () => {
+    const query = parseViewerQuery(
+      new URLSearchParams({ "file-id": FILE_ID, "page-id": PAGE_ID, index: "1", zoom: "fill" }),
+    );
+    expect(viewerQueryToHrefParams(query)).toEqual({
+      fileId: FILE_ID,
+      pageId: PAGE_ID,
+      shareId: null,
+      index: 1,
+      frameId: null,
+      section: null,
+      zoom: "fill",
+      interactionsMode: null,
+    });
+  });
+
+  it("returns null when the URL carries no file id", () => {
+    expect(viewerQueryToHrefParams(parseViewerQuery(new URLSearchParams()))).toBeNull();
   });
 });

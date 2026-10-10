@@ -15,7 +15,11 @@
 //   value shapes are unchanged.
 // - update-page-position-data (the WASM text position pass) is deferred to
 //   the render-wasm port (F6.4); it needs wasm.api/calculate-position-data.
+// - Navigation rebuilds the query string into an href with a fixed field
+//   order (rt/nav re-serialized the CLJS params map); building the same URL
+//   again is skipped instead of pushing a duplicate history entry.
 
+import { routePaths } from "@/lib/routes";
 import { cmd } from "@/lib/rpc";
 import { isPointer, set as transitSet } from "@/lib/transit";
 
@@ -519,4 +523,67 @@ export function resolveFileMedia(
   const share = options.shareId ?? null;
   const query = share !== null && share.length > 0 ? "?share-id=" + share : "";
   return base + "assets/by-file-media-id/" + path + query;
+}
+
+// --- Formatting -------------------------------------------------------------
+
+// fmt/format-percent (app.main.ui.formats): a fraction renders as a
+// percentage (1 -> "100%") rounded to `precision` decimals; a non-finite
+// value renders null, which the zoom label shows as-is. The CLJS string
+// branch (parse-double) is dropped: the viewer only passes numbers.
+export function formatPercent(value: number | null | undefined, precision = 2): string | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  const factor = Math.pow(10, precision);
+  return Math.round(value * 100 * factor) / factor + "%";
+}
+
+// --- URL building -----------------------------------------------------------
+
+// The param shape of a viewer URL. The CLJS events assoc a single field on
+// the full params map (go-to-frame-by-index, go-to-page, go-to-section...),
+// so hrefs rebuild from the complete set of fields.
+export interface ViewerHrefParams {
+  fileId: string;
+  pageId?: string | null;
+  shareId?: string | null;
+  index?: number | null;
+  frameId?: string | null;
+  section?: string | null;
+  zoom?: string | null;
+  interactionsMode?: string | null;
+}
+
+// The URL of a viewer route: the CLJS query keys in a fixed order, null
+// fields dropped (the (d/without-nils) of rt/nav).
+export function viewerHref(params: ViewerHrefParams): string {
+  const search = new URLSearchParams();
+  search.set("file-id", params.fileId);
+  if (params.pageId !== null && params.pageId !== undefined) search.set("page-id", params.pageId);
+  if (params.shareId !== null && params.shareId !== undefined) search.set("share-id", params.shareId);
+  if (params.index !== null && params.index !== undefined) search.set("index", String(params.index));
+  if (params.frameId !== null && params.frameId !== undefined) search.set("frame-id", params.frameId);
+  if (params.section !== null && params.section !== undefined) search.set("section", params.section);
+  if (params.zoom !== null && params.zoom !== undefined) search.set("zoom", params.zoom);
+  if (params.interactionsMode !== null && params.interactionsMode !== undefined) {
+    search.set("interactions-mode", params.interactionsMode);
+  }
+  const query = search.toString();
+  return query.length > 0 ? routePaths.viewer + "?" + query : routePaths.viewer;
+}
+
+// A parsed viewer URL back into the href shape, for the navigation events
+// that assoc one field on the current params. Null when the URL carries no
+// file id: such a URL never renders and no href can be built from it.
+export function viewerQueryToHrefParams(query: ViewerQueryParams): ViewerHrefParams | null {
+  if (query.fileId === null) return null;
+  return {
+    fileId: query.fileId,
+    pageId: query.pageId,
+    shareId: query.shareId,
+    index: query.index,
+    frameId: query.frameId,
+    section: query.section,
+    zoom: query.zoom,
+    interactionsMode: query.interactionsMode,
+  };
 }
