@@ -82,13 +82,26 @@ export interface Webhook {
 }
 
 // The organization slice a team row carries when the backend runs with the
-// :admin-console flag. The full shape arrives with the F5.7 organization pages;
-// canSendInvitations only reads owner-id and the permission rules.
+// :admin-console flag (add-organization-info-to-teams in nitrate.clj projects
+// the organization->team-keys of common/src/app/common/types/organization.cljc
+// onto the row: id, name, custom-photo, slug, avatar-bg-url, owner-id,
+// expired-license, permissions, sso-active). team->organization adds the team
+// id under :default-team-id so any team can resolve its organization. The
+// switcher reads the avatar fields, canSendInvitations only reads owner-id
+// and the permission rules.
 export interface TeamOrganization {
   id: string;
   name?: string;
+  slug?: string | null;
   "owner-id"?: string;
   permissions?: Record<string, string> | null;
+  "default-team-id"?: string | null;
+  // The backend resolves the organization logo to a public URI while
+  // projecting the row, so the avatar renders it as-is.
+  "custom-photo"?: string | null;
+  "avatar-bg-url"?: string | null;
+  "expired-license"?: boolean;
+  "sso-active"?: boolean;
 }
 
 export interface TeamWithOrganization extends Team {

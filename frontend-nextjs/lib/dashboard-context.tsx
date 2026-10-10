@@ -47,7 +47,6 @@ import {
   type FileSummary,
   type Project,
   type SelectableFile,
-  type Team,
 } from "@/lib/dashboard";
 import type { RouteName } from "@/lib/routes";
 import { useSession } from "@/lib/session";
@@ -66,6 +65,7 @@ import {
   type TeamInvitation,
   type TeamMember,
   type TeamStats,
+  type TeamWithOrganization,
   type Webhook,
 } from "@/lib/team";
 
@@ -78,8 +78,10 @@ export interface DashboardNavigateParams {
 
 export interface DashboardState {
   status: DashboardStatus;
-  teams: Team[];
-  team: Team | null;
+  // get-teams rows carry the nested :organization projection (the F5.7
+  // switcher reads it; everything else treats them as plain teams).
+  teams: TeamWithOrganization[];
+  team: TeamWithOrganization | null;
   teamId: string | null;
   // Already narrowed to the current team and ordered for the recent view.
   projects: Project[];
@@ -192,7 +194,7 @@ function DashboardProviderInner({
   const router = useRouter();
   const pathname = usePathname();
 
-  const [teams, setTeams] = useState<Team[] | null>(null);
+  const [teams, setTeams] = useState<TeamWithOrganization[] | null>(null);
   const [projectRows, setProjectRows] = useState<Project[] | null>(null);
   const [recentFiles, setRecentFiles] = useState<FileSummary[] | null>(null);
   const [fontRows, setFontRows] = useState<FontVariantRow[] | null>(null);
