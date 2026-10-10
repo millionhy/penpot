@@ -3,7 +3,8 @@
 // append-query-param port, the checkout callback URLs, the licence check, the
 // organization team and leave derivations, the leave error mapping, the
 // summary-driven modal decision, the wire shape of the two leave-organization
-// commands and the connectivity and subscription-warning fetches.
+// commands, the connectivity and subscription-warning fetches and the two
+// activation-code commands.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { config } from "@/lib/config";
@@ -17,6 +18,7 @@ import {
   fetchConnectivity,
   fetchSubscriptionWarning,
   getLeaveOrganizationSummary,
+  getNitrateActivationCodeRequest,
   goToNitrateBillingHref,
   goToSubscriptionUrl,
   isValidLicense,
@@ -28,6 +30,7 @@ import {
   organizationLeaveInfo,
   organizationTeams,
   orgLeaveErrorMessage,
+  redeemNitrateActivationCode,
   teamLeaveErrorMessage,
   type LeaveOrganizationSummary,
 } from "@/lib/nitrate";
@@ -399,11 +402,13 @@ describe("nitrate connectivity and warnings", () => {
   });
 
   it("fetches the connectivity with a GET", async () => {
-    const calls = stubFetch(jsonResponse({ licenses: true }));
+    // show-contact-sales-option rides along from the admin console; the form
+    // reads it to pick checkout buttons over the contact-sales text.
+    const calls = stubFetch(jsonResponse({ licenses: true, "show-contact-sales-option": true }));
     const result = await fetchConnectivity();
     expect(calls[0].init.method).toBe("GET");
     expect(calls[0].url).toBe("/api/main/methods/get-nitrate-connectivity");
-    expect(result).toEqual({ licenses: true });
+    expect(result).toEqual({ licenses: true, "show-contact-sales-option": true });
   });
 
   it("short-circuits to the offline default under air-gapped-conf", async () => {
@@ -418,5 +423,38 @@ describe("nitrate connectivity and warnings", () => {
     expect(await fetchSubscriptionWarning()).toBeNull();
     expect(calls[0].init.method).toBe("GET");
     expect(calls[0].url).toBe("/api/main/methods/get-subscription-warning");
+  });
+});
+
+describe("nitrate activation codes", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts the activation code and answers the licence cancel-at", async () => {
+    const calls = stubFetch(jsonResponse({ "cancel-at": null }));
+    const result = await redeemNitrateActivationCode("code-123");
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].url).toBe("/api/main/methods/redeem-nitrate-activation-code");
+    expect(decodeTransit<Record<string, unknown>>(bodyOf(calls[0]))).toEqual({
+      "activation-code": "code-123",
+    });
+    expect(result).toEqual({ "cancel-at": null });
+  });
+
+  it("GETs the activation code request as a plain-text string", async () => {
+    // ::sm/text: a Base64 document with a text/plain content type, which
+    // lib/rpc hands back undecoded.
+    const calls = stubFetch(
+      () =>
+        new Response("eyJyZXEiOiJmaWxlIn0=", {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        }),
+    );
+    const result = await getNitrateActivationCodeRequest();
+    expect(calls[0].init.method).toBe("GET");
+    expect(calls[0].url).toBe("/api/main/methods/get-nitrate-activation-code-request");
+    expect(result).toBe("eyJyZXEiOiJmaWxlIn0=");
   });
 });

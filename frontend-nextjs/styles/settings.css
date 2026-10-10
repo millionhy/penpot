@@ -517,6 +517,207 @@
   gap: var(--sp-s);
 }
 
+/* --- nitrate dialogs (F5.7b): the enterprise form, the activation-code
+   dialog and the success dialog behind show-nitrate-popup --- */
+
+/* The form dialog is wide (px2rem(1021), px2rem(712) below 1024) and
+   two-column; the success dialog matches the CLJS px2rem(608). Both cap to
+   the viewport so narrow screens do not overflow. */
+.pp-modal:has(.pp-nitrate-form-content) {
+  max-inline-size: min(1021px, calc(100vw - var(--sp-xxl) * 2));
+}
+
+@media (width <= 1024px) {
+  .pp-modal:has(.pp-nitrate-form-content) {
+    max-inline-size: min(712px, calc(100vw - var(--sp-xxl) * 2));
+  }
+}
+
+.pp-modal:has(.pp-nitrate-success-content) {
+  max-inline-size: min(608px, calc(100vw - var(--sp-xxl) * 2));
+}
+
+.pp-nitrate-form-content {
+  display: flex;
+  gap: var(--sz-40);
+}
+
+.pp-nitrate-form-illustration {
+  display: flex;
+  justify-content: center;
+  min-inline-size: var(--sz-284);
+}
+
+.pp-nitrate-form-illustration img {
+  block-size: auto;
+  inline-size: 100%;
+}
+
+@media (width <= 992px) {
+  .pp-nitrate-form-illustration {
+    display: none;
+  }
+}
+
+/* The CLJS renders both raw-svg illustrations and toggles them on the theme
+   class; the shell does the same with plain images. */
+.pp-nitrate-welcome-light,
+.pp-nitrate-logo-light {
+  display: none;
+}
+
+.light .pp-nitrate-welcome-light,
+.light .pp-nitrate-logo-light {
+  display: block;
+}
+
+.pp-nitrate-welcome-dark,
+.pp-nitrate-logo-dark {
+  display: block;
+}
+
+.light .pp-nitrate-welcome-dark,
+.light .pp-nitrate-logo-dark {
+  display: none;
+}
+
+.pp-nitrate-form-body {
+  color: var(--color-foreground-secondary);
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-nitrate-form-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pp-nitrate-form-price {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-s);
+  margin-block: var(--sp-l) var(--sp-xxxl);
+}
+
+.pp-nitrate-form-price-value {
+  color: var(--color-foreground-primary);
+  font-weight: var(--fw-medium);
+}
+
+.pp-nitrate-form-buttons-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-nitrate-form-info {
+  inline-size: 40%;
+  margin-block: var(--sp-s) var(--sp-l);
+}
+
+.pp-nitrate-form-contact {
+  color: var(--color-foreground-primary);
+  margin-block-start: var(--sz-48);
+}
+
+.pp-nitrate-form-activation-code {
+  margin-block-start: var(--sp-xxxl);
+}
+
+.pp-nitrate-success-content {
+  display: flex;
+  gap: var(--sz-40);
+}
+
+.pp-nitrate-success-illustration {
+  display: flex;
+  justify-content: center;
+  min-inline-size: var(--sz-224);
+}
+
+.pp-nitrate-success-illustration img {
+  block-size: auto;
+  inline-size: 100%;
+}
+
+@media (width <= 640px) {
+  .pp-nitrate-success-illustration {
+    display: none;
+  }
+}
+
+.pp-nitrate-success-body {
+  color: var(--color-foreground-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-m);
+}
+
+.pp-nitrate-text-primary {
+  color: var(--color-foreground-primary);
+}
+
+.pp-nitrate-success-button {
+  align-self: flex-start;
+  margin-block-start: var(--sp-s);
+}
+
+.pp-nitrate-code-activation {
+  color: var(--color-foreground-secondary);
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-nitrate-code-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  margin-block-end: var(--sp-m);
+}
+
+.pp-nitrate-code-label {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-14);
+}
+
+.pp-nitrate-code-textarea {
+  background: var(--color-background-primary);
+  block-size: var(--sz-200);
+  border: var(--b-1) solid var(--color-icon-default);
+  border-radius: var(--br-8);
+  color: var(--color-foreground-primary);
+  font-family: var(--font-family-code);
+  font-size: var(--fs-14);
+  outline: none;
+  padding: var(--sp-s);
+  resize: vertical;
+  word-break: break-all;
+}
+
+.pp-nitrate-code-textarea:focus {
+  border-color: var(--color-accent-primary);
+}
+
+.pp-nitrate-code-textarea.invalid,
+.pp-nitrate-code-textarea.invalid:focus {
+  border-color: var(--color-accent-error);
+}
+
+.pp-nitrate-error-msg {
+  color: var(--color-accent-error);
+  font-size: var(--fs-12);
+}
+
+.pp-nitrate-accept {
+  inline-size: 100%;
+}
+
+.pp-nitrate-footer-text {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  margin-block-start: var(--sp-xxxl);
+}
+
 /* --- shortcuts page and views (settings/shortcuts.scss plus
    ui/shortcuts.scss, F5.6) --- */
 

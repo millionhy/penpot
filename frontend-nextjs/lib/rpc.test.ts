@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cmdUpload, parseSseBlocks } from "@/lib/rpc";
+import { cmd, cmdUpload, parseSseBlocks } from "@/lib/rpc";
+import { encodeTransit } from "@/lib/transit";
 
 // The blocks the backend sends for the bulk trash commands
 // (app.rpc.commands.files): a "progress" block per file, then "end".
@@ -57,6 +58,50 @@ describe("parseSseBlocks", () => {
 
   it("answers nothing for an empty buffer", () => {
     expect(parseSseBlocks("")).toEqual({ blocks: [], rest: "" });
+  });
+});
+
+// conditional-decode-transit in app.util.http: a body decodes as transit only
+// when the response announces the transit content type. The ::sm/text commands
+// (get-nitrate-activation-code-request) answer plain text and must stay the
+// raw string.
+describe("conditional response decode", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubTextResponse(body: string, contentType: string): void {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(body, {
+          status: 200,
+          headers: { "content-type": contentType },
+        }),
+    );
+  }
+
+  it("hands back a non-transit body as the raw string", async () => {
+    stubTextResponse("code-request-text", "text/plain");
+    const result = await cmd<string>("get-nitrate-activation-code-request", {});
+    expect(result).toBe("code-request-text");
+  });
+
+  it("decodes a body that carries the transit content type", async () => {
+    stubTextResponse(encodeTransit({ "cancel-at": null }), "application/transit+json");
+    const result = await cmd<Record<string, unknown>>(
+      "get-nitrate-activation-code-request",
+      {},
+    );
+    expect(result).toEqual({ "cancel-at": null });
+  });
+
+  it("applies the same rule to multipart uploads", async () => {
+    stubTextResponse("plain answer", "text/plain");
+    const result = await cmdUpload<string>("update-profile-photo", {
+      file: new Blob([new Uint8Array(1)]),
+    });
+    expect(result).toBe("plain answer");
   });
 });
 

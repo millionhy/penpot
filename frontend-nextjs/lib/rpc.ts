@@ -117,6 +117,11 @@ async function once<T>(
   if (!res.ok) await classifyAndThrow(res, uri);
   const text = await res.text();
   if (text.length === 0) return undefined as T;
+  // conditional-decode-transit in app.util.http: a string body decodes as
+  // transit only when the response carries the transit content type. Every
+  // other answer (the ::sm/text commands, e.g.
+  // get-nitrate-activation-code-request) stays the raw string.
+  if (!ctype.startsWith("application/transit+json")) return text as T;
   return decodeTransit<T>(text);
 }
 
@@ -247,6 +252,8 @@ export async function cmdSse<T = unknown>(
     if (!res.ok) await classifyAndThrow(res, uri);
     const text = await res.text();
     if (text.length === 0) return undefined as T;
+    // Same conditional decode as once() above.
+    if (!ctype.startsWith("application/transit+json")) return text as T;
     return decodeTransit<T>(text);
   }
   if (!res.ok) await classifyAndThrow(res, uri);
@@ -356,5 +363,9 @@ export async function cmdUpload<T = unknown>(
   if (!res.ok) await classifyAndThrow(res, uri);
   const text = await res.text();
   if (text.length === 0) return undefined as T;
+  // multipart-upload in repo.cljs decodes conditionally too: a non-transit
+  // body is handed back as the raw string.
+  const ctype = res.headers.get("content-type") ?? "";
+  if (!ctype.startsWith("application/transit+json")) return text as T;
   return decodeTransit<T>(text);
 }

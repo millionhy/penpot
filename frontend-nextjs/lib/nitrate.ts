@@ -30,7 +30,7 @@ import type { InstantValue } from "@/lib/dashboard";
 import { tr } from "@/lib/i18n";
 import { cmd } from "@/lib/rpc";
 import type { TeamWithOrganization } from "@/lib/team";
-import type { RpcParams } from "@/lib/types";
+import type { RpcParams, RpcResults } from "@/lib/types";
 
 // --- Admin console URLs ------------------------------------------------------
 
@@ -381,9 +381,13 @@ export function isValidLicense(profile: LicensedProfile | null | undefined): boo
 
 // --- Connectivity & subscription warnings ------------------------------------
 
-// schema:connectivity (backend rpc/commands/nitrate.clj).
+// schema:connectivity (backend rpc/commands/nitrate.clj). The admin console
+// answers with show-contact-sales-option too (rides through the open coercion
+// of the backend map schema); the nitrate form reads it to decide whether to
+// offer the checkout buttons or the contact-sales text.
 export interface NitrateConnectivity {
   licenses: boolean;
+  "show-contact-sales-option"?: boolean;
 }
 
 // offline-connectivity: what show-nitrate-popup merges into the modal under
@@ -418,6 +422,30 @@ export interface SubscriptionWarning {
 // there is none.
 export function fetchSubscriptionWarning(): Promise<SubscriptionWarning | null> {
   return cmd<SubscriptionWarning | null>("get-subscription-warning", {});
+}
+
+// --- Activation codes --------------------------------------------------------
+
+// redeem-nitrate-activation-code: hand an activation code to the admin console
+// and answer the licence cancel-at. The validation error codes
+// (expired-/used-/invalid-activation-code) map to per-case messages in the
+// code-activation dialog.
+export function redeemNitrateActivationCode(
+  activationCode: string,
+): Promise<RpcResults["redeem-nitrate-activation-code"]> {
+  const params: RpcParams["redeem-nitrate-activation-code"] = {
+    "activation-code": activationCode,
+  };
+  return cmd("redeem-nitrate-activation-code", params);
+}
+
+// get-nitrate-activation-code-request: the Base64 JSON request file the user
+// hands to sales. The backend answers ::sm/text with a text/plain content type;
+// lib/rpc only transit-decodes transit bodies, so the string arrives as-is.
+export function getNitrateActivationCodeRequest(): Promise<
+  RpcResults["get-nitrate-activation-code-request"]
+> {
+  return cmd("get-nitrate-activation-code-request", {});
 }
 
 // --- Organization team slices ------------------------------------------------
