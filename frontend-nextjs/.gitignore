@@ -2,6 +2,9 @@
 /node_modules
 /packages/*/node_modules
 
+# render-wasm build artifacts (produced outside the repo)
+/public/js/
+
 # next.js
 /.next/
 /out/
