@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  THUMBNAIL_ITEM_WIDTH,
   ZERO_UUID,
   autoFrameIndex,
   buildViewerPages,
@@ -23,6 +24,8 @@ import {
   shouldUpdateZoomQuery,
   showInteractionsFor,
   sortZIndexObjects,
+  stepThumbnailOffset,
+  thumbnailWheelDirection,
   viewerHref,
   viewerQueryToHrefParams,
   type ViewerFileData,
@@ -271,6 +274,40 @@ describe("zoom", () => {
     expect(shouldUpdateZoomQuery("fit", "fill")).toBe(true);
     expect(shouldUpdateZoomQuery(null, "fill")).toBe(true);
     expect(shouldUpdateZoomQuery("fit", null)).toBe(true);
+  });
+});
+
+describe("thumbnails stepping", () => {
+  it("clamps the left step at zero", () => {
+    expect(stepThumbnailOffset(0, "left", 456, 5)).toBe(0);
+    expect(stepThumbnailOffset(3, "left", 456, 5)).toBe(2);
+  });
+
+  it("steps right while the offset stays below the visible bound", () => {
+    // 456 / 152 = 3 visible items; total 5, so the bound is 2.
+    expect(stepThumbnailOffset(0, "right", 456, 5)).toBe(1);
+    expect(stepThumbnailOffset(1, "right", 456, 5)).toBe(2);
+    expect(stepThumbnailOffset(2, "right", 456, 5)).toBe(2);
+  });
+
+  it("keeps the CLJS unrounded bound on the right step", () => {
+    // 500 / 152 = 3.289..., so the bound is 5 - 3.289... = 1.710...
+    // The CLJS `(< v max-val)` lets the offset land on 2, one past the
+    // exact bound.
+    expect(stepThumbnailOffset(1, "right", 500, 5)).toBe(2);
+    expect(stepThumbnailOffset(2, "right", 500, 5)).toBe(2);
+  });
+
+  it("measures the strip in whole 152px items", () => {
+    expect(THUMBNAIL_ITEM_WIDTH).toBe(152);
+  });
+});
+
+describe("thumbnailWheelDirection", () => {
+  it("steps right on a downward wheel and left otherwise", () => {
+    expect(thumbnailWheelDirection(1)).toBe("right");
+    expect(thumbnailWheelDirection(-1)).toBe("left");
+    expect(thumbnailWheelDirection(0)).toBe("left");
   });
 });
 

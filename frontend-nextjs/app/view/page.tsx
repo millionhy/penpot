@@ -1,10 +1,10 @@
 "use client";
 
-// Viewer page (F6.2): the shell port of app.main.ui.viewer. It loads the
-// view-only bundle (lib/viewer.ts), keeps the viewer-local slice (zoom,
+// Viewer page (F6.2/F6.3): the shell port of app.main.ui.viewer. It loads
+// the view-only bundle (lib/viewer.ts), keeps the viewer-local slice (zoom,
 // zoom-type, fullscreen, thumbnails) and renders the header, the frame
-// pagination and a placeholder viewport. The WASM canvas arrives with F6.4,
-// the thumbnails panel with F6.3, the overlays / interactions with F6.5.
+// pagination, the thumbnails panel and a placeholder viewport. The WASM
+// canvas arrives with F6.4, the overlays / interactions with F6.5.
 //
 // Deviations from the CLJS original, documented:
 // - The viewer is a public route (anonymous share-link visitors are the
@@ -22,17 +22,29 @@
 //   ex/raise :not-found exception page is not ported yet (F6.6).
 // - The viewport sizes from the frame selrect; the padded bounds
 //   (calculate-size over gsb/get-object-bounds) arrive with F6.4.
-// - Keyboard shortcuts and the wheel handling of the viewer section are
-//   not mounted yet (F6.3).
+// - The shortcut matcher (hooks/use-shortcuts ::viewer) re-binds when its
+//   handlers change, where the CLJS binds once per group and its events
+//   read the store; the wheel listener binds once while a frame renders.
+// - Three registered shortcuts stay unbound (select-all, open-inspect,
+//   open-comments) so their native browser keys keep working; see
+//   lib/viewer-shortcuts.
+// - toggle-theme persists through update-profile without the analytics
+//   origin marker, like the dashboard provider.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useNotifications } from "@/components/notifications";
 import { QueryParams } from "@/components/query-params";
 import { ViewerHeader, type SitemapPage } from "@/components/viewer-header";
 import { ViewerPagination } from "@/components/viewer-pagination";
+import { ViewerThumbnails } from "@/components/viewer-thumbnails";
 import { dashboardHref, workspaceHref } from "@/lib/dashboard";
+import { nextTheme } from "@/lib/dashboard-shortcuts-runtime";
 import { useDocumentTitle } from "@/lib/dom";
 import { tr } from "@/lib/i18n";
+import { useSession } from "@/lib/session";
+import { profileUpdateParams, updateProfile } from "@/lib/settings";
+import { createShortcutMatcher, customShortcutsFromProfile, isMacos } from "@/lib/shortcuts";
 import {
   autoFrameIndex,
   buildViewerPages,
@@ -53,6 +65,14 @@ import {
   type ViewerQueryParams,
   type ViewportSize,
 } from "@/lib/viewer";
+import { type ViewerShortcutActions } from "@/lib/viewer-shortcuts";
+import {
+  buildViewerBindings,
+  dispatchViewerKeydown,
+  isWheelZoomMod,
+  viewerShortcutTarget,
+  wheelZoomDirection,
+} from "@/lib/viewer-shortcuts-runtime";
 
 type ZoomType = "fit" | "fill";
 
@@ -124,6 +144,8 @@ function ViewerRoute({ params }: { params: URLSearchParams }) {
 
 function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryParams }) {
   const router = useRouter();
+  const { profile, refresh } = useSession();
+  const notifications = useNotifications();
 
   const [data, setData] = useState<ViewerBundle | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -139,6 +161,15 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // bundle-fetched normalizes once per file; a back-button visit of an
   // older URL must not be re-normalized.
   const normalizedRef = useRef<string | null>(null);
+
+  // check-platform? :macos resolves after mount so the server render stays
+  // stable, like the dashboard provider.
+  const [macos, setMacos] = useState(false);
+  useEffect(() => {
+    setMacos(isMacos());
+  }, []);
+
+  const customShortcuts = useMemo(() => customShortcutsFromProfile(profile), [profile]);
 
   const shareId = query.shareId;
 
@@ -315,20 +346,21 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
 
   // select-prev-frame / select-next-frame / select-first-frame: the
   // navigation rebuilds the full param set (frame-id included, like the
-  // CLJS assoc) and the bounds guard the neighbours.
-  const handlePrev = () => {
+  // CLJS assoc) and the bounds guard the neighbours. The callbacks feed the
+  // shortcut matcher below, so they carry their state as dependencies.
+  const handlePrev = useCallback(() => {
     if (!canSelectPrev(displayIndex)) return;
     const base = viewerQueryToHrefParams(query);
     if (base === null) return;
     navigate(viewerHref({ ...base, index: displayIndex - 1 }));
-  };
+  }, [displayIndex, query, navigate]);
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (!canSelectNext(displayIndex, frames.length)) return;
     const base = viewerQueryToHrefParams(query);
     if (base === null) return;
     navigate(viewerHref({ ...base, index: displayIndex + 1 }));
-  };
+  }, [displayIndex, frames.length, query, navigate]);
 
   const handleFirst = () => {
     const base = viewerQueryToHrefParams(query);
@@ -343,11 +375,11 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     navigate(viewerHref({ ...base, pageId: id, index: 0 }));
   };
 
-  const handleGoToInteractions = () => {
+  const handleGoToInteractions = useCallback(() => {
     const base = viewerQueryToHrefParams(query);
     if (base === null) return;
     navigate(viewerHref({ ...base, section: "interactions" }));
-  };
+  }, [query, navigate]);
 
   // go-to-dashboard / go-to-workspace.
   const handleGoToDashboard = () => {
@@ -355,7 +387,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     router.push(dashboardHref("dashboard-recent", { teamId: data.project["team-id"] }));
   };
 
-  const handleGoToWorkspace = () => {
+  const handleGoToWorkspace = useCallback(() => {
     if (data === null) return;
     window.open(
       workspaceHref({
@@ -365,34 +397,37 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
       }),
       "workspace-" + data.file.id,
     );
-  };
+  }, [data, page]);
 
   // increase-zoom / decrease-zoom / reset-zoom drop the zoom style without
   // touching the URL, like the CLJS events.
-  const handleIncreaseZoom = () => {
+  const handleIncreaseZoom = useCallback(() => {
     setZoomType(null);
     setZoom((value) => increaseZoom(value));
-  };
+  }, []);
 
-  const handleDecreaseZoom = () => {
+  const handleDecreaseZoom = useCallback(() => {
     setZoomType(null);
     setZoom((value) => decreaseZoom(value));
-  };
+  }, []);
 
-  const handleResetZoom = () => {
+  const handleResetZoom = useCallback(() => {
     setZoomType(null);
     setZoom(1);
-  };
+  }, []);
 
-  const handleZoomType = (type: ZoomType) => {
-    setZoomType(type);
-    const next = computeZoom(type);
-    if (next !== null) setZoom(next);
-  };
+  const handleZoomType = useCallback(
+    (type: ZoomType) => {
+      setZoomType(type);
+      const next = computeZoom(type);
+      if (next !== null) setZoom(next);
+    },
+    [computeZoom],
+  );
 
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     setFullscreen((value) => !value);
-  };
+  }, []);
 
   const toggleThumbnails = () => {
     setShowThumbnails((value) => !value);
@@ -413,6 +448,97 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     if (layout === null) return;
     layout.dataset.forceVisible = layout.dataset.forceVisible === "true" ? "false" : "true";
   };
+
+  // go-to-frame-by-index: the thumbnails panel picks a frame; the full
+  // param set is rebuilt and sameSearch guards the no-op.
+  const handleSelectIndex = useCallback(
+    (targetIndex: number) => {
+      const base = viewerQueryToHrefParams(query);
+      if (base === null) return;
+      navigate(viewerHref({ ...base, index: targetIndex }));
+    },
+    [query, navigate],
+  );
+
+  // toggle-zoom-style: fit -> fill, anything else -> fit.
+  const handleToggleZoomStyle = useCallback(() => {
+    handleZoomType(zoomType === "fit" ? "fill" : "fit");
+  }, [zoomType, handleZoomType]);
+
+  // du/toggle-theme through update-profile, like the dashboard provider.
+  const handleToggleTheme = useCallback(() => {
+    const next = nextTheme(profile?.theme);
+    void updateProfile(profileUpdateParams({ fullname: profile?.fullname ?? "", theme: next }))
+      .then(() => refresh())
+      .catch(() => notifications.error(tr("generic.error")));
+  }, [profile, refresh, notifications]);
+
+  // hooks/use-shortcuts ::viewer behind a keydown matcher, active once the
+  // bundle is loaded (viewer-content*). The actions memo carries the
+  // handlers above, which are callbacks, so the matcher only re-binds when
+  // one of them changes.
+  const ready = data !== null;
+  const shortcutActions = useMemo<ViewerShortcutActions>(
+    () => ({
+      increaseZoom: handleIncreaseZoom,
+      decreaseZoom: handleDecreaseZoom,
+      resetZoom: handleResetZoom,
+      toggleZoomStyle: handleToggleZoomStyle,
+      toggleFullscreen,
+      prevFrame: handlePrev,
+      nextFrame: handleNext,
+      toggleTheme: handleToggleTheme,
+      goToInteractions: handleGoToInteractions,
+      goToWorkspace: handleGoToWorkspace,
+    }),
+    [
+      handleIncreaseZoom,
+      handleDecreaseZoom,
+      handleResetZoom,
+      handleToggleZoomStyle,
+      toggleFullscreen,
+      handlePrev,
+      handleNext,
+      handleToggleTheme,
+      handleGoToInteractions,
+      handleGoToWorkspace,
+    ],
+  );
+
+  useEffect(() => {
+    if (!ready) return;
+    const matcher = createShortcutMatcher(
+      buildViewerBindings(macos, customShortcuts, shortcutActions),
+    );
+    const onKeyDown = (event: KeyboardEvent) => {
+      const fired = dispatchViewerKeydown(matcher, event, macos, viewerShortcutTarget(event));
+      if (fired) event.preventDefault();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      matcher.dispose();
+    };
+  }, [ready, macos, customShortcuts, shortcutActions]);
+
+  // interactions.cljs viewport* on-mouse-wheel: a window-level listener
+  // while a frame renders; mod+wheel zooms and cancels the browser gesture
+  // (passive:false).
+  const viewportActive = ready && frame !== undefined;
+  useEffect(() => {
+    if (!viewportActive) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!isWheelZoomMod(macos, event)) return;
+      event.preventDefault();
+      if (wheelZoomDirection(event.deltaY, event.deltaX) === "decrease") {
+        handleDecreaseZoom();
+      } else {
+        handleIncreaseZoom();
+      }
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, [viewportActive, macos, handleDecreaseZoom, handleIncreaseZoom]);
 
   if (data === null) {
     return loadError ? <ViewerMessage message={tr("errors.generic")} /> : <ViewerLoader />;
@@ -473,6 +599,14 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
           type="button"
           className={showThumbnails ? "pp-thumbnails-close" : "pp-thumbnails-close pp-invisible"}
           onClick={closeThumbnails}
+        />
+        {/* The panel stays mounted and hides itself, like the CLJS. */}
+        <ViewerThumbnails
+          frames={frames}
+          index={displayIndex}
+          show={showThumbnails}
+          onSelect={handleSelectIndex}
+          onClose={closeThumbnails}
         />
         <section
           id="viewer-section"

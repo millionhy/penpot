@@ -459,6 +459,34 @@ export function shouldUpdateZoomQuery(current: string | null, zoomType: string |
   return current !== zoomType;
 }
 
+// --- Thumbnails panel -------------------------------------------------------
+
+// thumbnails.cljs: the item box is a fixed 152px (padding included); the
+// strip offset translates the list in whole item widths.
+export const THUMBNAIL_ITEM_WIDTH = 152;
+
+// thumbnails-content* on-left-arrow-click / on-right-arrow-click: step the
+// strip one item, clamped on both ends. The left guard mirrors the CLJS
+// `(if (pos? v) (dec v) v)`; the right guard steps while the offset stays
+// below `total - width / item-width` unrounded, so the last step can land
+// one past the exact bound, like the CLJS `(< v max-val)`.
+export function stepThumbnailOffset(
+  offset: number,
+  direction: "left" | "right",
+  containerWidth: number,
+  total: number,
+): number {
+  if (direction === "left") return offset > 0 ? offset - 1 : offset;
+  const maxOffset = total - containerWidth / THUMBNAIL_ITEM_WIDTH;
+  return offset < maxOffset ? offset + 1 : offset;
+}
+
+// on-scroll of the thumbnails list: a downward wheel steps right, every
+// other delta (including zero) steps left, like the CLJS `(pos? deltaY)`.
+export function thumbnailWheelDirection(deltaY: number): "left" | "right" {
+  return deltaY > 0 ? "right" : "left";
+}
+
 // --- Interaction modes ------------------------------------------------------
 
 export const INTERACTIONS_MODES = ["hide", "show", "show-on-click"] as const;

@@ -77,6 +77,15 @@ export function RemoveIcon() {
   );
 }
 
+// close.svg: the thumbnails summary close button (F6.3).
+export function CloseIcon() {
+  return (
+    <Icon>
+      <path d="m11.997 3.997-3.997 4.003-3.997 4.003m-.006-8 4.003 3.997 4.003 3.997" />
+    </Icon>
+  );
+}
+
 export function PlayIcon() {
   return (
     <Icon>

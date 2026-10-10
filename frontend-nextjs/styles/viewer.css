@@ -1,13 +1,14 @@
-/* Viewer route group (F6.2). Port of frontend/src/app/main/ui/viewer.scss,
-   frontend/src/app/main/ui/viewer/header.scss and the used parts of
+/* Viewer route group (F6.2/F6.3). Port of frontend/src/app/main/ui/viewer.scss,
+   frontend/src/app/main/ui/viewer/header.scss,
+   frontend/src/app/main/ui/viewer/thumbnails.scss and the used parts of
    frontend/src/app/main/ui/ds/product/loader.scss onto the tokens in
    styles/tokens.css. Class names map 1:1 from the SCSS modules with the
    pp- prefix; the deprecated functional tokens (design-tokens.scss) resolve
    to the --color-* pairs of the shell theme.
 
    Stand-ins until later F6 slices: .pp-viewport-placeholder fills the frame
-   area until F6.4 renders it with render-wasm; the thumbnails panel styles
-   arrive with F6.3.
+   area and .pp-thumbnail-size stands in for the frame bitmap; both go away
+   when F6.4 renders with render-wasm.
 
    Deviations, documented: the CLJS .viewer-bottom carries a padding-right
    with four values, which no browser accepts (the declaration is dropped at
@@ -101,6 +102,254 @@
 .pp-viewer-section::-webkit-scrollbar-thumb:hover {
   background-color: rgb(170 181 186 / 0.7);
   outline: none;
+}
+
+/* --- thumbnails panel (viewer/thumbnails.scss) --- */
+
+.pp-viewer-thumbnails {
+  /* --viewer-background-color */
+  background-color: var(--color-background-secondary);
+  display: flex;
+  flex-direction: column;
+  grid-column: 1 / span 1;
+  grid-row: 1 / span 1;
+  overflow: hidden;
+  z-index: 10; /* $z-index-10 */
+}
+
+.pp-thumbnails-expanded {
+  grid-row: 1 / span 2;
+}
+
+.pp-thumbnails-summary {
+  align-items: center;
+  display: flex;
+  height: var(--sz-32);
+  justify-content: space-between;
+  margin: var(--sp-xxl) var(--sp-xxl) 0;
+}
+
+.pp-thumbnails-counter {
+  /* body-small-typography + --viewer-thumbnails-control-foreground-color */
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
+}
+
+.pp-thumbnails-actions {
+  /* flex-row ($s-4 gap) */
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+  width: 3.75rem; /* $s-60 without a token */
+}
+
+.pp-thumbnails-expand,
+.pp-thumbnails-dismiss {
+  /* %button-tertiary */
+  align-items: center;
+  background-color: transparent;
+  border: var(--b-2) solid transparent;
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary); /* --button-tertiary-foreground-color-rest */
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-32);
+  justify-content: center;
+  padding: 0;
+  width: var(--sz-28);
+}
+
+.pp-thumbnails-expand:hover,
+.pp-thumbnails-dismiss:hover {
+  background-color: var(--color-background-quaternary); /* --button-tertiary-background-color-hover */
+  border-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary); /* --button-tertiary-foreground-color-hover */
+}
+
+.pp-thumbnails-expand:active,
+.pp-thumbnails-dismiss:active {
+  background-color: var(--color-background-secondary);
+  border-color: transparent;
+  color: var(--color-accent-primary);
+  outline: none;
+}
+
+.pp-thumbnails-expand svg,
+.pp-thumbnails-dismiss svg {
+  /* %button-icon + --button-tertiary-foreground-color-rest */
+  color: transparent;
+  fill: none;
+  height: var(--sz-16);
+  stroke: var(--color-foreground-secondary);
+  stroke-width: 1px;
+  width: var(--sz-16);
+}
+
+.pp-thumbnails-expand:hover svg,
+.pp-thumbnails-dismiss:hover svg {
+  stroke: var(--color-accent-primary);
+}
+
+.pp-thumbnails-expand svg {
+  transform: rotate(90deg);
+}
+
+.pp-thumbnails-expanded .pp-thumbnails-expand svg {
+  transform: rotate(-90deg);
+}
+
+.pp-thumbnails-content {
+  display: grid;
+  grid-template-columns: var(--sz-40) auto var(--sz-40);
+  grid-template-rows: auto;
+}
+
+.pp-thumbnails-list-expanded {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / span 3;
+  grid-row: 1 / span 1;
+  overflow: hidden;
+}
+
+.pp-thumbnails-scroll-left,
+.pp-thumbnails-scroll-right {
+  /* %button-tertiary + flex-center */
+  align-items: center;
+  background-color: transparent;
+  border: var(--b-2) solid transparent;
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  grid-column: 3 / span 1;
+  grid-row: 1 / span 1;
+  height: 3.75rem; /* $s-60 without a token */
+  justify-content: center;
+  margin: auto 0;
+  opacity: 0;
+  padding: 0;
+  width: var(--sz-32);
+  z-index: 10; /* $z-index-10 */
+}
+
+.pp-thumbnails-scroll-left:hover,
+.pp-thumbnails-scroll-right:hover {
+  background-color: var(--color-background-quaternary);
+  border-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+  opacity: 1;
+}
+
+.pp-thumbnails-scroll-left:active,
+.pp-thumbnails-scroll-right:active {
+  background-color: var(--color-background-secondary);
+  border-color: transparent;
+  color: var(--color-accent-primary);
+  outline: none;
+}
+
+.pp-thumbnails-scroll-left svg,
+.pp-thumbnails-scroll-right svg {
+  /* %button-icon + --icon-foreground */
+  color: transparent;
+  fill: none;
+  height: var(--sz-16);
+  stroke: var(--color-foreground-secondary);
+  stroke-width: 1px;
+  width: var(--sz-16);
+}
+
+.pp-thumbnails-scroll-left:hover svg,
+.pp-thumbnails-scroll-right:hover svg {
+  stroke: var(--color-accent-primary);
+}
+
+.pp-thumbnails-scroll-left {
+  grid-column: 1 / span 1;
+}
+
+.pp-thumbnails-scroll-left svg {
+  transform: rotate(180deg);
+}
+
+.pp-thumbnails-list {
+  display: flex;
+  flex-wrap: nowrap;
+  grid-column: 1 / span 3;
+  grid-row: 1 / span 1;
+  overflow: hidden;
+}
+
+.pp-thumbnails-list-inside {
+  display: flex;
+  position: relative;
+}
+
+.pp-thumbnail-item {
+  /* button-style */
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-l);
+}
+
+.pp-thumbnail-preview {
+  /* flex-center */
+  align-items: center;
+  display: flex;
+  height: 8.25rem; /* $s-132 without a token */
+  justify-content: center;
+  min-height: 8.25rem; /* $s-132 without a token */
+  padding: var(--sp-xs);
+  width: 8.25rem; /* $s-132 without a token */
+}
+
+.pp-thumbnail-preview svg {
+  height: 100%;
+  width: 100%;
+}
+
+.pp-thumbnail-preview-selected {
+  /* --viewer-thumbnail-background-color-selected */
+  background-color: var(--color-accent-primary-muted);
+  border-radius: var(--br-8);
+}
+
+.pp-thumbnail-preview:hover {
+  /* --viewer-thumbnail-border-color */
+  border: var(--b-1) solid var(--color-accent-primary);
+  border-radius: var(--br-8);
+}
+
+/* Placeholder inside .pp-thumbnail-preview until F6.4 renders the frame
+   bitmap; it shows the frame size. */
+.pp-thumbnail-size {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
+}
+
+.pp-thumbnail-info {
+  /* body-small-typography + text-ellipsis +
+     --viewer-thumbnails-control-foreground-color */
+  color: var(--color-foreground-secondary);
+  display: block;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
+  max-width: 8.25rem; /* $s-132 without a token */
+  overflow: hidden;
+  padding: var(--sp-s) 0;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
 }
 
 /* --- frame pagination (viewer.scss .viewer-go-prev / .viewer-go-next) ---
