@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成，F5 dashboard 进行中：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层与 F6.2 外壳完成，F6.3 导航与缩放交互进行中） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
@@ -39,7 +39,7 @@
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 占位后随 F5.6 补齐）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes 未做（见 7.6） |
 | F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.6 完成；F5.7 进行中，organization/team switch 与 subscription/nitrate 已完成），见下与第 4 节 |
-| F6 | viewer（`/view`） | ⬜ | 集成 `render-wasm`（已是 Rust→WASM，可直接复用） |
+| F6 | viewer（`/view`） | 🔧 | 切成 F6.1–F6.6 六片（F6.1 数据层、F6.2 外壳完成；F6.3 进行中），见下与第 4 节；集成 `render-wasm`（已是 Rust→WASM，可直接复用） |
 | F7 | 插件运行时 | ⬜ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`） |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
 | F9 | workspace 编辑器 | ⬜ | 最高风险，最后迁移：画布 + WASM + Web Worker + 协作光标 |
@@ -256,7 +256,22 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     的订阅横幅、`/settings/subscriptions` 订阅页与五个对话框、trash 的 90 天保留分支）、
     comments、插件注册、WebSocket `subscribe-team` 实时刷新（依赖 F8）。
 - **F6 viewer**：`/view` + `frame-preview` + `render-sprite`；集成 render-wasm 渲染画布（复用
-  `app.render_wasm.api` 的加载方式）。
+  `app.render_wasm.api` 的加载方式）。切成 F6.1–F6.6 六片：
+  - **F6.1 数据层（完成）**：`lib/viewer.ts`（feature 门控、bundle 拉取与 pointer
+    两趟解析、`fdata` objects-map 解码、帧读取与 z-index 排序、分页构建、URL 查询
+    解析、帧选择钳制、zoom 数学、`viewerHref`）；随附两个传输层缺陷修复（rpc 集合
+    查询参数、transit objects-map 缓存隔离）。
+  - **F6.2 外壳（完成）**：`app/view/page.tsx`（bundle 加载状态机、帧导航与 URL
+    双向镜像、fit/fill zoom、全屏、thumbnails 开关、`window.name` 会话命名）、
+    `viewer-header.tsx`、`viewer-pagination.tsx`、`viewer-icons.tsx`、
+    `styles/viewer.css`。
+  - **F6.3 导航与缩放交互（进行中）**：thumbnails 面板（展开/收起、左右步进、
+    缩略图导航）、viewer 快捷键注册表（13 条）、滚轮 zoom（mod+wheel）。
+  - **F6.4 WASM 渲染（未开始）**：render-wasm 加载器、序列化层、快照渲染
+    viewport、带 padding 的 bounds（calculate-size over gsb/object-bounds）。
+  - **F6.5 interactions（未开始）**：hotspots 命中、flows 菜单、overlay 动画。
+  - **F6.6 收尾（未开始）**：`frame-preview` + `render-sprite` 路由、not-found
+    异常页。
 - **F7 插件**：复用 SES 运行时与 Plugin API（`app.plugins`），保持 `plugins → mcp`（WS :4402）连线。
 - **F8 WebSocket 协作客户端**：连 `/ws/notifications`（直连后端源），订阅文件变更广播。
 - **F9 workspace**：最后迁移、最高风险。画布 + WASM + Web Worker（缩略图/索引/导入）+ 协作光标 +
@@ -289,7 +304,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成，F5 进行中：F5.1–F5.6 完成、F5.7 过半 → F6..F9)
+阶段 F  ███████████████████████░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 开局：F6.1/F6.2 完成、F6.3 进行中)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -920,6 +935,33 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - 浏览器端到端断言本轮未跑（本机没有 docker，后端栈起不来）：组织切换/离开流程、订阅页
   四卡与五个对话框的交互走查留待在可用环境补做。
 - 下一步：F5.7 收尾——comments、插件注册、WebSocket `subscribe-team` 实时刷新（依赖 F8）。
+
+### 7.15 本轮（2026-10-10，第十四批：F6.1 viewer 数据层与 F6.2 外壳）
+
+- F6 开局：viewer 切成 F6.1–F6.6 六片（数据层 / 外壳 / 导航与缩放交互 / WASM 渲染 /
+  interactions / 收尾），前两片完成并入库（5 个提交，`a328743615`–`bb4264bd7a`）。
+- F6.1 数据层（`a328743615`）：`lib/viewer.ts`（522 行：feature 门控、bundle 拉取与
+  pointer 两趟解析、帧读取与 z-index 排序、分页构建、URL 查询解析、帧选择钳制、
+  zoom 数学、`viewerHref` 链接构建）；单测 `lib/viewer.test.ts`（323 行）。随附两个
+  传输层缺陷修复：
+  - `5492b09cf3`：RPC 的 GET 集合参数改为重复键编码（`?a=1&a=2`），匹配后端读取
+    方式；`lib/rpc.ts` 随回归测试 75 行。
+  - `64580fbda3`：view-only bundle 的 `fdata` objects-map 需专用 reader 并隔离
+    缓存（共享缓存会串数据）；`lib/transit.ts` +35，回归测试 53 行。
+  - `996487c87b`：`.gitignore` 忽略 render-wasm 构建产物（F6.4 预置）。
+- F6.2 外壳（`bb4264bd7a`）：`app/view/page.tsx`（520 行：bundle 加载状态机、帧
+  导航与 URL 双向镜像、fit/fill zoom、全屏、thumbnails 开关、`window.name` 会话
+  命名）；`components/viewer-header.tsx`（403 行：Dropdown/ZoomWidget/SitemapZone）、
+  `components/viewer-pagination.tsx`、`components/viewer-icons.tsx`（占位图标集）、
+  `styles/viewer.css`（894 行，由 CLJS 样式移植）；`app/globals.css` 挂样式；翻译 +11 条。
+- 与 CLJS 的有意偏差（代码注释均登记）：viewer 快捷键与滚轮 zoom 未接（F6.3）；
+  thumbnails 面板只有开关（F6.3）；viewport 为占位块、bounds 取 selrect（F6.4）；
+  not-found 异常页未移植（F6.6）；bundle 按文件缓存一次（CLJS 随 page-id 重拉）；
+  viewer 为公开路由不套 AuthGuard（分享链接访问是常态）。
+- 测试：vitest 626 例 / 24 文件（较 F5.7 的 585 增 41）；`pnpm typecheck`、`pnpm build`
+  通过。
+- 下一步：F6.3——thumbnails 面板、viewer 快捷键注册表（13 条）、滚轮 zoom
+  （mod+wheel）。
 
 ---
 
