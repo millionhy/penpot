@@ -12,6 +12,10 @@ export interface PenpotConfig {
   sessionId: string;
   // Feature flags resolved from the host (cf/flags).
   flags: string[];
+  // Hosted (SaaS) deployment marker, the port of cf/saas? (the penpotIsSaas
+  // global a hosted deployment injects). Like the legal links, the shell
+  // resolves it from the environment so server and client agree.
+  isSaas: boolean;
   // Legal links rendered on the register page. The CLJS app reads them from
   // globalThis.penpotTermsOfServiceURI / penpotPrivacyPolicyURI injected by the
   // SaaS host; the shell resolves them from the environment instead so the
@@ -33,6 +37,7 @@ const publicEnv: Record<string, string | undefined> = {
   NEXT_PUBLIC_PENPOT_PUBLIC_URI: process.env.NEXT_PUBLIC_PENPOT_PUBLIC_URI,
   NEXT_PUBLIC_PENPOT_BACKEND_ORIGIN: process.env.NEXT_PUBLIC_PENPOT_BACKEND_ORIGIN,
   NEXT_PUBLIC_PENPOT_FLAGS: process.env.NEXT_PUBLIC_PENPOT_FLAGS,
+  NEXT_PUBLIC_PENPOT_IS_SAAS: process.env.NEXT_PUBLIC_PENPOT_IS_SAAS,
   NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI: process.env.NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI,
   NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI: process.env.NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI,
   NEXT_PUBLIC_PENPOT_VERSION: process.env.NEXT_PUBLIC_PENPOT_VERSION,
@@ -118,6 +123,7 @@ export const config: PenpotConfig = {
   backendOrigin: readEnv("NEXT_PUBLIC_PENPOT_BACKEND_ORIGIN", "http://localhost:6060"),
   sessionId: makeSessionId(),
   flags: [...parseFlags(envFlagTokens, defaultFlags)],
+  isSaas: readEnv("NEXT_PUBLIC_PENPOT_IS_SAAS", "") === "true",
   termsOfServiceUri: readOptionalEnv("NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI"),
   privacyPolicyUri: readOptionalEnv("NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI"),
   version: readOptionalEnv("NEXT_PUBLIC_PENPOT_VERSION"),

@@ -25,13 +25,16 @@ export type FieldType =
   | "checkbox"
   | "select"
   | "radio"
-  | "textarea";
+  | "textarea"
+  | "number";
 
 export interface FieldSpec {
   type: FieldType;
   // malli {:optional true}: an empty value means "absent" and is dropped from
   // the submitted data instead of being reported as missing.
   optional?: boolean;
+  // min/max bound the length for text-like fields; for number fields they
+  // bound the value (the ::sm/number {:min ... :max ...} shape).
   min?: number;
   max?: number;
   // checkbox only: the [:and :boolean [:= true]] shape used by the terms box.
@@ -76,6 +79,17 @@ export function validateField(spec: FieldSpec, value: unknown): string | null {
     return null;
   }
   const raw = asString(value);
+  if (spec.type === "number") {
+    // A ::sm/number field reports missing on "", invalid on anything the
+    // parser cannot read, and the min/max bounds against the parsed value.
+    // The dialog only needs a non-null message to paint its input error.
+    if (raw.length === 0) return spec.optional ? null : tr("errors.field-missing");
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return tr("errors.invalid-data");
+    if (spec.min !== undefined && parsed < spec.min) return tr("errors.invalid-data");
+    if (spec.max !== undefined && parsed > spec.max) return tr("errors.invalid-data");
+    return null;
+  }
   const textLike =
     spec.type === "text" ||
     spec.type === "textarea" ||

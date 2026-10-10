@@ -16,6 +16,7 @@ const optionalEmail: FieldSpec = { type: "email", optional: true };
 const password: FieldSpec = { type: "password" };
 const terms: FieldSpec = { type: "checkbox", mustBeTrue: true };
 const newsletter: FieldSpec = { type: "checkbox", optional: true };
+const seats: FieldSpec = { type: "number", min: 3, max: 9999 };
 
 describe("validateField text", () => {
   it("accepts a non blank value", () => {
@@ -259,5 +260,24 @@ describe("cleanValues select and radio", () => {
 
   it("keeps an unanswered radio group so the schema error is not hidden", () => {
     expect(cleanValues({ theme: themeSelect }, { theme: "" })).toEqual({ theme: "" });
+  });
+});
+
+describe("validateField number", () => {
+  it("accepts a value inside the bounds", () => {
+    expect(validateField(seats, "25")).toBeNull();
+  });
+
+  it("reports an empty required value as missing", () => {
+    expect(validateField(seats, "")).toBe(tr("errors.field-missing"));
+  });
+
+  it("reports a value the parser cannot read", () => {
+    expect(validateField(seats, "many")).toBe(tr("errors.invalid-data"));
+  });
+
+  it("bounds the parsed value, not the text length", () => {
+    expect(validateField(seats, "2")).toBe(tr("errors.invalid-data"));
+    expect(validateField(seats, "10000")).toBe(tr("errors.invalid-data"));
   });
 });

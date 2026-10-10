@@ -40,4 +40,8 @@ describe("config.flags", () => {
       true,
     );
   });
+
+  it("defaults to a self-hosted deployment unless the environment says saas", () => {
+    expect(config.isSaas).toBe(false);
+  });
 });

@@ -53,6 +53,8 @@ export interface NitrateLicense {
 
 export interface SubscriptionProfile extends LicensedProfile {
   "created-at"?: InstantValue | null;
+  // Read by the cancel-contact-sales dialog (open-cancel-contact-sales-modal).
+  email?: string;
   subscription?: NitrateLicense | null;
   props?: {
     subscription?: ProfileSubscription | null;
