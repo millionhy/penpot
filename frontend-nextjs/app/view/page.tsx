@@ -1,10 +1,11 @@
 "use client";
 
-// Viewer page (F6.2/F6.3): the shell port of app.main.ui.viewer. It loads
-// the view-only bundle (lib/viewer.ts), keeps the viewer-local slice (zoom,
-// zoom-type, fullscreen, thumbnails) and renders the header, the frame
-// pagination, the thumbnails panel and a placeholder viewport. The WASM
-// canvas arrives with F6.4, the overlays / interactions with F6.5.
+// Viewer page (F6.2/F6.3, frame rendering F6.4): the shell port of
+// app.main.ui.viewer. It loads the view-only bundle (lib/viewer.ts), keeps
+// the viewer-local slice (zoom, zoom-type, fullscreen, thumbnails) and
+// renders the header, the frame pagination, the thumbnails panel and the
+// render-wasm frame viewport (components/viewer-wasm-viewport). The
+// overlays / interactions arrive with F6.5.
 //
 // Deviations from the CLJS original, documented:
 // - The viewer is a public route (anonymous share-link visitors are the
@@ -20,8 +21,13 @@
 //   untracked case of a page opened without an index parameter.
 // - A missing page or a fetch failure renders the empty state; the
 //   ex/raise :not-found exception page is not ported yet (F6.6).
-// - The viewport sizes from the frame selrect; the padded bounds
-//   (calculate-size over gsb/get-object-bounds) arrive with F6.4.
+// - The renderer decodes its own copy of the bundle (lib/render-wasm):
+//   transit-js normalizes keywords and uuids to plain strings and the
+//   compiled payload readers cannot look those up, so the shell and the
+//   renderer fetch and decode separately for now (a recorded F6 debt).
+// - The viewport sizes from the padded bounds the renderer reports
+//   (calculate-size over gsb/get-object-bounds); the frame selrect stands
+//   in until the first report.
 // - The shortcut matcher (hooks/use-shortcuts ::viewer) re-binds when its
 //   handlers change, where the CLJS binds once per group and its events
 //   read the store; the wheel listener binds once while a frame renders.
@@ -38,6 +44,7 @@ import { QueryParams } from "@/components/query-params";
 import { ViewerHeader, type SitemapPage } from "@/components/viewer-header";
 import { ViewerPagination } from "@/components/viewer-pagination";
 import { ViewerThumbnails } from "@/components/viewer-thumbnails";
+import { ViewerWasmViewport, type ViewerWasmBounds } from "@/components/viewer-wasm-viewport";
 import { dashboardHref, workspaceHref } from "@/lib/dashboard";
 import { nextTheme } from "@/lib/dashboard-shortcuts-runtime";
 import { useDocumentTitle } from "@/lib/dom";
@@ -153,6 +160,10 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   const [zoomType, setZoomType] = useState<ZoomType | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [showThumbnails, setShowThumbnails] = useState(false);
+  // The padded frame bounds the renderer reports; null until the first
+  // report and after a frame change (see the reset effect below). The
+  // wrapper sizes from them, with the selrect as the stand-in.
+  const [wasmBounds, setWasmBounds] = useState<ViewerWasmBounds | null>(null);
 
   // The measured #viewer-section size: the zoom math input. A ref, not
   // state, because a resize only refreshes it (the recompute hangs off
@@ -214,6 +225,13 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   const frames = useMemo(() => page?.frames ?? [], [page]);
   const displayIndex = query.index ?? (page !== undefined ? autoFrameIndex(page) : 0);
   const frame = displayIndex >= 0 && displayIndex < frames.length ? frames[displayIndex] : undefined;
+
+  // Drop the reported bounds when the frame changes: they describe the
+  // previous frame, and the wrapper would size from stale numbers while
+  // the next one decodes.
+  useEffect(() => {
+    setWasmBounds(null);
+  }, [frame?.id]);
 
   const permissions = (data?.permissions ?? {}) as Record<string, unknown>;
   const inTeam = permissions["in-team"] === true;
@@ -437,6 +455,12 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     if (showThumbnails) setShowThumbnails(false);
   };
 
+  // The renderer reports the frame's padded bounds once the bundle is
+  // decoded; it also reports null when a render fails.
+  const handleWasmBounds = useCallback((bounds: ViewerWasmBounds | null) => {
+    setWasmBounds(bounds);
+  }, []);
+
   // click-on-screen: a click on the section itself toggles the forced
   // visibility of the controls. The attribute is flipped imperatively, so
   // it survives until the show-thumbnails state writes the attribute again
@@ -558,8 +582,8 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
       </section>
     );
   } else {
-    const frameWidth = (frame.selrect?.width ?? 0) * zoom;
-    const frameHeight = (frame.selrect?.height ?? 0) * zoom;
+    const frameWidth = (wasmBounds?.baseWidth ?? frame.selrect?.width ?? 0) * zoom;
+    const frameHeight = (wasmBounds?.baseHeight ?? frame.selrect?.height ?? 0) * zoom;
     content = (
       <>
         <ViewerPagination
@@ -575,11 +599,15 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
               className="pp-viewport-container"
               style={{ width: frameWidth, height: frameHeight, position: "relative" }}
             >
-              {/* Placeholder until F6.4 renders the frame with render-wasm. */}
-              <div className="pp-viewport-placeholder">
-                <span>{frame.name}</span>
-                <span>{Math.round(frameWidth) + " \u00d7 " + Math.round(frameHeight)}</span>
-              </div>
+              <ViewerWasmViewport
+                fileId={fileId}
+                shareId={shareId}
+                pageId={page.id}
+                frameId={frame.id}
+                frameName={frame.name ?? ""}
+                zoom={zoom}
+                onBounds={handleWasmBounds}
+              />
             </div>
           </div>
         </div>
@@ -601,12 +629,17 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
           onClick={closeThumbnails}
         />
         {/* The panel stays mounted and hides itself, like the CLJS. */}
+        {/* pageId: a bitmap implies a frame, so the empty fallback never
+            renders one (see ThumbnailBitmap). */}
         <ViewerThumbnails
           frames={frames}
           index={displayIndex}
           show={showThumbnails}
           onSelect={handleSelectIndex}
           onClose={closeThumbnails}
+          fileId={fileId}
+          shareId={shareId}
+          pageId={page?.id ?? ""}
         />
         <section
           id="viewer-section"

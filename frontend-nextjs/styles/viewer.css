@@ -6,9 +6,9 @@
    pp- prefix; the deprecated functional tokens (design-tokens.scss) resolve
    to the --color-* pairs of the shell theme.
 
-   Stand-ins until later F6 slices: .pp-viewport-placeholder fills the frame
-   area and .pp-thumbnail-size stands in for the frame bitmap; both go away
-   when F6.4 renders with render-wasm.
+   Stand-ins: .pp-viewport-placeholder doubles as the render-wasm error
+   overlay and .pp-thumbnail-size still stands in for the frame bitmap
+   (the thumbnails bitmap is a recorded F6.4 debt).
 
    Deviations, documented: the CLJS .viewer-bottom carries a padding-right
    with four values, which no browser accepts (the declaration is dropped at
@@ -326,8 +326,24 @@
   border-radius: var(--br-8);
 }
 
-/* Placeholder inside .pp-thumbnail-preview until F6.4 renders the frame
-   bitmap; it shows the frame size. */
+/* The bitmap a ThumbnailBitmap paints (render-to-canvas). Hidden until the
+   offscreen pass lands (data-rendered=true); then it replaces the size
+   placeholder. */
+.pp-thumbnail-canvas {
+  display: none;
+  max-height: 100%;
+  max-width: 100%;
+}
+
+.pp-thumbnail-canvas[data-rendered="true"] {
+  display: block;
+}
+
+.pp-thumbnail-canvas[data-rendered="true"] + .pp-thumbnail-size {
+  display: none;
+}
+
+/* The frame size; the bitmap replaces it once painted. */
 .pp-thumbnail-size {
   color: var(--color-foreground-secondary);
   font-size: var(--fs-12);
@@ -516,8 +532,8 @@
   grid-row: 1 / 1;
 }
 
-/* Placeholder of the frame area until F6.4 renders the frame with the WASM
-   canvas; it shows the frame name and the zoomed size. */
+/* The render-wasm error overlay: covers the canvas when the frame render
+   fails and shows the frame name, the zoomed size and the error. */
 .pp-viewport-placeholder {
   border: var(--b-2) dashed var(--color-background-quaternary);
   color: var(--color-foreground-secondary);
