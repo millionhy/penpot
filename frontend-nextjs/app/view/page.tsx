@@ -3,9 +3,9 @@
 // Viewer page (F6.2/F6.3, frame rendering F6.4): the shell port of
 // app.main.ui.viewer. It loads the view-only bundle (lib/viewer.ts), keeps
 // the viewer-local slice (zoom, zoom-type, fullscreen, thumbnails) and
-// renders the header, the frame pagination, the thumbnails panel and the
-// render-wasm frame viewport (components/viewer-wasm-viewport). The
-// overlays / interactions arrive with F6.5.
+// renders the header, the frame pagination, the thumbnails panel, the
+// render-wasm frame viewport (components/viewer-wasm-viewport) and the
+// open overlays (components/viewer-overlay).
 //
 // Deviations from the CLJS original, documented:
 // - The viewer is a public route (anonymous share-link visitors are the
@@ -35,8 +35,11 @@
 //   navigate resolves the destination frame on the current page and falls
 //   back to index 0 (go-to-frame's (or index 0)), prev-screen is
 //   rt/nav-back-local behind the same-origin referrer guard, and open-url
-//   opens a new tab (dom/open-new-window). The overlay actions are
-//   ignored until the overlay slice (f65e) renders them, and
+//   opens a new tab (dom/open-new-window). The overlay actions drive the
+//   open-overlay list (lib/viewer-overlays); the navigation events (prev /
+//   next / thumbnail pick / navigate / go-to-section) clear the list like
+//   the CLJS. go-to-page clears it too, where the CLJS leaves entries that
+//   no longer resolve. The close animations wait for f65f, and
 //   preserve-scroll is a no-op because the section does not scroll.
 // - Three registered shortcuts stay unbound (select-all, open-inspect,
 //   open-comments) so their native browser keys keep working; see
@@ -49,6 +52,7 @@ import { useRouter } from "next/navigation";
 import { useNotifications } from "@/components/notifications";
 import { QueryParams } from "@/components/query-params";
 import { ViewerHeader, type SitemapPage } from "@/components/viewer-header";
+import { ViewerOverlay } from "@/components/viewer-overlay";
 import { ViewerPagination } from "@/components/viewer-pagination";
 import { ViewerThumbnails } from "@/components/viewer-thumbnails";
 import { ViewerWasmViewport, type ViewerWasmBounds } from "@/components/viewer-wasm-viewport";
@@ -59,7 +63,8 @@ import { tr } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 import { profileUpdateParams, updateProfile } from "@/lib/settings";
 import { createShortcutMatcher, customShortcutsFromProfile, isMacos } from "@/lib/shortcuts";
-import { type ViewerAction } from "@/lib/viewer-interactions";
+import { type OverlaySpec, type ViewerAction } from "@/lib/viewer-interactions";
+import { closeOverlay, openOverlay, toggleOverlay } from "@/lib/viewer-overlays";
 import {
   autoFrameIndex,
   buildViewerPages,
@@ -172,6 +177,9 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // report and after a frame change (see the reset effect below). The
   // wrapper sizes from them, with the selrect as the stand-in.
   const [wasmBounds, setWasmBounds] = useState<ViewerWasmBounds | null>(null);
+  // dv/open-overlay / toggle-overlay / close-overlay: the open overlay
+  // frames, in open order (the later entries stack above).
+  const [overlays, setOverlays] = useState<OverlaySpec[]>([]);
 
   // The measured #viewer-section size: the zoom math input. A ref, not
   // state, because a resize only refreshes it (the recompute hangs off
@@ -231,6 +239,8 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   const page: ViewerPage | undefined = pageId !== null ? pages[pageId] : undefined;
 
   const frames = useMemo(() => page?.frames ?? [], [page]);
+  // refs/viewer-overlays as the viewport math consumes it (the frame ids).
+  const overlaysIds = useMemo(() => overlays.map((overlay) => overlay.frameId), [overlays]);
   const displayIndex = query.index ?? (page !== undefined ? autoFrameIndex(page) : 0);
   const frame = displayIndex >= 0 && displayIndex < frames.length ? frames[displayIndex] : undefined;
 
@@ -376,6 +386,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // shortcut matcher below, so they carry their state as dependencies.
   const handlePrev = useCallback(() => {
     if (!canSelectPrev(displayIndex)) return;
+    setOverlays([]);
     const base = viewerQueryToHrefParams(query);
     if (base === null) return;
     navigate(viewerHref({ ...base, index: displayIndex - 1 }));
@@ -383,6 +394,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
 
   const handleNext = useCallback(() => {
     if (!canSelectNext(displayIndex, frames.length)) return;
+    setOverlays([]);
     const base = viewerQueryToHrefParams(query);
     if (base === null) return;
     navigate(viewerHref({ ...base, index: displayIndex + 1 }));
@@ -394,14 +406,18 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     navigate(viewerHref({ ...base, index: 0 }));
   };
 
-  // go-to-page: index 0 on the target page.
+  // go-to-page: index 0 on the target page. The open overlays belong to
+  // the leaving page and drop (a deviation: the CLJS leaves the entries,
+  // which then resolve to nothing).
   const handleGoToPage = (id: string) => {
+    setOverlays([]);
     const base = viewerQueryToHrefParams(query);
     if (base === null) return;
     navigate(viewerHref({ ...base, pageId: id, index: 0 }));
   };
 
   const handleGoToInteractions = useCallback(() => {
+    setOverlays([]);
     const base = viewerQueryToHrefParams(query);
     if (base === null) return;
     navigate(viewerHref({ ...base, section: "interactions" }));
@@ -485,6 +501,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // param set is rebuilt and sameSearch guards the no-op.
   const handleSelectIndex = useCallback(
     (targetIndex: number) => {
+      setOverlays([]);
       const base = viewerQueryToHrefParams(query);
       if (base === null) return;
       navigate(viewerHref({ ...base, index: targetIndex }));
@@ -493,11 +510,12 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   );
 
   // The hotspot actions of the wasm viewport (the st/emit! calls of
-  // shapes.cljs activate-interaction / deactivate-interaction). The overlay
-  // branches fall through until f65e stores overlay state. The prev-screen
-  // guard mirrors rt/nav-back-local: only a same-origin (or absent)
-  // referrer allows history.back(). The open-url window matches
-  // dom/open-new-window's default "_blank" + noopener,noreferrer.
+  // shapes.cljs activate-interaction / deactivate-interaction). The
+  // overlay branches drive the open list (dv/open-overlay and friends via
+  // lib/viewer-overlays). The prev-screen guard mirrors rt/nav-back-local:
+  // only a same-origin (or absent) referrer allows history.back(). The
+  // open-url window matches dom/open-new-window's default "_blank" +
+  // noopener,noreferrer.
   const handleViewerAction = useCallback(
     (action: ViewerAction) => {
       switch (action.kind) {
@@ -505,7 +523,20 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
           const base = viewerQueryToHrefParams(query);
           if (base === null) return;
           const index = frameIndexById(frames, action.frameId);
+          setOverlays([]);
           navigate(viewerHref({ ...base, index: index >= 0 ? index : 0 }));
+          return;
+        }
+        case "open-overlay": {
+          setOverlays((current) => openOverlay(current, action.overlay));
+          return;
+        }
+        case "toggle-overlay": {
+          setOverlays((current) => toggleOverlay(current, action.overlay));
+          return;
+        }
+        case "close-overlay": {
+          setOverlays((current) => closeOverlay(current, action.frameId));
           return;
         }
         case "prev-screen": {
@@ -655,8 +686,30 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
                 frameName={frame.name ?? ""}
                 zoom={zoom}
                 onBounds={handleWasmBounds}
+                overlaysIds={overlaysIds}
                 onAction={handleViewerAction}
               />
+              {overlays.map((overlay) => {
+                const overlayFrame = page.allFrames.find((f) => f.id === overlay.frameId);
+                if (overlayFrame === undefined) return null;
+                return (
+                  <ViewerOverlay
+                    key={overlay.frameId}
+                    overlay={overlay}
+                    fileId={fileId}
+                    shareId={shareId}
+                    pageId={page.id}
+                    baseFrameId={frame.id}
+                    frameName={overlayFrame.name ?? ""}
+                    frameSelrect={overlayFrame.selrect}
+                    zoom={zoom}
+                    wrapperWidth={frameWidth}
+                    wrapperHeight={frameHeight}
+                    overlaysIds={overlaysIds}
+                    onAction={handleViewerAction}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>

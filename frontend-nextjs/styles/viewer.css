@@ -532,6 +532,24 @@
   grid-row: 1 / 1;
 }
 
+/* The overlay backdrop (viewer.scss .viewer-overlay-background): the
+   click-outside layer spanning the wrapper; background-overlay dims it. */
+.pp-viewer-overlay-background {
+  left: 0;
+  position: absolute;
+  top: 0;
+}
+
+.pp-viewer-overlay-background.pp-visible {
+  background-color: rgb(0 0 0 / 0.2);
+}
+
+/* The overlay containers (viewer.scss .viewer-overlay): one per open
+   overlay, positioned by the overlay position. */
+.pp-viewer-overlay {
+  position: absolute;
+}
+
 /* The render-wasm error overlay: covers the canvas when the frame render
    fails and shows the frame name, the zoomed size and the error. */
 .pp-viewport-placeholder {

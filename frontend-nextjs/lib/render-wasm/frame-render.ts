@@ -8,86 +8,36 @@
 //   init-canvas-context(offscreen) → initialize-viewport(force-sync,
 //   on-render) → [on-render] wasm UI overlay off → render-sync-shape
 //   (the actual final render) → blit through createImageBitmap →
-//   clear-canvas
+//   clear-canvas → reset-viewer-snapshot!
+//
+// The queue, the blit and render-sync-shape live in
+// lib/render-wasm/pass-common.ts, shared with the viewer pass
+// (lib/render-wasm/viewer-render.ts). The snapshot reset keeps the compiled
+// contract: after a one-shot render the viewer's shared offscreen canvas is
+// gone, so the next viewer pass rebuilds its context instead of reusing a
+// torn-down one.
 //
 // Differences from the compiled original, documented:
-// - The original serializes one-shot renders through enqueue-wasm-render!
-//   (a promise chain over @wasm-render-queue). The module-level chain below
-//   does the same; a failed link never blocks the next one.
 // - The original also flips wasm/disable-request-render? around the pass;
-//   that atom is closure-private. The pass is short and the viewport holds
-//   no render loop while it runs (it rebuilds on the completion event).
-// - The original resets viewer-snapshot (the reusable offscreen canvas of
-//   the workspace thumbnails). The shell never fills that snapshot, so
-//   there is nothing to reset.
+//   that atom is closure-private. The pass is short and runs on the shared
+//   queue, so no interleaved request-render can observe the mid-pass state.
 // - The original blits via draw-bitmap! (createImageBitmap + rAF, because
 //   Firefox+NVIDIA cannot drawImage a managed OffscreenCanvas directly);
-//   the same steps live in drawBitmap below, including the
-//   "#screenshot-<id>" marker the CLJS original sets on the canvas.
+//   the same steps live in drawBitmap, including the "#screenshot-<id>"
+//   marker the CLJS original sets on the canvas.
 
 import { arrayMap, call, keyword, KEY, type RendererApp } from "./interop";
+import {
+  drawBitmap,
+  enqueueRender,
+  renderSyncShape,
+  softClearOptions,
+  uuidToU32,
+} from "./pass-common";
+import { resetViewerSnapshot } from "./viewer-render";
 
-// The four big-endian u32 words of a uuid string, the shape the wasm ABI
-// takes. Mirrors uuid/get-u32 (getUnsignedParts in
-// common/src/app/common/uuid_impl.js): every 8 hex digits of the
-// dashless string read as one big-endian u32.
-export function uuidToU32(id: string): [number, number, number, number] {
-  const hex = id.replace(/-/g, "");
-  return [
-    Number.parseInt(hex.slice(0, 8), 16),
-    Number.parseInt(hex.slice(8, 16), 16),
-    Number.parseInt(hex.slice(16, 24), 16),
-    Number.parseInt(hex.slice(24, 32), 16),
-  ];
-}
-
-// enqueue-wasm-render!: a new one-shot render starts only when the previous
-// finished. The chain itself never stays rejected.
-let queue: Promise<unknown> = Promise.resolve();
-
-function enqueueRender<T>(task: () => Promise<T>): Promise<T> {
-  const result = queue.then(task, task);
-  queue = result.catch(() => undefined);
-  return result;
-}
-
-// render-sync-shape (app.render-wasm.api): push the final render of `id`
-// synchronously, so the offscreen canvas holds the frame when the blit
-// reads it. This is the step that actually paints the one-shot pass — the
-// initialize-viewport render-callback contract expects the caller to
-// render (without a callback the compiler falls back to request-render).
-function renderSyncShape(app: RendererApp, id: string): void {
-  const [a, b, c, d] = uuidToU32(id);
-  const internal = app[KEY.internalModule] as Record<string, (...args: number[]) => unknown>;
-  internal._render_sync_shape(a, b, c, d);
-  // The compiled render-sync-shape ends with set! wasm/internal-frame-id
-  // nil; every access to that var compiles to a $APP property read/write,
-  // so the assignment here is the exact equivalent.
-  app[KEY.internalFrameId] = null;
-}
-
-// draw-bitmap!: GPU-side blit of the offscreen canvas through an
-// ImageBitmap (correct orientation, no CPU readback) plus the canvas id
-// the handlers look for.
-async function drawBitmap(
-  canvas: HTMLCanvasElement,
-  osCanvas: OffscreenCanvas,
-  id: string,
-  width: number,
-  height: number,
-): Promise<void> {
-  const bitmap = await createImageBitmap(osCanvas);
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => {
-      const ctx = canvas.getContext("2d");
-      ctx?.clearRect(0, 0, width, height);
-      ctx?.drawImage(bitmap, 0, 0, width, height);
-      bitmap.close();
-      canvas.id = `screenshot-${id}`;
-      resolve();
-    });
-  });
-}
+// Kept exported for the unit tests (the F6.4 suite covers the uuid split).
+export { uuidToU32 };
 
 async function renderFrame(
   app: RendererApp,
@@ -116,15 +66,14 @@ async function renderFrame(
           call(app, KEY.setRulersFrameVisible, false);
           call(app, KEY.setRulersVisible, false);
           renderSyncShape(app, frameId);
-          await drawBitmap(canvas, osCanvas, frameId, width, height);
+          await new Promise<void>((blitDone) => {
+            void drawBitmap(canvas, osCanvas, frameId, width, height, blitDone);
+          });
           // The compiled pass ends with clear-canvas (context kept:
-          // lose-browser-context? false), handing the shared wasm runtime
-          // back; the viewport rebuilds on the completion event.
-          call(
-            app,
-            KEY.clearCanvas,
-            arrayMap(app, [[keyword(app, "lose-browser-context?"), false]]),
-          );
+          // lose-browser-context? false) plus a snapshot reset, handing the
+          // shared wasm runtime back; the viewer rebuilds on the next pass.
+          call(app, KEY.clearCanvas, softClearOptions(app));
+          resetViewerSnapshot();
           resolve();
         } catch (cause) {
           reject(cause);

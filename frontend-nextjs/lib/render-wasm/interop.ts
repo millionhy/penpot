@@ -34,6 +34,11 @@ export const KEY = {
   clearCanvas: "$app$render_wasm$api$clear_canvas$cljs$0core$0IFn$0_invoke$0arity$01$$",
   wasmLive: "$app$render_wasm$wasm$live_QMARK_$$",
   wasmReady: "$app$render_wasm$wasm$ready_QMARK_$$",
+  // The fixed-scroll layer mask (viewer-apply-layer-mask!) has no entry
+  // point on $APP: runtime-verified, clear/set-render-include-filter! and
+  // clear/set-shape-fills are all undefined (the optimizer inlined them).
+  // The empty-mask reset is replicated through the internal module in
+  // pass-common.ts; the id paths land with the fixed-layer slice.
   // The rAF handle of a scheduled render (set! to null cancels the handle
   // bookkeeping, mirrors the compiled set! wasm/internal-frame-id nil).
   internalFrameId: "$app$render_wasm$wasm$internal_frame_id$$",

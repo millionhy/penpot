@@ -1,37 +1,50 @@
 "use client";
 
-// The WASM frame viewport (F6.4): a live canvas that draws the viewer's
-// current frame with render-wasm — the stepping stone for the full viewer
-// viewport (interactions and overlays arrive with F6.5). The load sequence
-// ports initialize-viewport / the render-to-canvas* flow of
-// app.main.render-viewer-wasm:
+// The WASM frame viewport (F6.4, blit pipeline with F6.5): a live canvas
+// that draws the viewer's current frame with render-wasm. The pipeline is
+// the compiled viewer's (app.main.render-viewer-wasm): one shared
+// OffscreenCanvas holds the live GL context, each pass re-renders the frame
+// through render-sync-shape and blits the pixels onto this visible 2D
+// canvas. The load sequence ports render-viewer-frame*:
 //
 //   loadRenderer -> ensureWasmModule -> loadDecodedBundle -> calculateSize
-//   -> init-canvas-context (first run, or after an external teardown) or
-//      resize-canvas! (later runs)
-//   -> initialize-viewport objects zoom vbox {:background-opacity 0
-//      :force-sync true :on-render ...}
+//   -> set the canvas physical size (viewport-wasm's canvas-dimensions:
+//      css = round(zoom * base), physical = round(css * dpr); assigned
+//      only when it changed, since resizing clears the surface)
+//   -> renderViewerFrame (reuse the snapshot, or rebuild the context with
+//      initialize-viewport {:background-opacity 0 :force-sync true
+//      :on-render ...})
 //
-// The component instance survives frame and zoom changes: the context is
-// initialized once and the set-objects pipeline rebuilds the tile index
-// (_set_view_end), so navigation needs no teardown. The wrapper cannot know
-// the padded bounds (calculate-size over gsb/get-object-bounds) before the
-// bundle is decoded, so the child reports them to the parent through
-// onBounds; the parent sizes the wrapper from them.
+// The component instance survives frame and zoom changes: the snapshot is
+// reused while page, size and dpr match, and the set-objects pipeline
+// rebuilds the tile index (_set_view_end), so navigation needs no teardown.
+// The wrapper cannot know the padded bounds (calculate-size over
+// gsb/get-object-bounds) before the bundle is decoded, so the child reports
+// them to the parent through onBounds; the parent sizes the wrapper from
+// them.
 //
 // The hotspot layer (F6.5) mirrors viewport-wasm* + frame-hotspots*: the
-// frame subtree is prepared into vbox space with the compiled
-// prepare-objects, one transparent SVG rect per interactive shape sits over
-// the canvas, and the pointer handlers run the activate/deactivate math of
-// lib/viewer-interactions.ts and report the resulting viewer actions up
-// through onAction. Overlay actions are ignored here for now (f65e
-// renders overlays).
+// page objects are prepared into vbox space with the compiled
+// prepare-objects (prepareAllObjects rebuilds the inlined
+// prepare-page-objects with one shift per top-level frame), one transparent
+// SVG rect per interactive shape sits over the canvas, and the pointer
+// handlers run the activate/deactivate math of lib/viewer-interactions.ts
+// and report the resulting viewer actions up through onAction.
 //
-// The wasm module has one global GL context; an offscreen render (the
-// thumbnails panel, render-to-canvas) initializes its own and tears it down
-// when it finishes (clear-canvas), so the viewport detects the dead context
-// (wasm/live?) and re-initializes. The completion events of the thumbnails
-// are debounced into a reset that re-runs this effect once per burst.
+// One instance is the main viewport or one open overlay (viewer.cljs
+// viewer-wrapper / viewer-overlay). An overlay passes its snap-to (the
+// viewport computes the alignment delta and bakes it into the render origin
+// and the prepared objects), its position as the frame offset, the
+// top-level frame as the base frame of the interaction math, and the open
+// overlay ids; the main viewport leaves them undefined, and its delta is
+// (0, 0).
+//
+// The wasm module has one global GL context; a one-shot render (the
+// thumbnails panel, render-to-canvas) initializes its own, tears it down
+// when it finishes (clear-canvas) and resets the shared snapshot, so the
+// viewport's next pass rebuilds its context. The completion events of the
+// thumbnails are debounced into a reset that re-runs this effect once per
+// burst.
 //
 // The on-render callback also drives the position-data pass
 // (update-page-position-data, see lib/render-wasm/position-data): it runs
@@ -39,40 +52,43 @@
 // offscreen context this bundle predates. The canvas carries the pass state
 // on data-position-data for diagnosis.
 //
-// Unmount runs a soft clear-canvas ({:lose-browser-context? false}): the same
-// canvas node can be initialized again when React replays effects, and an
-// immediate re-init after an explicitly lost context can fail (the same
-// reason reload-renderer! waits a frame before re-init).
+// Unmount hands the shared context back on the render queue (a soft
+// clear-canvas, {:lose-browser-context? false}) and resets the snapshot:
+// a remount rebuilds from scratch, and the queue keeps the clear from
+// cutting into a thumbnail pass that holds the context at that moment.
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { ensureWasmModule, loadRenderer } from "@/lib/render-wasm/bridge";
+import { KEY, call, get, keyword, uuid } from "@/lib/render-wasm/interop";
 import {
-  KEY,
-  arrayMap,
-  call,
-  get,
-  keyword,
-  sleep,
-  uuid,
-  type RendererApp,
-} from "@/lib/render-wasm/interop";
+  enqueueRender,
+  readDpr,
+  softClearOptions,
+} from "@/lib/render-wasm/pass-common";
 import { updatePagePositionData } from "@/lib/render-wasm/position-data";
 import { calculateSize, type ViewerSize } from "@/lib/render-wasm/sizes";
 import {
+  renderViewerFrame,
+  resetViewerSnapshot,
+} from "@/lib/render-wasm/viewer-render";
+import {
   collectHotspots,
   createShapeReader,
-  prepareObjects,
+  prepareAllObjects,
+  readSelrect,
   type HotspotEntry,
 } from "@/lib/render-wasm/viewer-shapes";
 import { loadDecodedBundle } from "@/lib/render-wasm/values";
 import {
   activateInteraction,
+  calculateDelta,
   deactivateInteraction,
   interactionsByEvent,
   type InteractionShape,
   type Point,
   type ShapeReader,
+  type SnapTo,
   type ViewerAction,
 } from "@/lib/viewer-interactions";
 
@@ -96,55 +112,36 @@ export interface ViewerWasmViewportProps {
   // ref:viewer-show-interactions: with it on, hotspots paint their
   // stroke / fill highlight (the F6.5 show-interactions slice wires it).
   showInteractions?: boolean;
-  // The viewer actions the hotspot handlers produce. The overlay kinds are
-  // ignored by the current caller; f65e applies them.
+  // The snap-to of an open overlay: present, the viewport computes the
+  // alignment delta (calculateDelta over the raw frame selrect) and bakes
+  // it into the render origin and the prepared objects, exactly like
+  // viewer.cljs viewer-overlay.
+  snapTo?: SnapTo;
+  // The overlay position against the base frame (the frame-offset context
+  // of the interaction math); the main viewport uses (0, 0).
+  frameOffset?: Point;
+  // The base frame of the interaction math (the base-frame context): an
+  // overlay passes its top-level frame, the main viewport its own.
+  baseFrameId?: string;
+  // refs/viewer-overlays: the frame ids of the open overlays, for the
+  // activate / deactivate math. Read at event time through a ref, so list
+  // changes do not re-run the load effect.
+  overlaysIds?: readonly string[];
+  // The viewer actions the hotspot handlers produce; the page applies them
+  // to its state (navigation, overlays).
   onAction?: (action: ViewerAction) => void;
 }
 
 // The hotspot layer of the current frame: the drawable entries plus the
 // context the pointer handlers of lib/viewer-interactions.ts read. The
-// overlays list stays empty until f65e stores overlay state.
+// open overlay ids come through a ref, since the handlers of the compiled
+// viewer read refs/viewer-overlays at event time.
 interface HotspotData {
   entries: HotspotEntry[];
   baseFrame: InteractionShape;
   reader: ShapeReader;
   frameOffset: Point;
-}
-
-// No overlays open yet: the overlays-ids argument of activate/deactivate.
-const EMPTY_OVERLAYS: readonly string[] = [];
-
-// The soft teardown options shared by the unmount path and the unmounted
-// mid-init path.
-function softClearOptions(app: RendererApp): unknown {
-  return arrayMap(app, [[keyword(app, "lose-browser-context?"), false]]);
-}
-
-// get-dpr answers the wasm-set dpr or window.devicePixelRatio; guard against
-// anything else (the CLJS falls back to 1.0).
-function readDpr(app: RendererApp): number {
-  const dpr = call(app, KEY.getDpr);
-  return typeof dpr === "number" && Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
-}
-
-// The canvas is laid out at the container size; the layout engine rounds
-// clientWidth/clientHeight, so compare with a pixel of slack. On timeout
-// render anyway: resize-canvas! reads the achieved client size itself, so the
-// framebuffer and the CSS layout stay in sync even if the poll missed.
-async function waitForCanvasSize(
-  canvas: HTMLCanvasElement,
-  width: number,
-  height: number,
-): Promise<void> {
-  const deadline = Date.now() + 3000;
-  for (;;) {
-    const fit =
-      Math.abs(canvas.clientWidth - width) <= 1 &&
-      Math.abs(canvas.clientHeight - height) <= 1;
-    if (fit) return;
-    if (Date.now() > deadline) return;
-    await sleep(50);
-  }
+  overlaysIdsRef: React.RefObject<readonly string[]>;
 }
 
 // One hotspot (shapes.cljs hotspot*): a transparent rect that is the only
@@ -171,7 +168,14 @@ const Hotspot = memo(function Hotspot({ entry, data, showInteractions, emit }: H
     event.stopPropagation();
     for (const interaction of matching) {
       emit(
-        fn(interaction, shape, data.baseFrame, data.frameOffset, data.reader, EMPTY_OVERLAYS),
+        fn(
+          interaction,
+          shape,
+          data.baseFrame,
+          data.frameOffset,
+          data.reader,
+          data.overlaysIdsRef.current,
+        ),
       );
     }
   };
@@ -212,15 +216,22 @@ export function ViewerWasmViewport({
   zoom,
   onBounds,
   showInteractions = false,
+  snapTo,
+  frameOffset,
+  baseFrameId,
+  overlaysIds,
   onAction,
 }: ViewerWasmViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // The open overlay ids as the handlers see them (the CLJS derefs
+  // refs/viewer-overlays at event time, not at render time).
+  const overlaysIdsRef = useRef<readonly string[]>(overlaysIds ?? []);
+  useEffect(() => {
+    overlaysIdsRef.current = overlaysIds ?? [];
+  });
   // Monotonic run id: each effect run takes one, and only the current run
   // may touch the canvas (StrictMode replays effects on the same refs).
   const runIdRef = useRef(0);
-  // The context is initialized once per component instance; later runs only
-  // resize it. A teardown resets this.
-  const initializedRef = useRef(false);
   const onBoundsRef = useRef(onBounds);
   const onActionRef = useRef(onAction);
 
@@ -244,19 +255,17 @@ export function ViewerWasmViewport({
     if (action !== null) onActionRef.current?.(action);
   }, []);
 
-  // Completion signals for tests and diagnosis: the headless /view check
-  // waits for data-rendered="true" on the canvas.
+  // Completion signal for tests and diagnosis: the headless /view check
+  // waits for data-rendered="true" on the canvas, which the pass sets in
+  // its own on-render hook (the compiled rAF render that dispatches
+  // "penpot:wasm:render" is not part of the blit pipeline). The tiles
+  // event still comes from the wasm binary itself.
   useEffect(() => {
-    const onRender = (): void => {
-      if (canvasRef.current !== null) canvasRef.current.dataset.rendered = "true";
-    };
     const onTiles = (): void => {
       if (canvasRef.current !== null) canvasRef.current.dataset.tiles = "true";
     };
-    document.addEventListener("penpot:wasm:render", onRender);
     document.addEventListener("penpot:wasm:tiles-complete", onTiles);
     return () => {
-      document.removeEventListener("penpot:wasm:render", onRender);
       document.removeEventListener("penpot:wasm:tiles-complete", onTiles);
     };
   }, []);
@@ -298,7 +307,7 @@ export function ViewerWasmViewport({
                 hotspots.baseFrame,
                 hotspots.frameOffset,
                 hotspots.reader,
-                EMPTY_OVERLAYS,
+                hotspots.overlaysIdsRef.current,
               ),
             );
           }, delay),
@@ -310,17 +319,24 @@ export function ViewerWasmViewport({
     };
   }, [hotspots, emitAction]);
 
-  // Teardown, on real unmount only. The clear stays detached: there is
-  // nothing left to wait for on the way out.
+  // Teardown, on real unmount only, queued with the shared renders: a
+  // thumbnail pass may hold the context at that moment, and jumping the
+  // queue could kill it mid-pass. The live guard keeps the clear a no-op
+  // when a one-shot render already handed the context back; the snapshot
+  // resets either way, so the next mount rebuilds from scratch.
   useEffect(() => {
     return () => {
-      if (!initializedRef.current) return;
-      initializedRef.current = false;
-      void loadRenderer()
-        .then((app) => {
-          call(app, KEY.clearCanvas, softClearOptions(app));
-        })
-        .catch(() => undefined);
+      void enqueueRender(async () => {
+        try {
+          const app = await loadRenderer();
+          if (call(app, KEY.wasmLive) === true) {
+            call(app, KEY.clearCanvas, softClearOptions(app));
+          }
+          resetViewerSnapshot();
+        } catch {
+          // The module never loaded; nothing to hand back.
+        }
+      });
     };
   }, []);
 
@@ -375,96 +391,91 @@ export function ViewerWasmViewport({
           baseHeight: next.baseHeight,
         });
 
-        // The hotspot layer of the current viewport: the base frame is the
-        // frame itself with a zero offset (viewer.cljs viewer-wrapper puts
-        // it in the base-frame / frame-offset contexts) and the delta of
-        // the current viewport is (0, 0), so prepare-objects shifts the
-        // subtree by -(size.x, size.y) into vbox space. The compiled
-        // transform-str handles rotated / flipped shapes; the plain reader
-        // feeds the interaction math.
-        const prepared = prepareObjects(
+        // The alignment delta of an overlay viewport (viewer-overlay: the
+        // raw frame selrect and the snap-to; the zoom multiplies at the
+        // end). The main viewport keeps (0, 0), like viewer-wrapper.
+        const delta =
+          snapTo !== undefined
+            ? calculateDelta(next, readSelrect(app, frame), snapTo, zoom)
+            : { x: 0, y: 0 };
+
+        // The hotspot layer of the current viewport: prepare-page-objects
+        // shifts every shape by -(size + delta) into vbox space
+        // (prepareAllObjects rebuilds the compiled inlined export). The
+        // base frame and the offset come from the viewer contexts: the
+        // main viewport uses the frame itself and (0, 0) (viewer-wrapper);
+        // an overlay uses its top-level frame and its position
+        // (viewer-overlay). The compiled transform-str handles rotated /
+        // flipped shapes; the plain reader feeds the interaction math.
+        const prepared = prepareAllObjects(
           app,
-          frame,
-          { x: next.x, y: next.y },
-          { x: 0, y: 0 },
           objects,
+          { x: next.x, y: next.y },
+          delta,
         );
         const reader = createShapeReader(app, prepared);
-        const baseFrame = reader(frameId);
+        const baseFrame = reader(baseFrameId ?? frameId);
         if (baseFrame !== undefined) {
           const entries = collectHotspots(app, prepared, reader, frameId);
           if (!alive()) return;
-          setHotspots({ entries, baseFrame, reader, frameOffset: { x: 0, y: 0 } });
+          setHotspots({
+            entries,
+            baseFrame,
+            reader,
+            frameOffset: frameOffset ?? { x: 0, y: 0 },
+            overlaysIdsRef,
+          });
         }
 
-        await waitForCanvasSize(canvas, next.width, next.height);
+        // The visible canvas is the blit target; its physical size is the
+        // compiled canvas-dimensions (viewport-wasm): css = round(zoom *
+        // base), physical = round(css * dpr). Assign only when it changed:
+        // setting width/height clears the surface, and the pass right
+        // below repaints it in the same task.
+        const dpr = readDpr(app);
+        const cssW = Math.max(1, Math.round(zoom * next.baseWidth));
+        const cssH = Math.max(1, Math.round(zoom * next.baseHeight));
+        const physW = Math.max(1, Math.round(cssW * dpr));
+        const physH = Math.max(1, Math.round(cssH * dpr));
+        if (canvas.width !== physW) canvas.width = physW;
+        if (canvas.height !== physH) canvas.height = physH;
         if (!alive()) return;
 
-        if (!initializedRef.current || call(app, KEY.wasmLive) !== true) {
-          // First run, or the shared context was torn down by an offscreen
-          // render (wasm/live? answers false then).
-          if (call(app, KEY.initCanvasContext, canvas) !== true) {
-            throw new Error(
-              "render-wasm: init_canvas_context refused " +
-                "(module not ready, or no webgl2 context)",
-            );
-          }
-          initializedRef.current = true;
-          if (!alive()) {
-            // Unmounted while the context was coming up: hand the context
-            // back before leaving.
-            initializedRef.current = false;
-            call(app, KEY.clearCanvas, softClearOptions(app));
-            return;
-          }
-        } else {
-          call(app, KEY.resizeCanvas, canvas, readDpr(app));
-        }
-
-        // initialize-viewport only reads :x and :y of the vbox; the padding
-        // is already baked into the padded bounds origin.
-        const vbox = arrayMap(app, [
-          [keyword(app, "x"), next.x],
-          [keyword(app, "y"), next.y],
-        ]);
-        // The position-data pass runs once per run: it computes the missing
-        // text position-data on the model set-objects just loaded (the
-        // port of update-page-position-data). A partial pass (dead wasm
-        // context) stays uncached and retries on the next on-render or run.
+        // The position-data pass runs once per run, after the blit (the
+        // model is fully loaded by then): it computes the missing text
+        // position-data on the viewport's own model (the port of
+        // update-page-position-data). A partial pass (dead wasm context)
+        // stays uncached and retries on the next run.
         let positionDone = false;
-        const options = arrayMap(app, [
-          [keyword(app, "background-opacity"), 0],
-          [keyword(app, "force-sync"), true],
-          [
-            keyword(app, "on-render"),
-            () => {
-              // The workspace chrome (ticks and the rounded frame) is
-              // composited by default; the viewer shows the frame alone.
-              // Then paint: set-objects calls this instead of its own
-              // request-render.
-              call(app, KEY.setRulersFrameVisible, false);
-              call(app, KEY.setRulersVisible, false);
-              if (!positionDone) {
-                try {
-                  const result = updatePagePositionData(app, objects, pageId);
-                  canvas.dataset.positionData =
-                    result.computed > 0
-                      ? "computed"
-                      : result.complete
-                        ? "up-to-date"
-                        : "pending";
-                  positionDone = result.complete;
-                } catch (cause: unknown) {
-                  console.error("[render-wasm] position-data pass failed:", cause);
-                  canvas.dataset.positionData = "error";
-                  positionDone = true;
-                }
+        // use-viewer-wasm-layers! bakes the delta into the WASM view
+        // origin (render-size = size + delta) so the rendered canvas
+        // aligns with the prepared hotspot SVG.
+        await renderViewerFrame(app, canvas, {
+          pageKey: page,
+          pageObjects: objects,
+          size: { x: next.x + delta.x, y: next.y + delta.y },
+          scale: zoom,
+          frameId,
+          onRender: () => {
+            canvas.dataset.rendered = "true";
+            if (!positionDone) {
+              try {
+                const result = updatePagePositionData(app, objects, pageId);
+                canvas.dataset.positionData =
+                  result.computed > 0
+                    ? "computed"
+                    : result.complete
+                      ? "up-to-date"
+                      : "pending";
+                positionDone = result.complete;
+              } catch (cause: unknown) {
+                console.error("[render-wasm] position-data pass failed:", cause);
+                canvas.dataset.positionData = "error";
+                positionDone = true;
               }
-              call(app, KEY.requestRender, "viewer-viewport");
-            },
-          ],
-        ]);
-        call(app, KEY.initializeViewport, objects, zoom, vbox, options);
+            }
+          },
+        });
       } catch (cause: unknown) {
         if (!alive()) return;
         const message = cause instanceof Error ? cause.message : String(cause);
@@ -478,12 +489,23 @@ export function ViewerWasmViewport({
     return () => {
       disposed = true;
     };
-  }, [fileId, shareId, pageId, frameId, zoom, resetToken]);
+  }, [
+    fileId,
+    shareId,
+    pageId,
+    frameId,
+    zoom,
+    resetToken,
+    snapTo,
+    frameOffset,
+    baseFrameId,
+  ]);
 
   return (
     <>
       <canvas
         ref={canvasRef}
+        className="pp-viewport-canvas"
         data-rendered="false"
         style={{
           display: "block",

@@ -10,12 +10,11 @@
 //
 // Deviations from the CLJS original, documented:
 // - prepare-page-objects was inlined by the optimizer and is not on $APP
-//   (runtime-probed undefined), so the port prepares only the current
-//   frame's subtree with prepare-objects. The reader therefore answers
-//   shapes of that subtree: every lookup of the F6.5 hotspot actions
-//   (navigate / prev-screen / open-url) stays inside it. The overlay
-//   slice (f65e) prepares each destination frame on demand through the
-//   same call.
+//   (runtime-probed undefined); prepareAllObjects rebuilds the same shift by
+//   chaining prepare-objects over every top-level frame subtree (subtree
+//   shifts do not overlap, so the result matches the single full-map pass
+//   for every shape inside a frame; shapes loose on the page root stay
+//   unshifted, an edge the viewer interactions never read).
 // - transform-str is a multi-arity dispatcher whose arity properties carry
 //   the $ wrapping of this build; interop.call falls back to the direct
 //   call, which the dispatcher routes by arguments.length (runtime-probed).
@@ -42,6 +41,7 @@ import {
   type ViewerInteraction,
 } from "../viewer-interactions";
 import type { ViewerShape } from "../viewer";
+import { ZERO_UUID } from "../viewer";
 
 type Selrect = NonNullable<ViewerShape["selrect"]>;
 
@@ -96,7 +96,10 @@ function readIdVector(app: RendererApp, v: unknown): string[] | undefined {
   return out;
 }
 
-function readSelrect(app: RendererApp, v: unknown): Selrect | undefined {
+// The compiled shape's selrect as the plain slice (the delta of an overlay
+// viewport keeps this raw value: calculate-size and calculate-delta work on
+// the unprepared frame, like the CLJS viewer-overlay).
+export function readSelrect(app: RendererApp, v: unknown): Selrect | undefined {
   if (v === null || v === undefined) return undefined;
   const num = (key: string): number | undefined => {
     const n = get(app, v, keyword(app, key));
@@ -220,6 +223,32 @@ export function prepareObjects(
     [keyword(app, "y"), delta.y],
   ]);
   return call(app, KEY.prepareObjects, frame, sizeMap, deltaMap, objects);
+}
+
+// vpc/prepare-page-objects, rebuilt for this build: the compiled export is
+// inlined, so shift every top-level frame subtree with one prepare-objects
+// call per frame. Top-level subtrees are disjoint, so for every shape inside
+// a frame the chain matches the single full-map pass. Shapes loose on the
+// page root keep their design coordinates (the viewer interactions never
+// read them).
+export function prepareAllObjects(
+  app: RendererApp,
+  objects: unknown,
+  size: Point,
+  delta: Point,
+): unknown {
+  const root = get(app, objects, uuid(app, ZERO_UUID));
+  if (root === null || root === undefined) return objects;
+  const children = readIdVector(app, readRaw(app, root, "shapes"));
+  if (children === undefined) return objects;
+  let prepared = objects;
+  for (const id of children) {
+    const shape = get(app, prepared, uuid(app, id));
+    if (shape === null || shape === undefined) continue;
+    if (readKeyword(app, shape, "type") !== "frame") continue;
+    prepared = prepareObjects(app, shape, size, delta, prepared);
+  }
+  return prepared;
 }
 
 // One drawable hotspot: the plain shape for the handlers plus the SVG rect
