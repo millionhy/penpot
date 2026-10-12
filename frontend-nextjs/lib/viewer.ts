@@ -202,8 +202,18 @@ export function getViewerFrames(
 
 // --- Bundle fetching --------------------------------------------------------
 
+// A viewer flow: a named walk through the frames of a page. The current
+// format keeps them as a map id -> flow on the page itself; the legacy-55
+// migration lifts the old options.flows vector into it.
+export interface ViewerFlow {
+  id: string;
+  name?: string;
+  "starting-frame": string;
+  [key: string]: unknown;
+}
+
 export interface ViewerPageOptions {
-  flows?: { id: string; name: string; "starting-frame": string }[];
+  flows?: ViewerFlow[];
   [key: string]: unknown;
 }
 
@@ -211,6 +221,9 @@ export interface ViewerPageData {
   id: string;
   name?: string;
   objects: ViewerObjects;
+  // The transit boundary stringifies map keys, so the decoded flows reach
+  // the page as a plain object.
+  flows?: Record<string, ViewerFlow> | null;
   options?: ViewerPageOptions;
   [key: string]: unknown;
 }
@@ -399,7 +412,26 @@ export function frameIndexById(frames: ViewerShape[], frameId: string): number {
   return index === -1 ? 0 : index;
 }
 
-// go-to-frame-auto: the first flow's starting frame wins, then index 0.
+// The flows of a page for the flows menu: the map on the page first, then
+// the legacy options.flows vector for data the migration has not touched.
+export function pageFlows(page: ViewerPageData): ViewerFlow[] {
+  const flows = page.flows;
+  if (flows !== undefined && flows !== null) return Object.values(flows);
+  const legacy = page.options?.flows;
+  return Array.isArray(legacy) ? legacy : [];
+}
+
+// ctp/get-frame-flow: the flow that starts at the frame.
+export function getFrameFlow(
+  flows: ViewerFlow[],
+  frameId: string | null,
+): ViewerFlow | undefined {
+  return frameId === null ? undefined : flows.find((flow) => flow["starting-frame"] === frameId);
+}
+
+// go-to-frame-auto: the first flow's starting frame wins, then index 0. The
+// CLJS reads the legacy options.flows here (the only place left that does),
+// so the port keeps it; the flows menu uses pageFlows above instead.
 export function autoFrameIndex(page: ViewerPage): number {
   const flows = page.options?.flows ?? [];
   if (flows.length > 0) {

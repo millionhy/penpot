@@ -12,11 +12,13 @@ import {
   fitZoom,
   formatPercent,
   frameIndexById,
+  getFrameFlow,
   getParentIdsWithIndex,
   getViewerFrames,
   increaseZoom,
   initialViewerLocalState,
   isInteractionsMode,
+  pageFlows,
   parseViewerQuery,
   resolveFileMedia,
   resolvePointerMap,
@@ -243,6 +245,29 @@ describe("frame selection", () => {
     expect(autoFrameIndex(page)).toBe(1);
     const noFlows = { ...page, options: {} } as unknown as ViewerPage;
     expect(autoFrameIndex(noFlows)).toBe(0);
+  });
+
+  it("reads the page flow map first and the legacy vector second", () => {
+    const mapped = {
+      ...page,
+      flows: { "flow-1": { id: "flow-1", name: "Flow 1", "starting-frame": "f2" } },
+    } as unknown as ViewerPage;
+    expect(pageFlows(mapped).map((flow) => flow.id)).toEqual(["flow-1"]);
+
+    const legacyOnly = {
+      id: "p1",
+      objects: sampleObjects(),
+      options: { flows: [{ id: "flow-2", name: "Flow 2", "starting-frame": "f1" }] },
+    } as unknown as ViewerPage;
+    expect(pageFlows(legacyOnly).map((flow) => flow.id)).toEqual(["flow-2"]);
+    expect(pageFlows({ id: "p1", objects: {} } as unknown as ViewerPage)).toEqual([]);
+  });
+
+  it("finds the flow starting at a frame", () => {
+    const flows = pageFlows(page);
+    expect(getFrameFlow(flows, "f2")?.id).toBe("flow-1");
+    expect(getFrameFlow(flows, "missing")).toBeUndefined();
+    expect(getFrameFlow(flows, null)).toBeUndefined();
   });
 
   it("bounds prev/next navigation", () => {
