@@ -19,6 +19,14 @@
 // bundle is decoded, so the child reports them to the parent through
 // onBounds; the parent sizes the wrapper from them.
 //
+// The hotspot layer (F6.5) mirrors viewport-wasm* + frame-hotspots*: the
+// frame subtree is prepared into vbox space with the compiled
+// prepare-objects, one transparent SVG rect per interactive shape sits over
+// the canvas, and the pointer handlers run the activate/deactivate math of
+// lib/viewer-interactions.ts and report the resulting viewer actions up
+// through onAction. Overlay actions are ignored here for now (f65e
+// renders overlays).
+//
 // The wasm module has one global GL context; an offscreen render (the
 // thumbnails panel, render-to-canvas) initializes its own and tears it down
 // when it finishes (clear-canvas), so the viewport detects the dead context
@@ -36,7 +44,7 @@
 // immediate re-init after an explicitly lost context can fail (the same
 // reason reload-renderer! waits a frame before re-init).
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { ensureWasmModule, loadRenderer } from "@/lib/render-wasm/bridge";
 import {
@@ -51,7 +59,22 @@ import {
 } from "@/lib/render-wasm/interop";
 import { updatePagePositionData } from "@/lib/render-wasm/position-data";
 import { calculateSize, type ViewerSize } from "@/lib/render-wasm/sizes";
+import {
+  collectHotspots,
+  createShapeReader,
+  prepareObjects,
+  type HotspotEntry,
+} from "@/lib/render-wasm/viewer-shapes";
 import { loadDecodedBundle } from "@/lib/render-wasm/values";
+import {
+  activateInteraction,
+  deactivateInteraction,
+  interactionsByEvent,
+  type InteractionShape,
+  type Point,
+  type ShapeReader,
+  type ViewerAction,
+} from "@/lib/viewer-interactions";
 
 // calculate-size without the zoomed width/height: enough to size the wrapper
 // (base * zoom) and to keep the design-space origin for later overlays.
@@ -70,7 +93,26 @@ export interface ViewerWasmViewportProps {
   frameName: string;
   zoom: number;
   onBounds?: (bounds: ViewerWasmBounds | null) => void;
+  // ref:viewer-show-interactions: with it on, hotspots paint their
+  // stroke / fill highlight (the F6.5 show-interactions slice wires it).
+  showInteractions?: boolean;
+  // The viewer actions the hotspot handlers produce. The overlay kinds are
+  // ignored by the current caller; f65e applies them.
+  onAction?: (action: ViewerAction) => void;
 }
+
+// The hotspot layer of the current frame: the drawable entries plus the
+// context the pointer handlers of lib/viewer-interactions.ts read. The
+// overlays list stays empty until f65e stores overlay state.
+interface HotspotData {
+  entries: HotspotEntry[];
+  baseFrame: InteractionShape;
+  reader: ShapeReader;
+  frameOffset: Point;
+}
+
+// No overlays open yet: the overlays-ids argument of activate/deactivate.
+const EMPTY_OVERLAYS: readonly string[] = [];
 
 // The soft teardown options shared by the unmount path and the unmounted
 // mid-init path.
@@ -105,6 +147,62 @@ async function waitForCanvasSize(
   }
 }
 
+// One hotspot (shapes.cljs hotspot*): a transparent rect that is the only
+// hit target, wired to the pointer handlers of the SVG tree. A handler
+// stops propagation when a matching interaction exists, then runs the
+// activate / deactivate math for each of them (the CLJS doseq).
+interface HotspotProps {
+  entry: HotspotEntry;
+  data: HotspotData;
+  showInteractions: boolean;
+  emit: (action: ViewerAction | null) => void;
+}
+
+const Hotspot = memo(function Hotspot({ entry, data, showInteractions, emit }: HotspotProps) {
+  const { shape } = entry;
+
+  const run = (
+    event: React.PointerEvent<SVGGElement>,
+    eventTypes: readonly string[],
+    fn: typeof activateInteraction,
+  ): void => {
+    const matching = interactionsByEvent(shape, eventTypes);
+    if (matching.length === 0) return;
+    event.stopPropagation();
+    for (const interaction of matching) {
+      emit(
+        fn(interaction, shape, data.baseFrame, data.frameOffset, data.reader, EMPTY_OVERLAYS),
+      );
+    }
+  };
+
+  return (
+    <g
+      style={{ cursor: entry.pointer ? "pointer" : undefined }}
+      onPointerDown={(event) => run(event, ["click", "mouse-press"], activateInteraction)}
+      onPointerUp={(event) => run(event, ["mouse-press"], deactivateInteraction)}
+      onPointerEnter={(event) => run(event, ["mouse-enter", "mouse-over"], activateInteraction)}
+      onPointerLeave={(event) => {
+        run(event, ["mouse-leave"], activateInteraction);
+        run(event, ["mouse-over"], deactivateInteraction);
+      }}
+    >
+      <rect
+        x={entry.rect.x - 1}
+        y={entry.rect.y - 1}
+        width={entry.rect.width + 2}
+        height={entry.rect.height + 2}
+        fill="var(--color-accent-tertiary)"
+        stroke="var(--color-accent-tertiary)"
+        strokeWidth={showInteractions ? 1 : 0}
+        fillOpacity={showInteractions ? 0.2 : 0}
+        pointerEvents="all"
+        transform={entry.transform}
+      />
+    </g>
+  );
+});
+
 export function ViewerWasmViewport({
   fileId,
   shareId,
@@ -113,6 +211,8 @@ export function ViewerWasmViewport({
   frameName,
   zoom,
   onBounds,
+  showInteractions = false,
+  onAction,
 }: ViewerWasmViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Monotonic run id: each effect run takes one, and only the current run
@@ -122,6 +222,7 @@ export function ViewerWasmViewport({
   // resize it. A teardown resets this.
   const initializedRef = useRef(false);
   const onBoundsRef = useRef(onBounds);
+  const onActionRef = useRef(onAction);
 
   // Bumped when an offscreen render (thumbnails) tears the shared context
   // down; the debounce coalesces the events of a burst (one per visible
@@ -130,10 +231,18 @@ export function ViewerWasmViewport({
 
   const [size, setSize] = useState<ViewerSize | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hotspots, setHotspots] = useState<HotspotData | null>(null);
 
   useEffect(() => {
     onBoundsRef.current = onBounds;
+    onActionRef.current = onAction;
   });
+
+  // Stable emitter over the latest onAction, so the memoized hotspots do
+  // not re-render when the parent callback identity changes.
+  const emitAction = useCallback((action: ViewerAction | null) => {
+    if (action !== null) onActionRef.current?.(action);
+  }, []);
 
   // Completion signals for tests and diagnosis: the headless /view check
   // waits for data-rendered="true" on the canvas.
@@ -171,6 +280,36 @@ export function ViewerWasmViewport({
     };
   }, []);
 
+  // on-load (shapes.cljs): the after-delay interactions fire once the
+  // hotspot layer is installed, one timer per interaction, and the timers
+  // are cleared when the layer changes (frame / zoom / reset).
+  useEffect(() => {
+    if (hotspots === null) return;
+    const timers: number[] = [];
+    for (const entry of hotspots.entries) {
+      for (const interaction of interactionsByEvent(entry.shape, ["after-delay"])) {
+        const delay = typeof interaction.delay === "number" ? interaction.delay : 0;
+        timers.push(
+          window.setTimeout(() => {
+            emitAction(
+              activateInteraction(
+                interaction,
+                entry.shape,
+                hotspots.baseFrame,
+                hotspots.frameOffset,
+                hotspots.reader,
+                EMPTY_OVERLAYS,
+              ),
+            );
+          }, delay),
+        );
+      }
+    }
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [hotspots, emitAction]);
+
   // Teardown, on real unmount only. The clear stays detached: there is
   // nothing left to wait for on the way out.
   useEffect(() => {
@@ -198,6 +337,7 @@ export function ViewerWasmViewport({
     }
 
     setError(null);
+    setHotspots(null);
     canvas.dataset.rendered = "false";
     delete canvas.dataset.tiles;
     delete canvas.dataset.positionData;
@@ -234,6 +374,28 @@ export function ViewerWasmViewport({
           baseWidth: next.baseWidth,
           baseHeight: next.baseHeight,
         });
+
+        // The hotspot layer of the current viewport: the base frame is the
+        // frame itself with a zero offset (viewer.cljs viewer-wrapper puts
+        // it in the base-frame / frame-offset contexts) and the delta of
+        // the current viewport is (0, 0), so prepare-objects shifts the
+        // subtree by -(size.x, size.y) into vbox space. The compiled
+        // transform-str handles rotated / flipped shapes; the plain reader
+        // feeds the interaction math.
+        const prepared = prepareObjects(
+          app,
+          frame,
+          { x: next.x, y: next.y },
+          { x: 0, y: 0 },
+          objects,
+        );
+        const reader = createShapeReader(app, prepared);
+        const baseFrame = reader(frameId);
+        if (baseFrame !== undefined) {
+          const entries = collectHotspots(app, prepared, reader, frameId);
+          if (!alive()) return;
+          setHotspots({ entries, baseFrame, reader, frameOffset: { x: 0, y: 0 } });
+        }
 
         await waitForCanvasSize(canvas, next.width, next.height);
         if (!alive()) return;
@@ -308,6 +470,7 @@ export function ViewerWasmViewport({
         const message = cause instanceof Error ? cause.message : String(cause);
         console.error("[render-wasm] viewport render failed:", cause);
         onBoundsRef.current?.(null);
+        setHotspots(null);
         setError(message);
       }
     })();
@@ -329,6 +492,31 @@ export function ViewerWasmViewport({
           pointerEvents: "none",
         }}
       />
+      {hotspots !== null && hotspots.entries.length > 0 && size !== null ? (
+        // wasm-hotspots-svg*: the vbox is the zoom-free padded size, so
+        // the prepared (vbox-space) rects scale with the zoomed css size.
+        <svg
+          viewBox={"0 0 " + size.baseWidth + " " + size.baseHeight}
+          width={size.width}
+          height={size.height}
+          version="1.1"
+          fill="none"
+          style={{ position: "absolute", top: 0, left: 0 }}
+          data-hotspots={String(hotspots.entries.length)}
+        >
+          <g>
+            {hotspots.entries.map((entry) => (
+              <Hotspot
+                key={entry.id}
+                entry={entry}
+                data={hotspots}
+                showInteractions={showInteractions}
+                emit={emitAction}
+              />
+            ))}
+          </g>
+        </svg>
+      ) : null}
       {error !== null ? (
         <div className="pp-viewport-placeholder" title={error}>
           <span>{frameName}</span>

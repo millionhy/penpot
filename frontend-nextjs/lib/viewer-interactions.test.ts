@@ -10,7 +10,9 @@ import {
   fixedScroll,
   getChildrenIds,
   getShapeFrame,
+  hotspotShapes,
   ignoreFrameShape,
+  interactionsByEvent,
   invertDirection,
   isDirectChildOfRoot,
   isFixed,
@@ -102,6 +104,36 @@ describe("actionable", () => {
   });
 });
 
+describe("interactionsByEvent", () => {
+  it("keeps the matching interactions in their original order", () => {
+    const shape = ishape({
+      id: "s1",
+      interactions: [
+        { "event-type": "click" },
+        { "event-type": "mouse-over" },
+        { "event-type": "mouse-enter" },
+      ],
+    });
+    expect(interactionsByEvent(shape, ["click", "mouse-press"])).toEqual([
+      { "event-type": "click" },
+    ]);
+    // The pointer-enter handler takes both kinds in one pass.
+    expect(interactionsByEvent(shape, ["mouse-enter", "mouse-over"])).toEqual([
+      { "event-type": "mouse-over" },
+      { "event-type": "mouse-enter" },
+    ]);
+  });
+
+  it("answers empty without interactions or without a match", () => {
+    expect(interactionsByEvent(ishape({ id: "s1" }), ["click"])).toEqual([]);
+    expect(
+      interactionsByEvent(ishape({ id: "s1", interactions: [{ "event-type": "click" }] }), [
+        "mouse-press",
+      ]),
+    ).toEqual([]);
+  });
+});
+
 describe("shape helpers", () => {
   it("isRoot only answers the zero uuid frame", () => {
     const objects = sampleObjects();
@@ -149,6 +181,59 @@ describe("shape helpers", () => {
       b1: ishape({ id: "b1" }),
     };
     expect(getChildrenIds(readerOf(objects), "a")).toEqual(["a1", "b", "a11", "b1"]);
+  });
+});
+
+describe("hotspotShapes", () => {
+  // The frame itself, an interactive child, a hidden child, a child without
+  // interactions and a dangling id, all in the getChildrenIds order.
+  function hotspotObjects(): Record<string, InteractionShape> {
+    const click = [{ "event-type": "click" }];
+    return {
+      f1: ishape({
+        id: "f1",
+        type: "frame",
+        shapes: ["s1", "h1", "p1", "gap"],
+        interactions: click,
+      }),
+      s1: ishape({ id: "s1", interactions: click }),
+      h1: ishape({ id: "h1", hidden: true, interactions: click }),
+      p1: ishape({ id: "p1" }),
+    };
+  }
+
+  it("lists the frame itself and its interactive subtree, in order", () => {
+    const objects = hotspotObjects();
+    const ids = hotspotShapes(readerOf(objects), "f1").map((shape) => shape.id);
+    expect(ids).toEqual(["f1", "s1"]);
+  });
+
+  it("keeps out hidden shapes, shapes without interactions and dangling ids", () => {
+    const objects = hotspotObjects();
+    const read = readerOf(objects);
+    expect(hotspotShapes(read, "f1")).toEqual([objects.f1, objects.s1]);
+    // A leaf without interactions answers nothing.
+    expect(hotspotShapes(read, "p1")).toEqual([]);
+  });
+
+  it("leaves out a hidden frame itself even with interactions", () => {
+    const click = [{ "event-type": "click" }];
+    const objects: Record<string, InteractionShape> = {
+      f1: ishape({ id: "f1", type: "frame", hidden: true, interactions: click }),
+    };
+    expect(hotspotShapes(readerOf(objects), "f1")).toEqual([]);
+  });
+
+  it("applies the filter before the lookup", () => {
+    const objects = hotspotObjects();
+    const seen: string[] = [];
+    const filter = (id: string): boolean => {
+      seen.push(id);
+      return id !== "f1";
+    };
+    expect(hotspotShapes(readerOf(objects), "f1", filter)).toEqual([objects.s1]);
+    // Every candidate id reaches the filter, dangling ones included.
+    expect(seen).toEqual(["f1", "s1", "h1", "p1", "gap"]);
   });
 });
 

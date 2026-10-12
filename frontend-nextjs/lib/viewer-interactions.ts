@@ -129,6 +129,17 @@ export function actionable(
   return (interactions ?? []).some((interaction) => interaction["event-type"] === "click");
 }
 
+// The `->> filter` of the shapes.cljs pointer handlers: the interactions of
+// one hotspot that listen to any of the given event kinds, in order.
+export function interactionsByEvent(
+  shape: InteractionShape,
+  eventTypes: readonly string[],
+): ViewerInteraction[] {
+  return (shape.interactions ?? []).filter((interaction) =>
+    eventTypes.includes(interaction["event-type"] ?? ""),
+  );
+}
+
 // cfh/root?: the root frame of the objects map.
 export function isRoot(shape: InteractionShape | null | undefined): boolean {
   return shape !== null && shape !== undefined && shape.type === "frame" && shape.id === ZERO_UUID;
@@ -189,6 +200,31 @@ export function getChildrenIds(objects: ShapeReader, shapeId: string): string[] 
     return out;
   };
   return visit(shapeId, new Set());
+}
+
+// frame-hotspots* (app.main.ui.viewer.shapes): the hotspot shapes of a
+// frame subtree, in the (cons frame-id children) order. The frame itself
+// takes part; an optional filter (the fixed-scroll layer split) drops ids
+// before the lookup, hidden shapes and shapes without interactions stay
+// out, and dangling ids answer undefined and are skipped (keep).
+export function hotspotShapes(
+  reader: ShapeReader,
+  frameId: string,
+  filter?: (id: string) => boolean,
+): InteractionShape[] {
+  const out: InteractionShape[] = [];
+  for (const id of [frameId, ...getChildrenIds(reader, frameId)]) {
+    if (filter !== undefined && !filter(id)) continue;
+    const shape = reader(id);
+    if (
+      shape !== undefined &&
+      shape.hidden !== true &&
+      (shape.interactions?.length ?? 0) > 0
+    ) {
+      out.push(shape);
+    }
+  }
+  return out;
 }
 
 // cfh/fixed-scroll?: a shape pinned to its frame's viewport: direct child of

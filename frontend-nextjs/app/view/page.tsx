@@ -31,6 +31,13 @@
 // - The shortcut matcher (hooks/use-shortcuts ::viewer) re-binds when its
 //   handlers change, where the CLJS binds once per group and its events
 //   read the store; the wheel listener binds once while a frame renders.
+// - The hotspot actions (F6.5) apply the shapes.cljs emissions here: a
+//   navigate resolves the destination frame on the current page and falls
+//   back to index 0 (go-to-frame's (or index 0)), prev-screen is
+//   rt/nav-back-local behind the same-origin referrer guard, and open-url
+//   opens a new tab (dom/open-new-window). The overlay actions are
+//   ignored until the overlay slice (f65e) renders them, and
+//   preserve-scroll is a no-op because the section does not scroll.
 // - Three registered shortcuts stay unbound (select-all, open-inspect,
 //   open-comments) so their native browser keys keep working; see
 //   lib/viewer-shortcuts.
@@ -52,6 +59,7 @@ import { tr } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 import { profileUpdateParams, updateProfile } from "@/lib/settings";
 import { createShortcutMatcher, customShortcutsFromProfile, isMacos } from "@/lib/shortcuts";
+import { type ViewerAction } from "@/lib/viewer-interactions";
 import {
   autoFrameIndex,
   buildViewerPages,
@@ -484,6 +492,46 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     [query, navigate],
   );
 
+  // The hotspot actions of the wasm viewport (the st/emit! calls of
+  // shapes.cljs activate-interaction / deactivate-interaction). The overlay
+  // branches fall through until f65e stores overlay state. The prev-screen
+  // guard mirrors rt/nav-back-local: only a same-origin (or absent)
+  // referrer allows history.back(). The open-url window matches
+  // dom/open-new-window's default "_blank" + noopener,noreferrer.
+  const handleViewerAction = useCallback(
+    (action: ViewerAction) => {
+      switch (action.kind) {
+        case "navigate": {
+          const base = viewerQueryToHrefParams(query);
+          if (base === null) return;
+          const index = frameIndexById(frames, action.frameId);
+          navigate(viewerHref({ ...base, index: index >= 0 ? index : 0 }));
+          return;
+        }
+        case "prev-screen": {
+          const referrer = document.referrer;
+          let sameOrigin = true;
+          if (referrer !== "") {
+            try {
+              sameOrigin = new URL(referrer).host === window.location.host;
+            } catch {
+              sameOrigin = false;
+            }
+          }
+          if (sameOrigin) router.back();
+          return;
+        }
+        case "open-url": {
+          window.open(action.url, "_blank", "noopener,noreferrer");
+          return;
+        }
+        default:
+          return;
+      }
+    },
+    [query, frames, navigate, router],
+  );
+
   // toggle-zoom-style: fit -> fill, anything else -> fit.
   const handleToggleZoomStyle = useCallback(() => {
     handleZoomType(zoomType === "fit" ? "fill" : "fit");
@@ -607,6 +655,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
                 frameName={frame.name ?? ""}
                 zoom={zoom}
                 onBounds={handleWasmBounds}
+                onAction={handleViewerAction}
               />
             </div>
           </div>

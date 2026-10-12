@@ -42,6 +42,7 @@ export const KEY = {
   deref: "$cljs$core$_deref$$",
   get: "$cljs$core$get$$",
   keyword: "$cljs$core$keyword$$",
+  name: "$cljs$core$name$$",
   seq: "$cljs$core$seq$$",
   first: "$cljs$core$first$$",
   next: "$cljs$core$next$$",
@@ -56,6 +57,17 @@ export const KEY = {
   pointerQmark: "$app$common$transit$pointer_QMARK_$$",
   getObjectBounds: "$app$common$geom$shapes$bounds$get_object_bounds$$",
   textShapeQmark: "$app$common$files$helpers$text_shape_QMARK_$$",
+  // gsh/transform-str. A multi-arity var: the dispatcher carries its
+  // $cljs$core$IFn$_invoke$arity$N$ properties (with the $ wrapping of this
+  // build) and switches on arguments.length, so call()'s direct fallback
+  // runs the 1-arg form (verified at runtime by the F6.5 probe).
+  transformStr: "$app$common$geom$shapes$transform_str$$",
+
+  // app.main.ui.viewer.viewport-common. prepare-objects is the only member
+  // on $APP: prepare-page-objects and viewer-scale were inlined by the
+  // optimizer (runtime-probed undefined) and the port prepares one frame at
+  // a time instead. See lib/render-wasm/viewer-shapes.ts.
+  prepareObjects: "$app$main$ui$viewer$viewport_common$prepare_objects$$",
 
   // app.render-wasm / app.main.render-viewer-wasm
   calculatePositionData: "$app$render_wasm$api$calculate_position_data$$",
