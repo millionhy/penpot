@@ -13,8 +13,10 @@
 // - The viewer URL parameters are parsed from a URLSearchParams (the App
 //   Router surface) instead of rt/get-params off the state; the names and
 //   value shapes are unchanged.
-// - update-page-position-data (the WASM text position pass) is deferred to
-//   the render-wasm port (F6.4); it needs wasm.api/calculate-position-data.
+// - update-page-position-data (the WASM text position pass) lives in the
+//   render-wasm layer: lib/render-wasm/position-data drives it from the
+//   viewport's on-render callback (see that module for the deviation from
+//   the CLJS offscreen-channel timing).
 // - Navigation rebuilds the query string into an href with a fixed field
 //   order (rt/nav re-serialized the CLJS params map); building the same URL
 //   again is skipped instead of pushing a duplicate history entry.

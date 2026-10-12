@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cmd, cmdUpload, parseSseBlocks } from "@/lib/rpc";
+import { cmd, cmdRaw, cmdUpload, parseSseBlocks } from "@/lib/rpc";
 import { encodeTransit, set as transitSet } from "@/lib/transit";
 
 // The blocks the backend sends for the bulk trash commands
@@ -239,5 +239,52 @@ describe("GET query encoding", () => {
     const params = sentParams(calls[0].url);
     expect(params.get("index")).toBe("0");
     expect(params.get("flag")).toBe("false");
+  });
+});
+
+// cmdRaw: the undecoded leg the render-wasm value bridge uses. The body text
+// must reach the compiled CLJS decoder untouched (transit-js would flatten
+// keywords and uuids first); method selection and GET retry match cmd.
+describe("cmdRaw", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("hands the transit text back without decoding it", async () => {
+    const body = encodeTransit({ "cancel-at": null });
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(body, {
+          status: 200,
+          headers: { "content-type": "application/transit+json" },
+        }),
+    );
+
+    expect(await cmdRaw("get-nitrate-activation-code-request", {})).toBe(body);
+  });
+
+  it("uses GET for get-* ids and POST for the rest", async () => {
+    const calls = stubUploadFetch();
+
+    await cmdRaw("get-file-fragment", { "file-id": "f1" });
+    await cmdRaw("update-file", { id: "x" });
+
+    expect(calls[0].init.method).toBe("GET");
+    expect(new URL(calls[0].url, "http://localhost").searchParams.get("file-id")).toBe("f1");
+    expect(calls[1].init.method).toBe("POST");
+  });
+
+  it("rejects an event-stream response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response("event: x", {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+    );
+
+    await expect(cmdRaw("get-view-only-bundle", {})).rejects.toThrow(/cmdSse/);
   });
 });

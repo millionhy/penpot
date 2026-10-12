@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import transit from "transit-js";
-import { decodeTransit, encodeTransit } from "@/lib/transit";
+import { decodeTransit, encodeTransit, isPathData, PathData } from "@/lib/transit";
 
 // The fdata objects-map ("penpot/objects-map/v2",
 // common/src/app/common/types/objects_map.cljc) arrives as a map of
@@ -49,5 +49,123 @@ describe("decodeTransit objects-map", () => {
     expect(doc).toMatch(/,"\^\d/);
     const result = decodeTransit<{ again: Record<string, string> }>(doc);
     expect(result.again).toEqual({ s1: "plain" });
+  });
+});
+
+// The penpot/path-data tagged value (app.common.types.path.impl) carries the
+// packed segments of a path as transit binary ("~b", base64); the reader
+// wraps the decoded bytes in PathData, whose segment layout, corrupted-slot
+// skip and clamp bounds mirror read-segment / normalize-coord in the CLJS
+// implementation.
+describe("decodeTransit penpot/path-data", () => {
+  const SEGMENT_BYTES = 28;
+
+  // One writer per segment; each receives the DataView and its slot offset.
+  // Coordinates land at fixed little-endian slots: +4 c1x, +8 c1y, +12 c2x,
+  // +16 c2y, +20 x, +24 y; close-path carries none.
+  function pathBytes(writers: Array<(view: DataView, offset: number) => void>): Uint8Array {
+    const bytes = new Uint8Array(writers.length * SEGMENT_BYTES);
+    const view = new DataView(bytes.buffer);
+    writers.forEach((write, index) => write(view, index * SEGMENT_BYTES));
+    return bytes;
+  }
+
+  function pathDoc(bytes: Uint8Array): string {
+    return encodeTransit(transit.tagged("penpot/path-data", bytes));
+  }
+
+  function moveTo(view: DataView, offset: number, x: number, y: number): void {
+    view.setInt16(offset, 1, true);
+    view.setFloat32(offset + 20, x, true);
+    view.setFloat32(offset + 24, y, true);
+  }
+
+  it("decodes the tagged binary into PathData segments", () => {
+    const bytes = pathBytes([
+      (view, offset) => moveTo(view, offset, 10, 20),
+      (view, offset) => {
+        view.setInt16(offset, 2, true);
+        view.setFloat32(offset + 20, 30, true);
+        view.setFloat32(offset + 24, 40, true);
+      },
+      (view, offset) => {
+        view.setInt16(offset, 3, true);
+        view.setFloat32(offset + 4, 1, true);
+        view.setFloat32(offset + 8, 2, true);
+        view.setFloat32(offset + 12, 3, true);
+        view.setFloat32(offset + 16, 4, true);
+        view.setFloat32(offset + 20, 5, true);
+        view.setFloat32(offset + 24, 6, true);
+      },
+      (view, offset) => view.setInt16(offset, 4, true),
+    ]);
+
+    // The wire form the bundle carries: ["~#penpot/path-data","~b<base64>"].
+    const doc = pathDoc(bytes);
+    expect(doc).toMatch(/^\["~#penpot\/path-data","~b/);
+
+    const result = decodeTransit(doc);
+    expect(isPathData(result)).toBe(true);
+    const path = result as PathData;
+    expect(path.count).toBe(4);
+    expect(path.toSegments()).toEqual([
+      { command: "move-to", params: { x: 10, y: 20 } },
+      { command: "line-to", params: { x: 30, y: 40 } },
+      { command: "curve-to", params: { x: 5, y: 6, c1x: 1, c1y: 2, c2x: 3, c2y: 4 } },
+      { command: "close-path", params: {} },
+    ]);
+    expect(path.toString()).toBe("M10,20L30,40C1,2,3,4,5,6Z");
+  });
+
+  it("skips corrupted segments but keeps counting them", () => {
+    const bytes = pathBytes([
+      (view, offset) => moveTo(view, offset, 1, 2),
+      (view, offset) => view.setInt16(offset, 7, true),
+      (view, offset) => {
+        view.setInt16(offset, 2, true);
+        view.setFloat32(offset + 20, 3, true);
+        view.setFloat32(offset + 24, 4, true);
+      },
+    ]);
+    const result = decodeTransit(pathDoc(bytes));
+    expect(isPathData(result)).toBe(true);
+    const path = result as PathData;
+    // count is the raw slot count (the CLJS Counted returns size); only the
+    // segment walks skip the unknown type.
+    expect(path.count).toBe(3);
+    expect(path.toSegments()).toEqual([
+      { command: "move-to", params: { x: 1, y: 2 } },
+      { command: "line-to", params: { x: 3, y: 4 } },
+    ]);
+    expect(path.toString()).toBe("M1,2L3,4");
+  });
+
+  it("clamps coordinates to the 32-bit safe bounds", () => {
+    // ±1e12 are float32-representable but exceed sm/max-safe-int
+    // (2147483647) and sm/min-safe-int (-2147483648).
+    const bytes = pathBytes([(view, offset) => moveTo(view, offset, 1e12, -1e12)]);
+    const result = decodeTransit(pathDoc(bytes));
+    expect(isPathData(result)).toBe(true);
+    expect((result as PathData).toSegments()).toEqual([
+      { command: "move-to", params: { x: 2147483647, y: -2147483648 } },
+    ]);
+  });
+
+  it("reads through a byteOffset view", () => {
+    // A Uint8Array view can start at a non-zero byteOffset (Node Buffers
+    // share a pool); the segment reads must honor it.
+    const packed = pathBytes([(view, offset) => moveTo(view, offset, 7, 8)]);
+    const padded = new Uint8Array(packed.byteLength + 8);
+    padded.set(packed, 8);
+    const path = new PathData(padded.subarray(8));
+    expect(path.toSegments()).toEqual([{ command: "move-to", params: { x: 7, y: 8 } }]);
+  });
+
+  it("passes non-binary reps through untouched", () => {
+    // Only Uint8Array reps become PathData; a text rep (older encodings)
+    // decodes unchanged.
+    const result = decodeTransit('["~#penpot/path-data","M0,0L1,1"]');
+    expect(result).toBe("M0,0L1,1");
+    expect(isPathData(result)).toBe(false);
   });
 });

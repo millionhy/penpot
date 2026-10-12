@@ -98,12 +98,15 @@ async function classifyAndThrow(res: Response, uri: string): Promise<never> {
   });
 }
 
-async function once<T>(
+// The HTTP exchange shared by once (decoded) and rawOnce (raw text): headers,
+// method selection and the fetch network-error mapping, nothing about the
+// response body.
+async function fetchExchange(
   method: "get" | "post",
   uri: string,
   params: Record<string, unknown>,
   opts: RpcOptions,
-): Promise<T> {
+): Promise<Response> {
   const headers: Record<string, string> = {
     accept: "application/transit+json,text/event-stream,*/*",
     "x-session-id": config.sessionId,
@@ -122,15 +125,22 @@ async function once<T>(
     url = uri + toQuery(params);
   }
 
-  let res: Response;
   try {
-    res = await fetch(url, init);
+    return await fetch(url, init);
   } catch (err) {
     // fetch network-level failure -> :network (retryable), matching repo.cljs.
     const message = err instanceof Error ? err.message : "network error";
     throw new RpcError(message, { type: "network", uri });
   }
+}
 
+async function once<T>(
+  method: "get" | "post",
+  uri: string,
+  params: Record<string, unknown>,
+  opts: RpcOptions,
+): Promise<T> {
+  const res = await fetchExchange(method, uri, params, opts);
   const ctype = res.headers.get("content-type") ?? "";
   if (ctype.startsWith("text/event-stream")) {
     // SSE commands (the ::sse/* set in repo.cljs) go through cmdSse below; a
@@ -183,7 +193,7 @@ export interface SseParseResult {
 // event nor data is a keep-alive and is skipped.
 export function parseSseBlocks(buffer: string): SseParseResult {
   const blocks: SseBlock[] = [];
-  const parts = buffer.split(/\r\n\r\n|\n\n|\r\r/);
+  const parts = buffer.split(/\r\x0a\r\x0a|\x0a\x0a|\r\r/);
   const rest = parts.pop() ?? "";
   for (const part of parts) {
     let type = "message";
@@ -335,6 +345,46 @@ export async function cmd<T = unknown>(
   const uri = joinUrl(config.publicUri, METHODS_BASE + id);
   const record = params as unknown as Record<string, unknown>;
   const run = () => once<T>(method, uri, record, opts);
+  return method === "get" ? withRetry(run) : run();
+}
+
+// The undecoded leg of cmd!: the render-wasm value bridge (F6.4) hands the
+// raw transit text to the compiled CLJS decoder, which owns the penpot read
+// handlers (objects-map/v2, path-data, pointer...). transit-js would flatten
+// keywords and uuids to plain strings first. Method selection and GET retry
+// are the ones of cmd.
+async function rawOnce(
+  method: "get" | "post",
+  uri: string,
+  params: Record<string, unknown>,
+  opts: RpcOptions,
+): Promise<string> {
+  const res = await fetchExchange(method, uri, params, opts);
+  const ctype = res.headers.get("content-type") ?? "";
+  if (ctype.startsWith("text/event-stream")) {
+    // SSE commands (the ::sse/* set in repo.cljs) go through cmdSse below; a
+    // stream landing here means the caller picked the wrong transport.
+    throw new RpcError("sse stream needs cmdSse, not cmdRaw", {
+      type: "internal",
+      code: "unexpected-response",
+      status: res.status,
+      uri,
+    });
+  }
+  if (res.status === 204) return "";
+  if (!res.ok) await classifyAndThrow(res, uri);
+  return res.text();
+}
+
+export async function cmdRaw(
+  id: string,
+  params: object = {},
+  opts: RpcOptions = {},
+): Promise<string> {
+  const method: "get" | "post" = opts.method ?? (id.startsWith("get-") ? "get" : "post");
+  const uri = joinUrl(config.publicUri, METHODS_BASE + id);
+  const record = params as unknown as Record<string, unknown>;
+  const run = () => rawOnce(method, uri, record, opts);
   return method === "get" ? withRetry(run) : run();
 }
 

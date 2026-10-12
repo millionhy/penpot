@@ -45,6 +45,26 @@ const nextConfig = {
       },
     ];
   },
+  // The @penpot/* renderer dependencies are `link:` packages that live outside
+  // this workspace (../frontend/packages/...). webpack resolves a linked file
+  // from its own directory, so the bare imports inside those trees (draft-js,
+  // draft-js/lib/..., immutable, the tokenscript interpreter) walk up
+  // ../frontend — which has no node_modules here — and fail. Redirect exactly
+  // those specifiers to this workspace's copies.
+  webpack: (config) => {
+    const linkedTreeSpecifiers = [
+      "draft-js",
+      "immutable",
+      "@tokens-studio/tokenscript-interpreter",
+    ];
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      ...Object.fromEntries(
+        linkedTreeSpecifiers.map((name) => [name, path.join(currentDir, "node_modules", name)]),
+      ),
+    };
+    return config;
+  },
 };
 
 export default nextConfig;

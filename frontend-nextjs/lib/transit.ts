@@ -35,6 +35,130 @@ export function isPointer(value: unknown): value is Pointer {
   return value instanceof Pointer;
 }
 
+// PathData (app.common.types.path.impl): the penpot/path-data tagged value
+// carries packed path segments, 28 little-endian bytes each: an int16
+// command (1 move-to, 2 line-to, 3 curve-to, 4 close-path) plus float32
+// coordinates (curve-to uses all six c1x c1y c2x c2y x y, move/line-to the
+// trailing x y, close-path none). The CLJS write handler ships the buffer
+// through the transit binary tag ("~b", base64), which transit-js already
+// decodes to a Uint8Array when the handler below runs — the same value
+// from-bytes receives. The class keeps the bytes and reads segments
+// lazily; toSegments / toString mirror read-segment / to-string in
+// app.common.types.path.impl, which reads through app.common.buffer
+// (little-endian in the CLJS build).
+const SEGMENT_U8_SIZE = 28;
+// sm/max-safe-int and sm/min-safe-int (app.common.schema): the CLJS
+// normalize-coord clamps coordinates to these bounds.
+const MAX_SAFE_COORD = 2147483647;
+const MIN_SAFE_COORD = -2147483648;
+
+export interface PathSegment {
+  command: "move-to" | "line-to" | "curve-to" | "close-path";
+  params: Record<string, number>;
+}
+
+function clampCoord(value: number): number {
+  if (value > MAX_SAFE_COORD) return MAX_SAFE_COORD;
+  if (value < MIN_SAFE_COORD) return MIN_SAFE_COORD;
+  return value;
+}
+
+export class PathData {
+  readonly bytes: Uint8Array;
+  readonly count: number;
+  private readonly view: DataView;
+
+  constructor(bytes: Uint8Array) {
+    this.bytes = bytes;
+    this.count = Math.floor(bytes.byteLength / SEGMENT_U8_SIZE);
+    this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  }
+
+  // read-segment: returns null for corrupted/unknown segment types (the
+  // CLJS seq skips those entries as well).
+  private readSegment(index: number): PathSegment | null {
+    const offset = index * SEGMENT_U8_SIZE;
+    switch (this.view.getInt16(offset, true)) {
+      case 1:
+        return {
+          command: "move-to",
+          params: {
+            x: clampCoord(this.view.getFloat32(offset + 20, true)),
+            y: clampCoord(this.view.getFloat32(offset + 24, true)),
+          },
+        };
+      case 2:
+        return {
+          command: "line-to",
+          params: {
+            x: clampCoord(this.view.getFloat32(offset + 20, true)),
+            y: clampCoord(this.view.getFloat32(offset + 24, true)),
+          },
+        };
+      case 3:
+        return {
+          command: "curve-to",
+          params: {
+            x: clampCoord(this.view.getFloat32(offset + 20, true)),
+            y: clampCoord(this.view.getFloat32(offset + 24, true)),
+            c1x: clampCoord(this.view.getFloat32(offset + 4, true)),
+            c1y: clampCoord(this.view.getFloat32(offset + 8, true)),
+            c2x: clampCoord(this.view.getFloat32(offset + 12, true)),
+            c2y: clampCoord(this.view.getFloat32(offset + 16, true)),
+          },
+        };
+      case 4:
+        return { command: "close-path", params: {} };
+      default:
+        return null;
+    }
+  }
+
+  toSegments(): PathSegment[] {
+    const out: PathSegment[] = [];
+    for (let index = 0; index < this.count; index += 1) {
+      const segment = this.readSegment(index);
+      if (segment !== null) out.push(segment);
+    }
+    return out;
+  }
+
+  // to-string: the SVG path form (M / L / C / Z), the raw float32 values
+  // like the CLJS appends them.
+  toString(): string {
+    let out = "";
+    for (let index = 0; index < this.count; index += 1) {
+      const offset = index * SEGMENT_U8_SIZE;
+      const f = (delta: number): number => this.view.getFloat32(offset + delta, true);
+      switch (this.view.getInt16(offset, true)) {
+        case 1:
+          out += "M" + f(20) + "," + f(24);
+          break;
+        case 2:
+          out += "L" + f(20) + "," + f(24);
+          break;
+        case 3:
+          out +=
+            "C" +
+            f(4) + "," + f(8) + "," +
+            f(12) + "," + f(16) + "," +
+            f(20) + "," + f(24);
+          break;
+        case 4:
+          out += "Z";
+          break;
+        default:
+          break;
+      }
+    }
+    return out;
+  }
+}
+
+export function isPathData(value: unknown): value is PathData {
+  return value instanceof PathData;
+}
+
 function pairsToObject(pairs: unknown): MutableRecord {
   const out: MutableRecord = {};
   if (Array.isArray(pairs)) {
@@ -99,10 +223,12 @@ const readerOptions = {
     point: (rep: unknown) => rep,
     rect: (rep: unknown) => rep,
     "penpot/fills": (rep: unknown) => (Array.isArray(rep) ? rep : []),
-    // "penpot/path-data" carries encoded path command bytes (types.path.impl);
-    // parsing them lands with the render-wasm port (F6.4). Until then the raw
-    // bytes travel instead of a TaggedValue wrapper.
-    "penpot/path-data": (rep: unknown) => rep,
+    // "penpot/path-data": the packed path segments of types.path.impl. The
+    // CLJS write handler ships the bytes through the transit binary tag
+    // ("~b", base64), which transit-js has decoded to a Uint8Array by the
+    // time this handler runs (from-bytes receives the same); wrap it in a
+    // PathData. Non-binary reps pass through untouched.
+    "penpot/path-data": (rep: unknown) => (rep instanceof Uint8Array ? new PathData(rep) : rep),
   },
   mapBuilder: {
     init: () => ({} as MutableRecord),

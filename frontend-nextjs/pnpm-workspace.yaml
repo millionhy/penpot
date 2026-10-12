@@ -11,3 +11,10 @@ minimumReleaseAge: 0
 
 allowBuilds:
   unrs-resolver: true
+
+overrides:
+  # Mirror of the frontend workspace override: the draft-js fork asks for
+  # immutable ~3.7.4, and its @penpot wrapper imports immutable directly.
+  # Without this the two would install separate copies and the values they
+  # exchange would come from different module instances.
+  immutable@<3.8.3: ^3.8.3
