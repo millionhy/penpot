@@ -4,7 +4,9 @@ import { SessionProvider } from "@/lib/session";
 import { UrlCompat } from "@/components/url-compat";
 import { NotificationsProvider } from "@/components/notifications";
 import { ModalProvider } from "@/components/modal";
+import { PluginRuntime } from "@/components/plugin-runtime";
 import { ThemeManager } from "@/components/theme";
+import { LocaleGate } from "@/components/locale-gate";
 
 export const metadata: Metadata = {
   title: "Penpot",
@@ -25,7 +27,8 @@ export default function RootLayout({
           <ModalProvider>
             <NotificationsProvider>
               <UrlCompat />
-              {children}
+              <PluginRuntime />
+              <LocaleGate>{children}</LocaleGate>
             </NotificationsProvider>
           </ModalProvider>
         </SessionProvider>

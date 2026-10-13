@@ -1,5 +1,17 @@
-import { describe, expect, it } from "vitest";
-import { format, richSegments, tr } from "@/lib/i18n";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  format,
+  getActiveLocale,
+  htmlLang,
+  lookup,
+  matchLocale,
+  richSegments,
+  setActiveLocale,
+  tr,
+} from "@/lib/i18n";
+import { en } from "@/lib/translations/en";
+import { zh_cn } from "@/lib/translations/zh_cn";
+import { zh_hant } from "@/lib/translations/zh_hant";
 
 describe("format", () => {
   it("substitutes %s from left to right", () => {
@@ -84,5 +96,90 @@ describe("richSegments", () => {
       tr("auth.terms-and-privacy-agreement", "https://tos", "https://privacy"),
     );
     expect(segments.filter((segment) => segment.href !== undefined)).toHaveLength(2);
+  });
+});
+
+describe("matchLocale", () => {
+  it("matches the Chinese browser tags to their catalogs", () => {
+    expect(matchLocale("zh-CN", "")).toBe("zh_cn");
+    expect(matchLocale("zh-Hant", "")).toBe("zh_hant");
+    expect(matchLocale("zh_hant", undefined)).toBe("zh_hant");
+  });
+
+  it("does not invent a bare zh catalog, like the CLJS supported set", () => {
+    expect(matchLocale("zh", "")).toBe("en");
+  });
+
+  it("keeps an explicit lang even when it has no catalog", () => {
+    expect(matchLocale("fr", "zh-CN")).toBe("en");
+  });
+
+  it("autodetects the browser language for an empty lang", () => {
+    expect(matchLocale("", "zh-CN")).toBe("zh_cn");
+    expect(matchLocale(undefined, "en-GB")).toBe("en");
+    expect(matchLocale(null, null)).toBe("en");
+  });
+});
+
+describe("htmlLang", () => {
+  it("emits a BCP 47 tag", () => {
+    expect(htmlLang("en")).toBe("en");
+    expect(htmlLang("zh_cn")).toBe("zh-CN");
+    expect(htmlLang("zh_hant")).toBe("zh-Hant");
+  });
+});
+
+describe("locale catalogs", () => {
+  it("keeps the Chinese catalogs free of empty entries", () => {
+    for (const catalog of [zh_cn, zh_hant]) {
+      for (const [key, entry] of Object.entries(catalog)) {
+        if (Array.isArray(entry)) {
+          expect(entry, key).toHaveLength(2);
+          expect(
+            entry.some((part) => part.length > 0),
+            key,
+          ).toBe(true);
+        } else {
+          expect(entry.length, key).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it("falls back to English for keys a Chinese catalog lacks", () => {
+    // zh_cn/zh_hant trail en.po upstream; whatever is missing has to resolve
+    // to the English entry instead of the raw key.
+    for (const catalog of [zh_cn, zh_hant]) {
+      for (const key of Object.keys(en)) {
+        if (key in catalog) continue;
+        expect(lookup(key, catalog === zh_cn ? "zh_cn" : "zh_hant"), key).toEqual(en[key]);
+      }
+    }
+  });
+
+  it("falls back to English for an unknown locale", () => {
+    expect(lookup("auth.check-email", "fr")).toBe(en["auth.check-email"]);
+  });
+});
+
+describe("active locale", () => {
+  afterEach(() => setActiveLocale("en"));
+
+  it("starts on English and ignores unknown catalogs", () => {
+    expect(getActiveLocale()).toBe("en");
+    setActiveLocale("fr");
+    expect(getActiveLocale()).toBe("en");
+  });
+
+  it("routes tr() through the active locale", () => {
+    const zhEntry = lookup("labels.num-of-files", "zh_cn");
+    setActiveLocale("zh_cn");
+    const zhPlural = Array.isArray(zhEntry) ? zhEntry[1] : String(zhEntry);
+    expect(tr("labels.num-of-files", 3)).toBe(format(zhPlural, [3]));
+
+    const hantEntry = lookup("labels.num-of-files", "zh_hant");
+    setActiveLocale("zh_hant");
+    const hantPlural = Array.isArray(hantEntry) ? hantEntry[1] : String(hantEntry);
+    expect(tr("labels.num-of-files", 5)).toBe(format(hantPlural, [5]));
   });
 });

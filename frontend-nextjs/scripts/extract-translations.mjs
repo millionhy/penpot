@@ -1,17 +1,22 @@
 #!/usr/bin/env node
-// Regenerate lib/translations/en.ts from frontend/translations/en.po, limited
-// to the keys the Next.js shell actually uses.
+// Regenerate the typed catalogs in lib/translations/ from
+// frontend/translations/<locale>.po, limited to the keys the Next.js shell
+// actually uses.
 //
 // The CLJS app ships every translation to the browser and resolves keys at
 // runtime (app.util.i18n). The shell only needs the keys of the pages already
 // migrated, so this script scans the shell sources for static tr("...") call
 // sites, for the key fields of data-driven views (see trFieldRe) and for the
 // RUNTIME_KEYS list (keys the backend sends back for translation), then emits
-// a typed catalog. Re-run after migrating a page:
+// one typed catalog per entry of `locales` below. Re-run after migrating a
+// page:
 //
 //   node scripts/extract-translations.mjs
 //
-// An unknown key fails the run, so a typo cannot silently render a raw key.
+// English is the source of truth: an unknown key fails the run, so a typo
+// cannot silently render a raw key. The other catalogs cover what upstream has
+// translated; keys missing or still empty there fall back to English at
+// runtime (lib/i18n.ts), so the shell still renders no raw keys.
 
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -19,8 +24,18 @@ import { fileURLToPath } from "node:url";
 
 const shellRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(shellRoot, "..");
-const poPath = path.join(repoRoot, "frontend", "translations", "en.po");
-const outPath = path.join(shellRoot, "lib", "translations", "en.ts");
+const poDir = path.join(repoRoot, "frontend", "translations");
+const outDir = path.join(shellRoot, "lib", "translations");
+
+// Catalogs to emit. `code` names both the generated file and the catalog the
+// runtime resolves (the locale values of supportedLocales in lib/settings.ts);
+// `requireAll` marks the source-of-truth locale, whose catalog has to cover
+// every used key.
+const locales = [
+  { code: "en", po: "en.po", label: "English", requireAll: true },
+  { code: "zh_cn", po: "zh_CN.po", label: "Simplified Chinese", requireAll: false },
+  { code: "zh_hant", po: "zh_Hant.po", label: "Traditional Chinese", requireAll: false },
+];
 
 const scanDirs = ["app", "components", "lib"];
 const scanExtensions = new Set([".ts", ".tsx"]);
@@ -69,10 +84,15 @@ function parsePo(text) {
   const flush = () => {
     if (current === null) return;
     if (current.id.length > 0) {
+      // Single-form locales (zh_Hant: nplurals=1) carry one msgstr[0] that
+      // already includes the count; the app build reads a one-element msgstr
+      // as a plain string, so mirror that instead of emitting [form, ""].
       const value =
-        current.plurals.length > 0
+        current.plurals.length >= 2
           ? [current.plurals[0] ?? "", current.plurals[1] ?? ""]
-          : current.str;
+          : current.plurals.length === 1
+            ? (current.plurals[0] ?? "")
+            : current.str;
       entries.set(current.id, value);
     }
     current = null;
@@ -172,38 +192,55 @@ function collectUsedKeys() {
 
 // --- emit ------------------------------------------------------------------
 
-function emit(catalog, used) {
-  const keys = [...used.keys()].filter((key) => catalog.has(key)).sort();
+function isEmpty(value) {
+  if (Array.isArray(value)) return value.every((part) => part.length === 0);
+  return value.length === 0;
+}
+
+function emit(locale, catalog, keys) {
   const lines = keys.map((key) => `  ${JSON.stringify(key)}: ${JSON.stringify(catalog.get(key))},`);
+  const fallback = locale.requireAll
+    ? ""
+    : "//\n// Keys missing or still empty upstream fall back to the English catalog\n// at runtime (lib/i18n.ts), so the shell never renders a raw key.\n";
+  const typing = locale.requireAll
+    ? "export type TranslationEntry = string | [string, string];\n"
+    : 'import type { TranslationEntry } from "./en";\n';
   return `// GENERATED FILE - do not edit by hand.
 // Regenerate with: node scripts/extract-translations.mjs
 //
-// Subset of frontend/translations/en.po limited to the keys used by the
-// migrated shell pages. Values keep the %s placeholders and the
-// [label](url) link syntax of the source catalog; lib/i18n.tsx resolves both.
-
-export type TranslationEntry = string | [string, string];
-
-export const en: Record<string, TranslationEntry> = {
+// ${locale.label} subset of frontend/translations/${locale.po}, limited to
+// the keys the migrated shell pages use. Values keep the %s placeholders and
+// the [label](url) link syntax of the source catalog; lib/i18n.ts resolves
+// both.
+${fallback}
+${typing}
+export const ${locale.code}: Record<string, TranslationEntry> = {
 ${lines.join("\n")}
 };
 `;
 }
 
 function main() {
-  const catalog = parsePo(readFileSync(poPath, "utf8"));
   const used = collectUsedKeys();
-  const missing = [...used.entries()].filter(([key]) => !catalog.has(key));
-  mkdirSync(path.dirname(outPath), { recursive: true });
-  writeFileSync(outPath, emit(catalog, used), "utf8");
-  const found = used.size - missing.length;
-  process.stdout.write(`extract-translations: ${found}/${used.size} keys -> ${path.relative(shellRoot, outPath)}\n`);
-  if (missing.length > 0) {
-    for (const [key, where] of missing) {
-      process.stderr.write(`  missing in en.po: ${key} (used by ${where})\n`);
+  mkdirSync(outDir, { recursive: true });
+  let failed = false;
+  for (const locale of locales) {
+    const catalog = parsePo(readFileSync(path.join(poDir, locale.po), "utf8"));
+    const outPath = path.join(outDir, `${locale.code}.ts`);
+    const keys = [...used.keys()]
+      .filter((key) => catalog.has(key) && (locale.requireAll || !isEmpty(catalog.get(key))))
+      .sort();
+    writeFileSync(outPath, emit(locale, catalog, keys), "utf8");
+    process.stdout.write(`extract-translations: ${locale.code} ${keys.length}/${used.size} keys -> ${path.relative(shellRoot, outPath)}\n`);
+    if (locale.requireAll) {
+      const missing = [...used.entries()].filter(([key]) => !catalog.has(key));
+      for (const [key, where] of missing) {
+        process.stderr.write(`  missing in ${locale.po}: ${key} (used by ${where})\n`);
+      }
+      if (missing.length > 0) failed = true;
     }
-    process.exitCode = 1;
   }
+  if (failed) process.exitCode = 1;
 }
 
 main();

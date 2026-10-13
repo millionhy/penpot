@@ -65,8 +65,8 @@ frontend-nextjs/
 │   ├── routes.ts         路由注册表（对应 app.main.ui.routes 的 routes 集合）
 │   ├── legacy-routes.ts  ?screen= / #/ 旧链接解析（F1.3）
 │   ├── session.tsx       会话引导（get-profile，zero-uuid = 匿名）
-│   ├── i18n.ts           tr/format/richSegments（对应 app.util.i18n）
-│   ├── translations/en.ts 生成的英文词条子集
+│   ├── i18n.ts           tr/format/richSegments + locale 选择（对应 app.util.i18n）
+│   ├── translations/en.ts 生成的英文词条子集（zh_cn.ts、zh_hant.ts 同法生成）
 │   ├── forms.ts          表单状态与校验（对应 app.util.forms 的 malli 规则）
 │   ├── auth.ts           auth 命令封装 + 错误映射 + verify-token 派发
 │   ├── auth-flow.ts      登录/注册后的跳转（对应 logged-in、login-from-register）
@@ -90,7 +90,7 @@ frontend-nextjs/
 │   ├── avatars.ts        canvas 首字母头像（仅客户端，对应 app.util.profile）
 │   ├── dom.ts            useDocumentTitle、triggerDownload/Uri、normalizeWheel、pickFiles（标题副作用与浏览器交互助手）
 │   └── types.ts          api-types 生成类型的桥接与别名
-├── components/           视图组件（form/tr/notifications/modal/theme/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/import-dialog/export-dialog/templates-section/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification/team-header/team-invite/team-hero/team-form-modal/team-options-menu/team-leave-flows/leave-and-reassign-modal/webhook-modal/member-avatar/shortcut-keys/shortcut-row/restore-shortcuts-modal/import-shortcuts-diff-modal…）
+├── components/           视图组件（form/tr/notifications/modal/theme/locale-gate/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/import-dialog/export-dialog/templates-section/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification/team-header/team-invite/team-hero/team-form-modal/team-options-menu/team-leave-flows/leave-and-reassign-modal/webhook-modal/member-avatar/shortcut-keys/shortcut-row/restore-shortcuts-modal/import-shortcuts-diff-modal…）
 ├── styles/               tokens.css（ds 令牌）+ forms.css + auth.css + settings.css + dashboard.css
 ├── scripts/              extract-translations.mjs（词条抽取生成器）
 ├── public/               fonts/（worksans、vazirmatn、robotomono）+ images/
@@ -121,11 +121,17 @@ CLJS 用查询串路由（`?screen=<name>`）并保留一段 `#/...` 兼容期�
 
 - **词条**：`pnpm translations` 跑 `scripts/extract-translations.mjs`，扫描外壳里的
   `tr("key")`、`<Tr k="key">` 调用点和 `labelKey: "key"` 数据字段，从
-  `frontend/translations/en.po` 抽出用到的条目生成 `lib/translations/en.ts`。缺失的
-  key 直接让脚本失败，避免页面上出现裸 key。两类扫描不到的 key 要手工登记：后端在
-  `:details` 里回传的动态 key（弱密码原因）进 `runtimeKeys`；新引入的「key 存在数据
-  字段里」的视图要扩展 `trFieldRe`，否则 `tr()` 会把 key 原样渲染出来（F4 的
-  `settingsNav` 就是这么踩到的）。
+  `frontend/translations/*.po` 抽出用到的条目生成 `lib/translations/{en,zh_cn,zh_hant}.ts`
+  （增语言只需加脚本顶部的 `locales` 表项）。en.po 是事实源：缺失的 key 直接让脚本
+  失败，避免页面上出现裸 key；中文目录按上游翻译进度生成，缺的 key 在运行时逐条回退
+  英文（`lookup` 的默认分支）。两类扫描不到的 key 要手工登记：后端在 `:details` 里回传
+  的动态 key（弱密码原因）进 `runtimeKeys`；新引入的「key 存在数据字段里」的视图要扩展
+  `trFieldRe`，否则 `tr()` 会把 key 原样渲染出来（F4 的 `settingsNav` 就是这么踩到的）。
+- **界面语言**：`components/locale-gate.tsx`（挂在根布局、包住页面子树）从 profile 的
+  lang（空值 = Auto，用浏览器语言）解析词条目录并写入 `lib/i18n.ts` 的活动 locale；
+  规则对齐 `app.util.i18n`（`zh-CN`→`zh_cn`，认不出的值回退英文），locale 变化时把
+  页面子树整体重挂载，不读 session 的组件也不会残留旧语言文本。首屏 SSR 恒为英文，
+  挂载后切换（效果同 CLJS 的异步词条加载），`<html lang>` 随 locale 更新。
 - **表单**：`lib/forms.ts`（无头）按 CLJS 表单声明的 malli schema 复刻校验规则与报错
   文案，取文案的规则来自 `common/src/app/common/schema/messages.cljc`；
   `components/form.tsx` 是对应的视图层，F4 补齐了 `select`/`radio`/`textarea`。与
@@ -186,7 +192,7 @@ cd frontend-nextjs
 pnpm install
 pnpm dev          # http://localhost:3450
 pnpm test         # lib/** 的无头逻辑单测（vitest）
-pnpm translations # 重新生成 lib/translations/en.ts
+pnpm translations # 重新生成 lib/translations/*.ts（en + 中文目录）
 pnpm build        # 生产构建；别在 dev server 运行时执行，原因见下
 ```
 

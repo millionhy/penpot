@@ -1,9 +1,10 @@
 // GENERATED FILE - do not edit by hand.
 // Regenerate with: node scripts/extract-translations.mjs
 //
-// Subset of frontend/translations/en.po limited to the keys used by the
-// migrated shell pages. Values keep the %s placeholders and the
-// [label](url) link syntax of the source catalog; lib/i18n.tsx resolves both.
+// English subset of frontend/translations/en.po, limited to
+// the keys the migrated shell pages use. Values keep the %s placeholders and
+// the [label](url) link syntax of the source catalog; lib/i18n.ts resolves
+// both.
 
 export type TranslationEntry = string | [string, string];
 
@@ -181,6 +182,9 @@ export const en: Record<string, TranslationEntry> = {
   "dashboard.password-change": "Change password",
   "dashboard.personal-projects": "Personal Projects",
   "dashboard.pin-unpin": "Pin/Unpin",
+  "dashboard.plugins.bad-url": "The plugin URL is incorrect",
+  "dashboard.plugins.parse-error": "Cannot parse the plugin manifest",
+  "dashboard.plugins.try-plugin": "Try plugin: ",
   "dashboard.progress-notification.deleting-files": "Deleting files…",
   "dashboard.progress-notification.restoring-files": "Restoring files…",
   "dashboard.progress-notification.slow-delete": "Deletion unexpectedly slow",
@@ -260,6 +264,7 @@ export const en: Record<string, TranslationEntry> = {
   "dashboard.your-account-title": "Your account",
   "dashboard.your-email": "Email",
   "dashboard.your-name": "Your name",
+  "ds.confirm-allow": "Allow",
   "ds.confirm-cancel": "Cancel",
   "errors.account-locked": "Too many failed attempts. Your account has been locked for %s minutes. Please try again later.",
   "errors.auth-provider-not-allowed": "Auth provider not allowed for this profile",
@@ -796,4 +801,39 @@ export const en: Record<string, TranslationEntry> = {
   "workspace.header.zoom-fill": "Fill - Scale to fill",
   "workspace.header.zoom-fit": "Fit - Scale down to fit",
   "workspace.header.zoom-full-screen": "Full screen",
+  "workspace.plugins.button-open": "Open",
+  "workspace.plugins.discover": "Discover [more plugins](%s)",
+  "workspace.plugins.empty-plugins": "No plugins installed yet",
+  "workspace.plugins.error.manifest": "The plugin manifest is incorrect.",
+  "workspace.plugins.error.need-editor": "You need to be an editor to use this plugin",
+  "workspace.plugins.error.unreachable": "The plugin URL could not be reached.",
+  "workspace.plugins.error.url": "The plugin doesn't exist or the URL is not correct.",
+  "workspace.plugins.install": "Install",
+  "workspace.plugins.installed-plugins": "Installed plugins",
+  "workspace.plugins.menu.plugins-manager": "Plugins manager",
+  "workspace.plugins.permissions-update.title": "UPDATE THIS PLUGIN",
+  "workspace.plugins.permissions-update.warning": "The plugin has been modified since you last opened it. It now also wants to access:",
+  "workspace.plugins.permissions.allow-download": "Start file downloads.",
+  "workspace.plugins.permissions.allow-localstorage": "Store data in the browser.",
+  "workspace.plugins.permissions.clipboard-read": "Read the contents of your clipboard.",
+  "workspace.plugins.permissions.clipboard-write": "Read and write to your clipboard.",
+  "workspace.plugins.permissions.comment-read": "Read your comments and replies.",
+  "workspace.plugins.permissions.comment-write": "Read and modify your comments and reply in your name.",
+  "workspace.plugins.permissions.content-read": "Read the content of files that users have access to.",
+  "workspace.plugins.permissions.content-write": "Read and modify the content of files that users have access to.",
+  "workspace.plugins.permissions.disclaimer": "Please note that this plugin is created by an external party, so ensure you trust it before granting access. Your data privacy and security are important to us. If you have any concerns, please contact support.",
+  "workspace.plugins.permissions.library-read": "Read your libraries and assets.",
+  "workspace.plugins.permissions.library-write": "Read and modify your libraries and assets.",
+  "workspace.plugins.permissions.title": "'%s' PLUGIN WANTS ACCESS TO:",
+  "workspace.plugins.permissions.user-read": "Read the profile information of the current user.",
+  "workspace.plugins.plugin-list-link": "Plugins List",
+  "workspace.plugins.remove-confirmation.message": "Are you sure you want to remove the plugin %s? You can install it again at any time.",
+  "workspace.plugins.remove-confirmation.title": "Remove plugin",
+  "workspace.plugins.remove-plugin": "Remove plugin",
+  "workspace.plugins.search-placeholder": "Write a plugin URL",
+  "workspace.plugins.title": "Plugins",
+  "workspace.plugins.try-out.cancel": "NOT NOW",
+  "workspace.plugins.try-out.message": "Want to take a look? It will open in a new draft for your current team. (If not, you can always find it in the installed plugins of any file.)",
+  "workspace.plugins.try-out.title": "'%s' PLUGIN IS INSTALLED FOR YOUR USER!",
+  "workspace.plugins.try-out.try": "TRY PLUGIN",
 };
