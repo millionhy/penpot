@@ -45,6 +45,9 @@ interface ViewerOverlayProps {
   // wrapper-size).
   wrapperWidth: number;
   wrapperHeight: number;
+  // ref:viewer-show-interactions: the hotspot highlight of the caller; the
+  // nested viewport paints it (store-level in the CLJS).
+  showInteractions?: boolean;
   // refs/viewer-overlays: the frame ids of every open overlay.
   overlaysIds: readonly string[];
   onAction: (action: ViewerAction) => void;
@@ -61,6 +64,7 @@ export function ViewerOverlay({
   zoom,
   wrapperWidth,
   wrapperHeight,
+  showInteractions = false,
   overlaysIds,
   onAction,
 }: ViewerOverlayProps) {
@@ -98,6 +102,7 @@ export function ViewerOverlay({
       snapTo={overlay.snapTo}
       frameOffset={overlay.position}
       baseFrameId={baseFrameId}
+      showInteractions={showInteractions}
       overlaysIds={overlaysIds}
       onAction={onAction}
     />

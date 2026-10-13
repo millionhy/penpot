@@ -103,6 +103,7 @@ import {
   parseViewerQuery,
   resolveInteractionsMode,
   shouldUpdateZoomQuery,
+  showInteractionsFor,
   viewerHref,
   viewerQueryToHrefParams,
   type InteractionsMode,
@@ -213,6 +214,11 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // The padded bounds of the origin viewport of a navigation animation; the
   // selrect stands in until its first report (see handleOrigBounds).
   const [origBounds, setOrigBounds] = useState<ViewerWasmBounds | null>(null);
+  // ref:viewer-show-interactions: the hotspot highlight. dv/set-interactions-
+  // mode mirrors the picked mode into it (:show keeps it on), and
+  // dv/flash-interactions lights it for 500 ms from a window click while
+  // the mode is show-on-click (flash-done turns it off).
+  const [showInteractions, setShowInteractions] = useState(false);
 
   // The measured #viewer-section size: the zoom math input. A ref, not
   // state, because a resize only refreshes it (the recompute hangs off
@@ -236,6 +242,10 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // restart a run in flight.
   const startedGoToFrameRef = useRef<ViewerAnimationEntry | null>(null);
   const startedOverlaysRef = useRef(new Set<OverlayAnimationEntry>());
+  // The flash-interactions timer: a new flash restarts the 500 ms run
+  // (the CLJS take-until over the flash stream); only a new flash cancels
+  // it, so a mode change leaves a pending flash alone, like the original.
+  const flashTimerRef = useRef<number | null>(null);
 
   // check-platform? :macos resolves after mount so the server render stays
   // stable, like the dashboard provider.
@@ -526,13 +536,43 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     [query, frames, navigate],
   );
 
+  // dv/flash-interactions: a window click in the show-on-click mode lights
+  // the hotspots for 500 ms. A click on a hotspot still reaches the
+  // listener: the shapes.cljs handlers stop the pointer events only, and
+  // the browser dispatches the click separately.
+  const flashInteractions = useCallback(() => {
+    if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+    setShowInteractions(true);
+    flashTimerRef.current = window.setTimeout(() => {
+      flashTimerRef.current = null;
+      setShowInteractions(false);
+    }, 500);
+  }, []);
+
+  useEffect(() => {
+    if (interactionsMode !== "show-on-click") return;
+    const onClick = () => flashInteractions();
+    window.addEventListener("click", onClick);
+    return () => window.removeEventListener("click", onClick);
+  }, [interactionsMode, flashInteractions]);
+
+  // Leaving the viewer drops a pending flash with it.
+  useEffect(
+    () => () => {
+      if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+    },
+    [],
+  );
+
   // The interactions menu pick: dv/set-interactions-mode mirrors the mode
-  // into the URL (a push, like the CLJS rt/nav); the menu entry derives
-  // from the parameter, so it follows.
+  // into the URL (a push, like the CLJS rt/nav) and sets the hotspot
+  // highlight through showInteractionsFor (:show keeps it on, the others
+  // clear it). The menu entry derives from the parameter, so it follows.
   const handleSelectInteractionsMode = useCallback(
     (mode: InteractionsMode) => {
       const base = viewerQueryToHrefParams(query);
       if (base === null) return;
+      setShowInteractions(showInteractionsFor(mode));
       navigate(viewerHref({ ...base, interactionsMode: mode }));
     },
     [query, navigate],
@@ -952,6 +992,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
                   frameName={origFrame.name ?? ""}
                   zoom={zoom}
                   onBounds={handleOrigBounds}
+                  showInteractions={showInteractions}
                   overlaysIds={overlaysIds}
                   onAction={handleViewerAction}
                 />
@@ -970,6 +1011,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
                 frameName={frame.name ?? ""}
                 zoom={zoom}
                 onBounds={handleWasmBounds}
+                showInteractions={showInteractions}
                 overlaysIds={overlaysIds}
                 onAction={handleViewerAction}
               />
@@ -989,6 +1031,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
                     zoom={zoom}
                     wrapperWidth={frameWidth}
                     wrapperHeight={frameHeight}
+                    showInteractions={showInteractions}
                     overlaysIds={overlaysIds}
                     onAction={handleViewerAction}
                   />
