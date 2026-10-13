@@ -19,8 +19,10 @@
 // - zoom-to-fit / zoom-to-fill compute against the rendered frame
 //   (displayIndex) instead of the raw URL index, which handles the
 //   untracked case of a page opened without an index parameter.
-// - A missing page or a fetch failure renders the empty state; the
-//   ex/raise :not-found exception page is not ported yet (F6.6).
+// - A missing page renders the exception page (the ex/raise :not-found of
+//   viewer-content*), and so does a fetch failure caused by :not-found /
+//   :authentication; other failures keep the full-page message
+//   (components/exception-page.tsx).
 // - The renderer decodes its own copy of the bundle (lib/render-wasm):
 //   transit-js normalizes keywords and uuids to plain strings and the
 //   compiled payload readers cannot look those up, so the shell and the
@@ -58,6 +60,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { ExceptionPage } from "@/components/exception-page";
 import { useNotifications } from "@/components/notifications";
 import { QueryParams } from "@/components/query-params";
 import { ViewerHeader, type SitemapPage } from "@/components/viewer-header";
@@ -68,6 +71,7 @@ import { ViewerWasmViewport, type ViewerWasmBounds } from "@/components/viewer-w
 import { dashboardHref, workspaceHref } from "@/lib/dashboard";
 import { nextTheme } from "@/lib/dashboard-shortcuts-runtime";
 import { useDocumentTitle } from "@/lib/dom";
+import { isExceptionCause } from "@/lib/exception-page";
 import { tr } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 import { profileUpdateParams, updateProfile } from "@/lib/settings";
@@ -196,7 +200,9 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   const notifications = useNotifications();
 
   const [data, setData] = useState<ViewerBundle | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  // The failure the bundle fetch rejected with; :not-found / :authentication
+  // render the exception page, anything else the full-page message.
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [zoom, setZoom] = useState(1);
   const [zoomType, setZoomType] = useState<ZoomType | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -262,13 +268,13 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   useEffect(() => {
     let live = true;
     setData(null);
-    setLoadError(false);
+    setLoadError(null);
     fetchViewerBundle({ fileId, shareId })
       .then((bundle) => {
         if (live) setData(bundle);
       })
-      .catch(() => {
-        if (live) setLoadError(true);
+      .catch((error: unknown) => {
+        if (live) setLoadError(error);
       });
     return () => {
       live = false;
@@ -948,11 +954,22 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   }, [viewportActive, macos, handleDecreaseZoom, handleIncreaseZoom]);
 
   if (data === null) {
-    return loadError ? <ViewerMessage message={tr("errors.generic")} /> : <ViewerLoader />;
+    if (loadError === null) return <ViewerLoader />;
+    return isExceptionCause(loadError) ? (
+      <ExceptionPage fileId={fileId} />
+    ) : (
+      <ViewerMessage message={tr("errors.generic")} />
+    );
+  }
+
+  // viewer-content* raises :not-found when the page id does not resolve;
+  // the exception page replaces the whole viewer layout.
+  if (page === undefined) {
+    return <ExceptionPage fileId={fileId} />;
   }
 
   let content: ReactNode;
-  if (page === undefined || frames.length === 0) {
+  if (frames.length === 0) {
     content = (
       <section className="pp-empty-state">
         <span>{tr("viewer.empty-state")}</span>

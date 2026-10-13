@@ -1,0 +1,265 @@
+/* Exception page styles (F6.6): port of frontend/src/app/main/ui/static.scss
+   for the viewer not-found slice. Class names keep the pp- prefix; the
+   px2rem sizes of the source are pre-resolved (base 16px: 80 -> 5rem,
+   640 -> 40rem, 28 -> 1.75rem). The indirection of the CLJS design tokens
+   (--sp-* and --sz-*, see tokens.css) is preserved. */
+
+.pp-exception-layout {
+  inline-size: 100%;
+  /* The CLJS fills #app (100% height chain); the port sizes to the viewport. */
+  min-block-size: 100vh;
+  background-color: var(--color-background-secondary);
+}
+
+.pp-exception-header {
+  color: var(--color-foreground-secondary);
+  padding: var(--sp-xxl) var(--sp-xxxl);
+  position: fixed;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  /* The button font of base.scss (the browser does not inherit it). */
+  font-family: var(--font-family-base);
+}
+
+.pp-exception-penpot-logo {
+  fill: var(--color-foreground-primary);
+  inline-size: var(--sz-48);
+  block-size: var(--sz-48);
+}
+
+.pp-exception-go-back {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--sp-s);
+  margin-inline-start: var(--sp-m);
+  font-size: 0.875rem;
+}
+
+/* ArrowIcon inherits no size or stroke; the CLJS icon* paints both. */
+.pp-exception-go-back svg {
+  inline-size: var(--sz-16);
+  block-size: var(--sz-16);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1px;
+  transform: rotate(180deg);
+}
+
+.pp-exception-login-header {
+  font-family: var(--font-family-base);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-dense);
+  font-size: var(--fs-12);
+  background: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--color-accent-primary);
+  border: var(--b-1) solid var(--color-accent-primary);
+  color: var(--color-background-secondary);
+  border-radius: var(--br-8);
+  min-block-size: var(--sz-32);
+  padding: var(--sp-s) var(--sp-l);
+  position: fixed;
+  inset-inline-end: 0;
+  margin: var(--sz-40) var(--sz-32);
+  text-transform: uppercase;
+}
+
+.pp-exception-deco-before {
+  position: absolute;
+  inset-inline-start: calc(50% - var(--sz-40));
+  block-size: 34vh;
+  inset-block-start: 0;
+}
+
+.pp-exception-deco-before svg {
+  position: absolute;
+  fill: var(--color-foreground-secondary);
+  block-size: 1537px;
+  inline-size: 5rem;
+  inset-block-end: 0;
+}
+
+.pp-exception-deco-after2 {
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-s);
+  inline-size: 100%;
+  block-size: 34vh;
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-end: 0;
+  color: var(--color-foreground-primary);
+}
+
+.pp-exception-deco-after2 svg {
+  fill: var(--color-foreground-secondary);
+  block-size: 1537px;
+  inline-size: 5rem;
+}
+
+.pp-exception-deco-after2 span {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  block-size: 100%;
+  inline-size: 25%;
+  padding-block-end: 1.75rem;
+}
+
+.pp-exception-deco-after2 span:first-child {
+  text-align: right;
+}
+
+.pp-exception-content {
+  display: flex;
+  block-size: 100%;
+  justify-content: center;
+  inline-size: 100%;
+}
+
+.pp-exception-content .pp-exception-container {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-l);
+  block-size: 34vh;
+  justify-content: center;
+  margin-block-start: 33vh;
+  text-align: center;
+  inline-size: 40rem;
+}
+
+/* title-large (ds typography use-typography). */
+.pp-exception-main-message {
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
+  font-size: var(--fs-24);
+  color: var(--color-foreground-primary);
+}
+
+.pp-exception-desc-message {
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
+  font-size: var(--fs-24);
+  color: var(--color-foreground-secondary);
+}
+
+.pp-exception-overlay {
+  inline-size: 100%;
+  block-size: 100%;
+  /* The CLJS positions the overlay inside the context wrapper it borrows;
+     the port has no wrapper, so the overlay fixes to the viewport. */
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 100;
+  background-color: rgb(0 0 0 / 0.65);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.pp-exception-dialog {
+  inline-size: 556px;
+  background-color: var(--color-background-primary);
+  border-radius: var(--br-8);
+  display: flex;
+  flex-direction: column;
+  align-content: stretch;
+  padding: var(--sz-36);
+  color: var(--color-foreground-secondary);
+  position: relative;
+  gap: var(--sp-m);
+}
+
+.pp-exception-modal-close {
+  position: absolute;
+  inset-block-start: var(--sz-16);
+  inset-inline-end: var(--sz-16);
+}
+
+/* The ghost icon-button* of the CLJS dialog. */
+.pp-exception-close-btn {
+  appearance: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  inline-size: var(--sz-32);
+  block-size: var(--sz-32);
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary);
+}
+
+.pp-exception-close-btn:hover {
+  color: var(--color-accent-primary);
+}
+
+.pp-exception-close-btn svg {
+  inline-size: var(--sz-16);
+  block-size: var(--sz-16);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1px;
+}
+
+.pp-exception-dialog-title {
+  font-size: 1.25rem;
+}
+
+.pp-exception-sign-info {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-start: var(--sp-xxxl);
+}
+
+.pp-exception-cancel-button {
+  font-family: var(--font-family-base);
+  background: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: var(--br-8);
+  background-color: var(--color-background-tertiary);
+  border: var(--b-1) solid var(--color-background-tertiary);
+  color: var(--color-foreground-secondary);
+  padding: var(--sp-s) var(--sp-l);
+  font-size: 0.688rem;
+  text-transform: uppercase;
+  margin-inline-end: var(--sp-l);
+}
+
+/* The primary button* of the CLJS (ds/buttons/_buttons.scss). */
+.pp-exception-primary-button {
+  font-family: var(--font-family-base);
+  appearance: none;
+  min-block-size: var(--sz-32);
+  padding: 0 var(--sp-m);
+  display: inline-flex;
+  align-items: center;
+  column-gap: var(--sp-xs);
+  background-color: var(--color-accent-primary);
+  color: var(--color-background-secondary);
+  border: var(--b-1) solid var(--color-accent-primary);
+  border-radius: var(--br-8);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-dense);
+  font-size: var(--fs-12);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.pp-exception-primary-button:hover {
+  background-color: var(--color-accent-tertiary);
+  border-color: var(--color-accent-tertiary);
+}
