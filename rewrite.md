@@ -6,13 +6,13 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions 完成，F6.6 收尾未开始） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | `frontend-nextjs` 完成对应功能迁移前，不改 `backend/`、不实现 `backend-rust` |
-| 最后更新 | 2026-10-12 |
+| 最后更新 | 2026-10-13 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -39,7 +39,7 @@
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 占位后随 F5.6 补齐）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes 未做（见 7.6） |
 | F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.6 完成；F5.7 进行中，organization/team switch 与 subscription/nitrate 已完成），见下与第 4 节 |
-| F6 | viewer（`/view`） | 🔧 | 切成 F6.1–F6.6 六片（F6.1–F6.4 完成：数据层、外壳、导航与缩放、WASM 渲染），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
+| F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | ⬜ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`） |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
 | F9 | workspace 编辑器 | ⬜ | 最高风险，最后迁移：画布 + WASM + Web Worker + 协作光标 |
@@ -276,8 +276,9 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     after-delay）、flows/interactions 菜单（含 show-interactions 的 500 ms flash）、
     overlay 开合与 go-to-frame/overlay 的 WAAPI 动画（六片，`a00e36adae`–
     `dd072bd0bb`）。
-  - **F6.6 收尾（未开始）**：`frame-preview` + `render-sprite` 路由、not-found
-    异常页。
+  - **F6.6 收尾（完成）**：`frame-preview` 路由（跨窗口 `window.load` 协议、
+    尺寸与 zoom 滑块）、not-found 异常页（error-container、request-access
+    流程）；`render-sprite` 不做（CLJS 注册了但无渲染消费者）。
 - **F7 插件**：复用 SES 运行时与 Plugin API（`app.plugins`），保持 `plugins → mcp`（WS :4402）连线。
 - **F8 WebSocket 协作客户端**：连 `/ws/notifications`（直连后端源），订阅文件变更广播。
 - **F9 workspace**：最后迁移、最高风险。画布 + WASM + Web Worker（缩略图/索引/导入）+ 协作光标 +
@@ -1043,6 +1044,31 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   flows/interactions 菜单（tick 迁移、URL 持久、归一化回退）、show-interactions 高亮
   （flash 500 ms 与重启、show 常亮、hide/on-click 关闭），console 零错误。
 - 下一步：F6.6 收尾——`frame-preview` + `render-sprite` 路由、not-found 异常页。
+
+### 7.18 本轮（2026-10-13，第十七批：F6.6 viewer 收尾）
+
+- F6.6 收尾完成并入库（1 个提交，`5a337179a0`）：`frame-preview` 路由与
+  not-found 异常页落地。
+- frame-preview：`lib/frame-preview.ts`（跨窗口 `window.load(data, width,
+  height)` 协议的写入助手：iframe 尺寸比内容多 64px、zoom 百分比换算）与
+  `app/frame-preview/page.tsx`（挂载时暴露 `window.load`、iframe 与 zoom
+  滑块）。
+- not-found 异常页：`lib/exception-page.ts`（access-info 加载、exception 与
+  request-access 状态机、`request-access-params` 与
+  `create-team-access-request` 命令）；`components/exception-page.tsx`
+  （error-container 布局、deco 条带与版权尾注、NotFoundContent、
+  RequestDialog 与 RequestAccess 六分支）；`styles/error.css`；
+  `app/view/page.tsx` 两处入口——page-id 不解析（viewer-content* 的
+  `:not-found`）与 bundle 拉取失败的 `:not-found` / `:authentication` cause。
+- 与 CLJS 的有意偏差（代码注释均登记）：匿名访客显示 not-found 内容加 Login
+  按钮（CLJS 弹 login-modal）；刚登录的 loader 分支丢弃；load-info 失败回落空
+  info；request-access 对话框固定 overlay。`render-sprite` 路由不做——CLJS
+  注册了但无渲染消费者。
+- 测试：vitest 769 例 / 33 文件（较 F6.5 的 743 增 26）；`pnpm typecheck`、
+  lint 干净；headless Chrome/CDP 冒烟 4/4（window.load 写入与 zoom、坏
+  page-id 与坏 file-id 两条异常页入口），console 零错误。
+- 下一步：F7 插件运行时；F5.7 遗留的 comments 与 WebSocket 实时刷新（依赖
+  F8）仍挂起。
 
 ---
 
