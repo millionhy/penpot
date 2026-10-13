@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1 数据层、F7.2 安装与管理 UI 完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
@@ -40,9 +40,9 @@
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 占位后随 F5.6 补齐）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes 未做（见 7.6） |
 | F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.6 完成；F5.7 进行中，organization/team switch 与 subscription/nitrate 已完成），见下与第 4 节 |
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
-| F7 | 插件运行时 | ⬜ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`） |
+| F7 | 插件运行时 | 🔧 | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；切成 F7.1–F7.4 四片（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入完成；F7.4 完整 API 上下文依赖 F9），见下与第 4 节 |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
-| F9 | workspace 编辑器 | ⬜ | 最高风险，最后迁移：画布 + WASM + Web Worker + 协作光标 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布进行中（f94a–f94f 完成，见 7.23）；Web Worker + 协作光标等留 F8 后 |
 
 ### 阶段 B：backend-rust（Rust + axum，受门禁）
 
@@ -280,9 +280,26 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     尺寸与 zoom 滑块）、not-found 异常页（error-container、request-access
     流程）；`render-sprite` 不做（CLJS 注册了但无渲染消费者）。
 - **F7 插件**：复用 SES 运行时与 Plugin API（`app.plugins`），保持 `plugins → mcp`（WS :4402）连线。
+  完整 Plugin API 上下文强依赖 workspace 状态（`app.plugins.api/create-context` 全部从
+  `@st/state` 读取），故切成 F7.1–F7.4 四片：
+  - **F7.1 数据层（完成）**：`lib/plugins.ts`（manifest 解析与校验、注册表与订阅、
+    in-flight 追踪、install/remove 乐观更新与回滚、fetch-manifest、权限 peek）与
+    `lib/plugin-flags.ts`。
+  - **F7.2 安装与管理 UI（完成）**：`lib/config.ts` 增 `pluginsListUri`/`pluginsWhitelist`；
+    `components/plugins.tsx`（权限弹窗 + try-out 弹窗）、`components/plugin-management.tsx`
+    （URL 安装 + Remove 确认的插件管理列表）、`components/plugin-install-flow.tsx`
+    （dashboard `?plugin=` 安装流，挂 `app/dashboard/layout.tsx`）。CLJS 入口在
+    workspace 主菜单（`main_menu.cljs` plugins-menu*）与 top_toolbar；shell 无
+    workspace，暂挂 dashboard profile 菜单（F9 后迁回），列表行 Open 按钮同缺
+    （等 F7.3 运行时）。
+  - **F7.3 运行时接入（完成）**：SES boot（`initPluginsRuntime`）与 `ɵloadPlugin`/`ɵunloadPlugin`
+    桥、最小 Context（theme/flags/事件；workspace 相关 API 暂缺）。
+  - **F7.4 完整 API 上下文**：`app.plugins.api` 的 workspace 代理（阻塞于 F9）。
 - **F8 WebSocket 协作客户端**：连 `/ws/notifications`（直连后端源），订阅文件变更广播。
-- **F9 workspace**：最后迁移、最高风险。画布 + WASM + Web Worker（缩略图/索引/导入）+ 协作光标 +
-  全部绘制/布尔/交互/token 子流程。建议在 F3–F8 验证成功后再启动。
+- **F9 workspace**：最后迁移、最高风险。切成 F9.1–F9.x 多片：F9.1 数据基础与只读画布
+  已启动（受 F7.4 阻塞所迫提前，不依赖 F8；数据层 + 视口数学 + WASM 直绘 + /workspace
+  路由，见 7.23）；Web Worker（缩略图/索引/导入）+ 协作光标 + 全部绘制/布尔/交互/token
+  子流程仍在 F3–F8 验证后推进。
 
 每个路由组的完成标准（DoD）：
 
@@ -311,7 +328,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ███████████████████████░░░░░░░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 过半：F6.1–F6.4 完成)
+阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1 只读画布进行中)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -1069,6 +1086,188 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   page-id 与坏 file-id 两条异常页入口），console 零错误。
 - 下一步：F7 插件运行时；F5.7 遗留的 comments 与 WebSocket 实时刷新（依赖
   F8）仍挂起。
+
+### 7.19 本轮（2026-10-13，第十八批：F7.1 插件数据层）
+
+- F7 按依赖切成四片（见第 4 节）：完整 Plugin API 上下文强依赖 F9 workspace
+  状态，故 F7.1 先落数据层（纯逻辑、可完整测试），F7.2 安装流与管理 UI，
+  F7.3 运行时接入（SES boot + 最小 context），F7.4 完整 API 上下文（阻塞于 F9）。
+- 数据层落地：`lib/plugins.ts`（572 行）——manifest 解析与校验（权限写蕴含读、
+  v1 裸 origin / v2 目录、name+host 复用 plugin-id、失败 console.error 返回
+  null）、注册表模块状态与订阅（快照引用稳定，供 useSyncExternalStore）、
+  in-flight 追踪（订阅即回调）、install/remove 乐观更新与失败回滚（validation
+  错误只回滚本地，其他错误补发一次反向 RPC）、fetchManifest（无自定义头、
+  15 s 超时）、normalizePluginUrl/iconUrl、权限 peek（1 天过期）、
+  checkPluginPermission（zero-uuid 与 MCP 插件豁免）；`lib/plugin-flags.ts`
+  （38 行，flags.cljs 移植：natural-child-ordering 恒 false、
+  throw-validation-errors 自 version 2 起 true）。
+- 与 CLJS 的有意偏差（代码注释均登记）：不能解析的 manifest URL 返回 null
+  （CLJS 的 u/uri 产生空 host 的部分 URI）；getPluginsList 过滤缺少条目的 id
+  （CLJS mapv 保留 nil）；v1 host 保留 query/fragment，但默认端口由 URL.origin
+  归一化；订阅函数返回 unsubscribe（CLJS 以 f 为句柄）。
+- 测试：vitest 817 例 / 35 文件（较 F6.6 的 769 增 48：plugins 42 +
+  plugin-flags 6）；`pnpm typecheck`、lint 干净。
+- 下一步：F7.2 dashboard `?plugin=` 安装流（参数 → fetch-manifest → 权限弹窗
+  → install → try-out 提示）与插件管理列表（profile 菜单入口）。
+
+### 7.20 本轮（2026-10-13，第十九批：F7.2 安装与管理 UI）
+
+- 范围：`use-plugin-register`（dashboard.cljs 的 `?plugin=` 安装流）、
+  `plugin-management-dialog`、`plugins-permission-list*`、
+  `plugins-permissions-dialog`、`plugins-try-out-dialog`（workspace/plugins.cljs）。
+- 落地：`components/plugin-install-flow.tsx`（126 行；`?plugin=` query 或 tab
+  session `:plugin-url` 回退 → 等 default project 解析后 fetch-manifest →
+  权限弹窗；accept → install + try-out 弹窗 + 回 recent，cancel → 回 recent；
+  parse-error 与 bad-url 通知分支与 CLJS 一致）；`components/plugins.tsx`
+  （142 行；权限弹窗按 plugins-permission-list* 固定顺序渲染、whitelist 命中
+  跳过 disclaimer；try-out 弹窗）；`components/plugin-management.tsx`（249 行；
+  URL 输入 → normalize → fetch → 权限弹窗 → install；列表行 icon/name/summary/
+  Remove，确认对话框 cancel/accept 都重开管理对话框；空态与 discover 链接；
+  in-flight 禁用 Remove）；`lib/config.ts` +16（pluginsListUri 默认 penpot.app
+  hub、pluginsWhitelist 逗号分隔）；`lib/plugins.ts` +62（634 行；permissionRows、
+  storedPluginUrl/clearStoredPluginUrl，键位 "penpot:/plugin-url"）；
+  `components/dashboard-profile-menu.tsx` +30（Plugins manager 入口，
+  plugins/runtime 门控）；`styles/dashboard.css` +126（pp-plugin-* 样式）。
+- 与 CLJS 的有意偏差（代码注释均登记）：入口暂挂 dashboard profile 菜单（CLJS
+  在 workspace 主菜单/top_toolbar，F9 前无 workspace）；列表行 Open 按钮不渲染
+  （需 F7.3 运行时）；CLJS 权限弹窗的 document keydown 监听会在任意按键时执行
+  accept（缺陷），shell 不复制，取消导航只由 Cancel 按钮承担；try-out accept
+  创建文件后跳 dashboard-recent（CLJS 跳 workspace 并 delay-open-plugin，依赖
+  F9）；安装流按 URL 只跑一次（handled ref），projects 刷新不重跑；遥测
+  （ev/event）丢弃。
+- 测试：vitest 829 例 / 35 文件（较 F7.1 的 817 增 12：permissionRows 6 +
+  stored plugin url 4 + config.plugins 2）；翻译 822/822 键（较 F7.1 新增
+  34 键）；`pnpm typecheck`、lint 干净。
+- 下一步：F7.3 运行时接入（SES boot + 最小 Context：`initPluginsRuntime`、
+  `ɵloadPlugin`/`ɵunloadPlugin` 桥、theme/flags/事件面）；随后 F7.4（阻塞于
+  F9）。
+
+### 7.21 本轮（2026-10-13，第二十批：F7.3 运行时接入）
+
+- 范围：`app.plugins/initialize` + `init-plugins-runtime`（app/plugins.cljs）、
+  `app.main.data.plugins` 的 load/open/close 半边、workspace/plugins.cljs 的
+  `plugin-entry*` Open 按钮与 `permissions-updated-dialog`。
+- 落地：`lib/plugin-context.ts`（320 行；最小 Context：$plugin/version/theme/
+  flags/localStorage/addListener；workspace 读写面留 F9 占位——读返回 null/[]、
+  写方法抛具名错误）；`lib/plugin-runtime.ts`（258 行；startPluginRuntime 动态
+  import + initPluginsRuntime，loadPluginEntry/closePluginEntry/
+  closeCurrentPlugins/openPluginEntry 三分支与模块级 notifier 桥）；
+  `components/plugin-runtime.tsx`（40 行；layout 挂载，feature 门控 + notifier
+  注册）；`components/plugins.tsx` +75（抽 PermissionList、
+  PluginPermissionsUpdateDialog）；`components/plugin-management.tsx` +63/-15
+  （Open 按钮、peek 权限门控、manifest 变更二次确认）；app/layout.tsx 挂载；
+  `components/theme.tsx` applyTheme 通知 themechange。
+- SES×transit-js 冲突（冒烟发现的真实缺陷）：SES `repairIntrinsics` 在
+  `@penpot/plugins-runtime` 模块顶层执行，会删除 intrinsics 上一切未许可
+  属性，删不掉就 throw、中断模块求值；transit-js 构建 writer 时给
+  Date/Uint8Array 挂 `transit$guid$<uuid>` 缓存（defineProperty 漏了
+  `configurable:true`），而 RPC 层每页都先于插件 boot 加载，故 SES 修复必崩
+  （"Cannot delete property ..."）。修复（`lib/transit.ts` +57）：writer 构建
+  在守卫下把该属性补成 `configurable:true`（属性名由 transit-js 内部随机
+  生成、不导出，只能在 defineProperty 处拦截）；`resetTransitGuids()` 在
+  boot 的 import 后重建缓存与 writer（旧 writer 的 handler 表以被删的缓存
+  id 为键，且首个惰性重建若晚于 hardenIntrinsics 冻结则会 throw）。冒烟
+  复验：两条 `[PLUGINS]` 日志齐、无 error、无 hydration 问题；SES 会打印 3 条
+  "Removing unpermitted intrinsics" warn（Uint8Array 的 guid 与
+  Date.prototype 上 transit 的两个补丁），预期噪音。
+- 与 CLJS 的有意偏差（代码注释均登记）：只派发 themechange；theme 读 html
+  class（ThemeManager 为权威）；manifest 校验失败归 unreachable；
+  openPlugins 集合与 peek 门控在模块状态；userCanEdit 沿 prop 链下传
+  （ModalProvider 在 NotificationsProvider 外，modal 内容取不到通知 API）；
+  start-plugin!（MCP）与 delay-open-plugin 等待 F9；遥测丢弃。
+- 测试：vitest 871 例 / 37 文件（较 F7.2 的 829 增 42：plugin-context 24 +
+  plugin-runtime 16 + transit +2）；翻译 827/827 键（较 F7.2 增 5：
+  button-open、error.need-editor、error.unreachable、
+  permissions-update.title/.warning）；`pnpm typecheck`、lint 干净；boot 冒烟
+  （:3450 dev server + 真实浏览器）通过。
+- 下一步：F7.4 完整 API 上下文（阻塞于 F9 workspace）；F7 至此全部可动
+  部分完成。
+
+### 7.22 本轮（2026-10-13，第二十一批：中文词条与界面语言选择）
+
+- 动机：外壳词条此前只有 en；`frontend/translations/zh_CN.po`、`zh_Hant.po` 上游已
+  有，设置页在 F4 已能保存 profile 的 lang，但运行时没有语言选择——保存后界面仍旧
+  英文。本批把中文资源文件与选择链路一起补齐。
+- 生成器（`scripts/extract-translations.mjs`，246 行）：改由 `locales` 表驱动（en
+  是事实源、缺 key 即失败；zh_cn/zh_hant 按上游进度生成并报告覆盖数）。单复数形态
+  对齐构建侧语义：两个 msgstr → `[单数, 复数]` 元组，单 form（zh_Hant
+  nplurals=1）→ 平字符串（自带 %s，任意数量都走它）；非 en 目录过滤空条目。
+- 产物：`lib/translations/zh_cn.ts`（699/827 键，714 行）、`zh_hant.ts`
+  （812/827 键，827 行）；`en.ts` 827 键不变（仅头部重排）。生成文件头部注明
+  缺词回退英文的语义。
+- 运行时（`lib/i18n.ts`，143 行，+65）：catalogs 注册 zh_cn/zh_hant；`matchLocale`
+  （profile lang 优先；空值 = Auto，用浏览器语言；`zh-CN`→`zh_cn`；认不出的值回退
+  en，对齐 app.util.i18n 的 parse-locale + autodetect）；`setActiveLocale`/
+  `getActiveLocale`；`lookup` 默认 locale 改为活动 locale（逐键回退 en）；`htmlLang`
+  （`zh_cn`→`zh-CN`，供 `<html lang>`）。
+- 选择链路：`components/locale-gate.tsx`（40 行，挂根布局、包住页面子树）：渲染期
+  写活动 locale + `Fragment key={locale}` 重挂载子树——tr 是普通函数不是 hook，靠
+  context 无法让非消费者重渲染；navigator.language 在 effect 里读，首屏 SSR 恒为
+  en、客户端挂载后切换（效果同 CLJS 的异步词条加载），无水合 mismatch；
+  `<html lang>` 随 locale 更新。
+- 与 CLJS 的有意偏差（代码注释均登记）：不做 storage `::locale`（CLJS 的本地存储位）；
+  locale 变化重挂载子树会重置页面瞬态状态（CLJS 响应式重渲染不重置）；`zh-TW` 等
+  浏览器标签不映射 `zh_hant`（CLJS 同样不映射）；fr 等无目录语言回退 en（CLJS 有
+  全量 po）。
+- 测试：vitest 881 例 / 37 文件（较 F7.3 的 871 增 10：matchLocale 4、htmlLang 1、
+  目录结构 2、回退 1、active locale 2）；`pnpm typecheck`、lint 干净。
+- 浏览器冒烟（:3450 + 真实浏览器，一次性账号）：Auto + zh-CN 浏览器 → 登录页即
+  中文；设置页选「简体中文」保存 → `document.documentElement.lang="zh-CN"`、界面
+  全中文、刷新保持、下拉回显 zh_cn；对照实验：选 English 保存后界面整体切英文
+  （浏览器仍 zh-CN）→ 证明 profile 驱动；无 hydration mismatch；SES 3 条预期
+  warn 不变。
+- 观察/遗留：环境里既有的 error 级 React 警告（空串传给 img 的 src，每页 1 条，
+  与本批无关，未处理）；通知文案在创建时定语言，切换不重译（与 CLJS 一致）。
+- 下一步：F7.4 完整 API 上下文（阻塞于 F9）；i18n 如需更多语言，po 已具备，加
+  `locales` 表项后重跑生成器即可。
+
+### 7.23 本轮（2026-10-13，第二十二批：F9.1 数据基础与只读画布，进行中）
+
+- 动机：F7.4（完整 Plugin API 上下文）阻塞于 F9 workspace。F9 最高风险，按切片
+  推进：F9.1 = 只读画布切片（数据层 + 视口数学 + WASM 直绘 + /workspace 路由），
+  不依赖 F8，不含 Web Worker / 协作光标 / 编辑交互；f94a–f94f 已完成，f94g–f94j
+  收尾中。
+- 交付（已完成部分，均含代码注释登记偏差）：
+  - `lib/file-data.ts`（85 行）：自 viewer 抽出共享件（supportedFeatures、ZERO_UUID、
+    FragmentFetcher、resolvePointerMap、parseUuid、resolveFileData）；`lib/viewer.ts`
+    改 re-export。
+  - `lib/workspace.ts`（154 行）：`cmd("get-file")`（::rpc/auth）+ get-file-fragment
+    解析 + `d/removem` 顶层 pointer 清理 + `?file-id/page-id/team-id` 解析；未知
+    page-id 回退首页（CLJS 该场景重定向裸 URL，登记为偏差）。
+  - `lib/workspace-viewport.ts`（412 行）：纯数学（视口三支适配 initialViewport、
+    zoomBy/scrollBy/resizeViewport、wheelZoomFactor/wheelScrollDeltas/normalizeWheel
+    ——移植 data/workspace 的视口与缩放、actions.cljs 滚轮语义、Facebook 归一化）。
+  - `lib/workspace-store.ts`（92 行）：模块级 store（fileId/file/pageId/status +
+    视口切片 zoom/vbox/vport），React 侧 useSyncExternalStore 绑定；F7.4 的
+    workspace 代理将直接读它。
+  - `lib/render-wasm/workspace-data.ts`（115 行）：wasm 侧加载链
+    （`cmdRaw("get-file")` → `decode-str` → resolveBundlePointers → 顶层 pointer
+    重建式移除），WeakMap 缓存与失败驱逐。
+  - `lib/render-wasm/workspace-render.ts`（118 行）：$APP 直调封装
+    （init-canvas-context、resize-canvas! arity 2、initialize-viewport、
+    set-view-box、clear-canvas hard teardown）。
+  - `components/workspace-wasm-canvas.tsx`（393 行）：加载链（try-init 一加三重试
+    200ms）、滚轮累积器（schedule-zoom!/schedule-scroll! 语义，单 rAF flush）、
+    ResizeObserver（= [vport] effect）、延迟一任务的卸载 teardown（StrictMode
+    安全）、data-rendered/data-shapes 完成标记。
+- 关键探测（`public/js/shared.js` 静态分析，探测脚本已清理）：`set_view_box` 是
+  $APP 成员且自带完整交互链（view-interaction-start!、from-cache 预览、debounced
+  finalize 100ms、渐进续帧）→ shell 直接调用不复刻；`render_finish`/
+  `resize_viewbox` module-private，`view_interaction_end!` /
+  `stop_progressive_render!` / `set_canvas_background` 被内联消除；
+  `internal_frame_type` 为模块闭包变量不可写回。编译版 `cljs.core/get` 对 plain JS
+  对象返回 null → vbox 一律以 CLJS PersistentArrayMap 传递（viewer F6.5 传 JS
+  `{x,y}` 的潜在隐患已登记，F9.1 冒烟时核对）。
+- 与 CLJS 的有意偏差（代码注释均登记）：不做 page-transition 模糊过渡 / focus
+  mode / dpr watcher / position-data pass / web-unavailable modal；滚轮监听绑
+  canvas 故 inside-viewport? 恒真、无条件 prevent-default；JS 链与 wasm 链为两
+  次 get-file 读同一 rev；卸载 clear-canvas（hard）延迟一任务以便 StrictMode
+  重放可取消（clear-canvas 注释：上下文丢失后立即重建在部分浏览器会失败）。
+- 验证：`pnpm typecheck`、`pnpm lint` 干净（f94f 后）；单测与浏览器冒烟待
+  f94h/f94i。
+- 进行中：f94g `/workspace` 路由接管（替换 RouteStub）；f94h vitest 单测 + 全量
+  检查；f94i 冒烟（打开文件、画布渲染、滚轮缩放）；f94j README 与本节定稿。
+- 下一步：F9.1 收尾后评估 F7.4（workspace 代理 + 完整 API 上下文）解锁。
 
 ---
 
