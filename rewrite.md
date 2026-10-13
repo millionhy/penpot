@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染完成，F6.5/F6.6 未开始） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions 完成，F6.6 收尾未开始） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
@@ -272,7 +272,10 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     （viewer-wasm-viewport）、带 padding 的 bounds（calculate-size over
     gsb/object-bounds）、path-data reader、position pass、thumbnails 位图
     （frame-render 重建 render-to-canvas）。
-  - **F6.5 interactions（未开始）**：hotspots 命中、flows 菜单、overlay 动画。
+  - **F6.5 interactions（完成）**：hotspots 命中层（SVG rect 命中、pointer 事件与
+    after-delay）、flows/interactions 菜单（含 show-interactions 的 500 ms flash）、
+    overlay 开合与 go-to-frame/overlay 的 WAAPI 动画（六片，`a00e36adae`–
+    `dd072bd0bb`）。
   - **F6.6 收尾（未开始）**：`frame-preview` + `render-sprite` 路由、not-found
     异常页。
 - **F7 插件**：复用 SES 运行时与 Plugin API（`app.plugins`），保持 `plugins → mcp`（WS :4402）连线。
@@ -1004,6 +1007,42 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   干净；headless Chrome/CDP 端到端 11/11（board 位图 168×264、offscreen 拆除后
   viewport 重初始化并收敛、console 零错误）。
 - 下一步：F6.5 interactions（hotspots 命中、flows 菜单、overlay 动画）。
+
+### 7.17 本轮（2026-10-12，第十六批：F6.5 viewer interactions）
+
+- F6.5 六片完成并入库（6 个提交，`a00e36adae`–`dd072bd0bb`）：hotspots 命中、overlay
+  开合、flows/interactions 菜单、WAAPI 动画与 show-interactions 高亮全部落地。
+- 交互数学（`a00e36adae`）：`lib/viewer-interactions.ts`（649 行：click/mouse-press/
+  mouse-enter 与 overlay 的 activate / deactivate、`calculateDelta`/snap-to 对齐、
+  overlay 的位置与尺寸语义、prev-screen 的同源 referrer 守卫）与 652 行单测；
+  `lib/viewer.ts` 补 flows/auto-frame 助手（+36）。
+- hotspot 层（`14cd87bf68`）：`lib/render-wasm/viewer-shapes.ts`（per-shape path-data
+  reader 与对象准备，+262）与 `viewer-wasm-viewport.tsx` 的 SVG 命中层——hotspot rect
+  是唯一命中目标（pointer-events 恒 all）、pointer 事件经 stop-propagation 后执行
+  activate/deactivate，after-delay 交互按定时器触发；page.tsx 接线动作分发（+49）。
+- overlay 片（`a811cf8f33`）：blit 管线重构（`viewer-render.ts` 211 行、
+  `pass-common.ts` 167 行、`frame-render.ts` 瘦身）；`components/viewer-overlay.tsx`
+  （161 行：close-click-outside / background-overlay 遮罩、fixed-source 固定定位）与
+  `lib/viewer-overlays.ts`（开合列表 + 56 行单测）。
+- 动画（`5a7ea57170`）：`lib/viewer-animations.ts`（379 行：go-to-frame 三关键帧、
+  overlay 开合与反向动画、origin viewport 保持至 rewind）与 346 行单测；page.tsx
+  接线（+272）。
+- 菜单（`52384ee0dd`）：flows 菜单（`pageFlows`/`getFrameFlow`，pick 走 go-to-frame 的
+  index 导航）与 interactions 菜单（`interactions-mode` URL 参数，默认 show-on-click）；
+  菜单挂载门控（normalizedFileId，对应 CLJS 的 `(when index ...)`）与 pick 的
+  stop-propagation；`viewer.css` +75、en.ts +4。
+- 高亮与 flash（`dd072bd0bb`）：show-interactions 切片——菜单 pick 经
+  `showInteractionsFor` 映射（:show 保持）、show-on-click 模式的 window click 触发
+  500 ms flash（新点击重启、仅新 flash 取消挂起的定时，忠实 take-until）、flag 传给
+  orig/current/overlay 三个 viewport（ViewerOverlay 新增透传 prop）。
+- 与 CLJS 的有意偏差（代码注释均登记）：动画自 bounds 报告启动（CLJS 从解码页同步
+  开始）；overlay 尺寸取 onBounds 报告且 frame 从当前页解析（CLJS 预算尺寸、查全局
+  all-frames）；go-to-page 清空 overlay 列表（CLJS 留下不再解析的条目）。
+- 测试：vitest 743 例 / 31 文件（较 F6.4 的 676 增 67）；`pnpm typecheck`、lint 干净。
+- headless Chrome/CDP 端到端三轮冒烟全绿：三路动画（navigate/overlay/close）、
+  flows/interactions 菜单（tick 迁移、URL 持久、归一化回退）、show-interactions 高亮
+  （flash 500 ms 与重启、show 常亮、hide/on-click 关闭），console 零错误。
+- 下一步：F6.6 收尾——`frame-preview` + `render-sprite` 路由、not-found 异常页。
 
 ---
 
