@@ -1,10 +1,10 @@
 "use client";
 
 // Header of app.main.ui.viewer (F6.2): the sitemap nav zone, the section
-// button and the options zone (zoom widget, edit link, fullscreen). Not
-// migrated yet: the progress widget, the share button and the login link,
-// the comments/inspect mode buttons and their menus, and the flows /
-// interactions menus of header-options (F6.5).
+// button and the options zone (the flows / interactions menus, the zoom
+// widget, edit link, fullscreen). Not migrated yet: the progress widget,
+// the share button and the login link, the comments/inspect mode buttons
+// and their menus (F6.6).
 //
 // The dropdown is ported from app.main.ui.components.dropdown. The CLJS
 // relies on stop-propagation to keep the open dropdown from closing on a
@@ -28,7 +28,12 @@ import {
 } from "@/components/viewer-icons";
 import { tr } from "@/lib/i18n";
 import { isMacos, macShift, splitSc } from "@/lib/shortcuts";
-import { formatPercent } from "@/lib/viewer";
+import {
+  formatPercent,
+  getFrameFlow,
+  type InteractionsMode,
+  type ViewerFlow,
+} from "@/lib/viewer";
 
 interface DropdownProps {
   show: boolean;
@@ -210,6 +215,130 @@ function ZoomWidget({
   );
 }
 
+// The entries of the interactions menu, in the CLJS order, with the
+// translation key of each label.
+const INTERACTIONS_MODE_ITEMS: { mode: InteractionsMode; labelKey: string }[] = [
+  { mode: "hide", labelKey: "viewer.header.dont-show-interactions" },
+  { mode: "show", labelKey: "viewer.header.show-interactions" },
+  { mode: "show-on-click", labelKey: "viewer.header.show-interactions-on-click" },
+];
+
+interface FlowsMenuProps {
+  flows: ViewerFlow[];
+  frameId: string | null;
+  onSelectFlow: (flow: ViewerFlow) => void;
+}
+
+// flows-menu*: the play icon, the name of the current flow and the page
+// flows dropdown. The current entry starts at the flow of the shown frame
+// and follows the picks; a later frame change does not refresh it (the
+// CLJS useState initializer).
+function FlowsMenu({ flows, frameId, onSelectFlow }: FlowsMenuProps) {
+  const [currentFlow, setCurrentFlow] = useState<ViewerFlow | undefined>(() =>
+    getFrameFlow(flows, frameId),
+  );
+  const [open, setOpen] = useState(false);
+
+  const selectFlow = (flow: ViewerFlow) => {
+    setCurrentFlow(flow);
+    onSelectFlow(flow);
+  };
+
+  return (
+    <div className="pp-view-options" onClick={() => setOpen((value) => !value)}>
+      <span className="pp-menu-icon">
+        <PlayIcon />
+      </span>
+      <span className="pp-dropdown-title">{currentFlow?.name}</span>
+      <span className="pp-menu-icon-dropdown">
+        <ArrowIcon />
+      </span>
+      <Dropdown show={open} onClose={() => setOpen(false)}>
+        <ul className="pp-options-dropdown">
+          {flows.map((flow) => {
+            const selected = flow.id === currentFlow?.id;
+            return (
+              <li
+                key={"flow-" + flow.id}
+                className={
+                  selected ? "pp-dropdown-element pp-menu-selected" : "pp-dropdown-element"
+                }
+                onClick={() => selectFlow(flow)}
+              >
+                <span className="pp-label">{flow.name}</span>
+                {selected ? (
+                  <span className="pp-icon-check">
+                    <TickIcon />
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      </Dropdown>
+    </div>
+  );
+}
+
+interface InteractionsMenuProps {
+  mode: InteractionsMode;
+  onSelectMode: (mode: InteractionsMode) => void;
+}
+
+// interactions-menu*: the three interaction-visibility modes. A pick keeps
+// the dropdown open like the CLJS stop-propagation of select-mode; the
+// container ref reproduces it, since the App Router root listener cannot
+// be hidden from the document listeners of the dropdown (see the note at
+// the top).
+function InteractionsMenu({ mode, onSelectMode }: InteractionsMenuProps) {
+  const [open, setOpen] = useState(false);
+  const widgetRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div
+      ref={widgetRef}
+      className="pp-view-options"
+      onClick={() => setOpen((value) => !value)}
+    >
+      <span className="pp-dropdown-title">{tr("viewer.header.interactions")}</span>
+      <span className="pp-menu-icon-dropdown">
+        <ArrowIcon />
+      </span>
+      <Dropdown show={open} onClose={() => setOpen(false)} container={widgetRef}>
+        <ul className="pp-options-dropdown">
+          {INTERACTIONS_MODE_ITEMS.map((item) => {
+            const selected = mode === item.mode;
+            return (
+              <li
+                key={item.mode}
+                data-mode={item.mode}
+                className={
+                  selected ? "pp-dropdown-element pp-menu-selected" : "pp-dropdown-element"
+                }
+                onClick={(event) => {
+                  // select-mode stops the propagation: the trigger toggle
+                  // below does not close the menu on a pick (the CLJS
+                  // dom/stop-propagation), and the document listener of the
+                  // dropdown ignores the in-container click.
+                  event.stopPropagation();
+                  onSelectMode(item.mode);
+                }}
+              >
+                <span className="pp-label">{tr(item.labelKey)}</span>
+                {selected ? (
+                  <span className="pp-icon-check">
+                    <TickIcon />
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      </Dropdown>
+    </div>
+  );
+}
+
 export interface SitemapPage {
   id: string;
   name: string;
@@ -295,6 +424,9 @@ export interface ViewerHeaderProps {
   pageId: string | null;
   pages: SitemapPage[];
   frameName?: string;
+  flows: ViewerFlow[];
+  frameId: string | null;
+  interactionsMode: InteractionsMode;
   zoom: number;
   fullscreen: boolean;
   inTeam: boolean;
@@ -302,6 +434,8 @@ export interface ViewerHeaderProps {
   onGoToWorkspace: () => void;
   onGoToInteractions: () => void;
   onGoToPage: (pageId: string) => void;
+  onSelectFlow: (flow: ViewerFlow) => void;
+  onSelectInteractionsMode: (mode: InteractionsMode) => void;
   onToggleThumbnails: () => void;
   onCloseThumbnails: () => void;
   onIncreaseZoom: () => void;
@@ -319,6 +453,9 @@ export function ViewerHeader({
   pageId,
   pages,
   frameName,
+  flows,
+  frameId,
+  interactionsMode,
   zoom,
   fullscreen,
   inTeam,
@@ -326,6 +463,8 @@ export function ViewerHeader({
   onGoToWorkspace,
   onGoToInteractions,
   onGoToPage,
+  onSelectFlow,
+  onSelectInteractionsMode,
   onToggleThumbnails,
   onCloseThumbnails,
   onIncreaseZoom,
@@ -375,6 +514,10 @@ export function ViewerHeader({
         </button>
       </div>
       <div className="pp-options-zone">
+        {flows.length > 0 ? (
+          <FlowsMenu flows={flows} frameId={frameId} onSelectFlow={onSelectFlow} />
+        ) : null}
+        <InteractionsMenu mode={interactionsMode} onSelectMode={onSelectInteractionsMode} />
         <ZoomWidget
           zoom={zoom}
           onIncrease={onIncreaseZoom}

@@ -536,6 +536,14 @@ export function showInteractionsFor(mode: InteractionsMode): boolean {
   return mode === "show";
 }
 
+// The current interactions mode of the viewer: the URL parameter picks it,
+// an invalid or absent value falls back to the default of the local state.
+// A bad value marks no menu entry in the CLJS (it compares the raw
+// keyword), where the fallback picks show-on-click; a small deviation.
+export function resolveInteractionsMode(value: string | null): InteractionsMode {
+  return isInteractionsMode(value) ? value : "show-on-click";
+}
+
 // --- Local state ------------------------------------------------------------
 
 export interface ViewerLocalState {

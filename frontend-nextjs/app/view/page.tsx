@@ -99,11 +99,15 @@ import {
   fitZoom,
   frameIndexById,
   increaseZoom,
+  pageFlows,
   parseViewerQuery,
+  resolveInteractionsMode,
   shouldUpdateZoomQuery,
   viewerHref,
   viewerQueryToHrefParams,
+  type InteractionsMode,
   type ViewerBundle,
+  type ViewerFlow,
   type ViewerPage,
   type ViewerQueryParams,
   type ViewportSize,
@@ -215,8 +219,9 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // zoom-type changes, like the CLJS set-viewport-size).
   const viewportSizeRef = useRef<ViewportSize | null>(null);
   // bundle-fetched normalizes once per file; a back-button visit of an
-  // older URL must not be re-normalized.
-  const normalizedRef = useRef<string | null>(null);
+  // older URL must not be re-normalized. The mark doubles as the flows
+  // menu gate: the menu reads the shown frame once, at mount.
+  const [normalizedFileId, setNormalizedFileId] = useState<string | null>(null);
 
   // The containers the animations move (viewer-wrapper refs) and the open
   // overlay list as the action handlers see it (the CLJS handlers read the
@@ -282,6 +287,15 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   const page: ViewerPage | undefined = pageId !== null ? pages[pageId] : undefined;
 
   const frames = useMemo(() => page?.frames ?? [], [page]);
+  // The flows of the page for the flows menu of the header.
+  const flows = useMemo(() => (page !== undefined ? pageFlows(page) : []), [page]);
+  // The menu mounts only once the normalization has landed (the CLJS
+  // (when index ...) gate): its current-flow state reads the shown frame
+  // exactly once, and the pre-normalization index can point elsewhere.
+  const menuFlows = normalizedFileId === fileId ? flows : [];
+  // The interactions menu entry: the URL parameter picks it, an invalid or
+  // absent value falls back to the default (resolveInteractionsMode).
+  const interactionsMode: InteractionsMode = resolveInteractionsMode(query.interactionsMode);
   // refs/viewer-overlays as the viewport math consumes it (the frame ids).
   const overlaysIds = useMemo(() => overlays.map((overlay) => overlay.frameId), [overlays]);
   const displayIndex = query.index ?? (page !== undefined ? autoFrameIndex(page) : 0);
@@ -323,28 +337,34 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
 
   // bundle-fetched: pick the frame from frame-id / index / the first flow
   // and mirror it into the URL. The href rebuilds the full param set, so
-  // frame-id stays until a navigation drops it, like the CLJS assoc.
+  // frame-id stays until a navigation drops it, like the CLJS assoc. The
+  // file is marked normalized only from a render whose query carries the
+  // resolved index: the flows menu mounts on that mark, so its one-shot
+  // current-flow state never reads a pre-normalization frame.
   useEffect(() => {
-    if (data === null || normalizedRef.current === fileId) return;
-    normalizedRef.current = fileId;
+    if (data === null || normalizedFileId === fileId) return;
 
     const base = viewerQueryToHrefParams(query);
-    if (base === null) return;
-
-    let targetIndex: number;
-    if (query.frameId !== null) {
-      targetIndex = frameIndexById(frames, query.frameId);
-    } else if (query.index !== null) {
-      targetIndex = query.index;
-    } else {
-      targetIndex = page !== undefined ? autoFrameIndex(page) : 0;
+    if (base !== null) {
+      let targetIndex: number;
+      if (query.frameId !== null) {
+        targetIndex = frameIndexById(frames, query.frameId);
+      } else if (query.index !== null) {
+        targetIndex = query.index;
+      } else {
+        targetIndex = page !== undefined ? autoFrameIndex(page) : 0;
+      }
+      if (query.index !== targetIndex) {
+        const href = viewerHref({ ...base, index: targetIndex });
+        if (!sameSearch(href)) {
+          router.replace(href);
+          return;
+        }
+      }
     }
-    if (query.index === targetIndex) return;
 
-    const href = viewerHref({ ...base, index: targetIndex });
-    if (sameSearch(href)) return;
-    router.replace(href);
-  }, [data, fileId, query, frames, page, router]);
+    setNormalizedFileId(fileId);
+  }, [data, fileId, query, frames, page, router, normalizedFileId]);
 
   // viewer-content*: a section that is not allowed (the shell renders only
   // interactions) falls back to interactions.
@@ -491,6 +511,32 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     if (base === null) return;
     navigate(viewerHref({ ...base, section: "interactions" }));
   }, [query, navigate]);
+
+  // The flows menu pick: dv/go-to-frame (:starting-frame flow), which
+  // clears the open overlays and resolves the index with the (or index 0)
+  // fallback (frameIndexById lands on 0 for a frame that is not on the
+  // page).
+  const handleSelectFlow = useCallback(
+    (flow: ViewerFlow) => {
+      const base = viewerQueryToHrefParams(query);
+      if (base === null) return;
+      setOverlays([]);
+      navigate(viewerHref({ ...base, index: frameIndexById(frames, flow["starting-frame"]) }));
+    },
+    [query, frames, navigate],
+  );
+
+  // The interactions menu pick: dv/set-interactions-mode mirrors the mode
+  // into the URL (a push, like the CLJS rt/nav); the menu entry derives
+  // from the parameter, so it follows.
+  const handleSelectInteractionsMode = useCallback(
+    (mode: InteractionsMode) => {
+      const base = viewerQueryToHrefParams(query);
+      if (base === null) return;
+      navigate(viewerHref({ ...base, interactionsMode: mode }));
+    },
+    [query, navigate],
+  );
 
   // go-to-dashboard / go-to-workspace.
   const handleGoToDashboard = () => {
@@ -997,6 +1043,9 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
         pageId={pageId}
         pages={pageList}
         frameName={frame?.name}
+        flows={menuFlows}
+        frameId={frame?.id ?? null}
+        interactionsMode={interactionsMode}
         zoom={zoom}
         fullscreen={fullscreen}
         inTeam={inTeam}
@@ -1004,6 +1053,8 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
         onGoToWorkspace={handleGoToWorkspace}
         onGoToInteractions={handleGoToInteractions}
         onGoToPage={handleGoToPage}
+        onSelectFlow={handleSelectFlow}
+        onSelectInteractionsMode={handleSelectInteractionsMode}
         onToggleThumbnails={toggleThumbnails}
         onCloseThumbnails={closeThumbnails}
         onIncreaseZoom={handleIncreaseZoom}

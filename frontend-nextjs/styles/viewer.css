@@ -893,6 +893,81 @@
   z-index: 10; /* $z-index-10 */
 }
 
+/* OPTION MENUS (flows / interactions) */
+
+.pp-view-options {
+  /* interactions.scss .view-options */
+  align-items: center;
+  background-color: var(--color-background-tertiary); /* --input-background-color */
+  border-radius: var(--br-8);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  gap: var(--sp-xs);
+  height: var(--sz-32);
+  line-height: var(--lh-normal);
+  padding: var(--sp-s);
+  position: relative;
+}
+
+.pp-menu-icon,
+.pp-menu-icon-dropdown {
+  /* interactions.scss .icon / .icon-dropdown */
+  align-items: center;
+  display: flex;
+  height: var(--sz-16);
+  justify-content: center;
+  width: var(--sz-16);
+}
+
+.pp-menu-icon svg,
+.pp-menu-icon-dropdown svg {
+  /* %button-icon-small + --icon-foreground */
+  color: transparent;
+  fill: none;
+  height: var(--sz-12);
+  stroke: var(--color-foreground-secondary);
+  stroke-width: 1.33px;
+  width: var(--sz-12);
+}
+
+.pp-menu-icon-dropdown svg {
+  transform: rotate(90deg);
+}
+
+.pp-dropdown-title {
+  /* interactions.scss .dropdown-title */
+  color: var(--color-foreground-primary); /* --input-foreground-color-active */
+  flex-grow: 1;
+}
+
+.pp-options-dropdown {
+  /* interactions.scss .dropdown: %menu-dropdown with the header offsets
+     ($s-2 / $s-48) and the scroll guard. */
+  background-color: var(--color-background-tertiary); /* --menu-background-color */
+  border: var(--b-2) solid var(--color-background-quaternary); /* --panel-border-color */
+  border-radius: var(--br-8);
+  box-shadow: 0 0 var(--sp-m) 0 var(--color-shadow-dark); /* menu-shadow */
+  color: var(--color-foreground-primary); /* --title-foreground-color-hover */
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  margin: 0;
+  max-height: calc(100vh - 9.375rem); /* 3 * ($s-2 + $s-48) */
+  overflow: auto;
+  padding: var(--sz-6);
+  position: absolute;
+  right: 0.125rem; /* $s-2 */
+  top: calc(0.125rem + var(--sz-48)); /* $s-2 + $s-48 */
+  width: 17rem; /* $s-272 without a token */
+  z-index: var(--z-index-dropdown);
+}
+
+.pp-options-dropdown .pp-dropdown-element.pp-menu-selected .pp-label {
+  color: var(--color-foreground-primary); /* --input-foreground-color-active */
+}
+
 .pp-edit-btn,
 .pp-fullscreen-btn {
   /* %button-tertiary */

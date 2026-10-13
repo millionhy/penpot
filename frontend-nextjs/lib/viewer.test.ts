@@ -21,6 +21,7 @@ import {
   pageFlows,
   parseViewerQuery,
   resolveFileMedia,
+  resolveInteractionsMode,
   resolvePointerMap,
   resolveViewerFileData,
   shouldUpdateZoomQuery,
@@ -349,6 +350,14 @@ describe("interactions mode", () => {
     expect(showInteractionsFor("show")).toBe(true);
     expect(showInteractionsFor("hide")).toBe(false);
     expect(showInteractionsFor("show-on-click")).toBe(false);
+  });
+
+  it("resolves the URL parameter with the default fallback", () => {
+    expect(resolveInteractionsMode("hide")).toBe("hide");
+    expect(resolveInteractionsMode("show")).toBe("show");
+    expect(resolveInteractionsMode("show-on-click")).toBe("show-on-click");
+    expect(resolveInteractionsMode("bogus")).toBe("show-on-click");
+    expect(resolveInteractionsMode(null)).toBe("show-on-click");
   });
 });
 
