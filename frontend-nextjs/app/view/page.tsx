@@ -39,8 +39,17 @@
 //   open-overlay list (lib/viewer-overlays); the navigation events (prev /
 //   next / thumbnail pick / navigate / go-to-section) clear the list like
 //   the CLJS. go-to-page clears it too, where the CLJS leaves entries that
-//   no longer resolve. The close animations wait for f65f, and
-//   preserve-scroll is a no-op because the section does not scroll.
+//   no longer resolve. preserve-scroll is a no-op because the section does
+//   not scroll.
+// - The WAAPI animations (f65f) follow the :viewer-animations map of
+//   data/viewer.cljs: a navigation with an animation holds the frame being
+//   left, and the origin viewport renders below the current one until the
+//   rewind clears it. Both frames must have painted (their bounds arrive
+//   from the blit viewports), where the CLJS starts from the decoded page
+//   synchronously; a close overlay keeps its entry until the rewind
+//   finishes, and a toggle close inverts the animation. A navigation whose
+//   origin frame cannot resolve drops the pending entry instead of
+//   dereferencing a missing viewport like the CLJS would.
 // - Three registered shortcuts stay unbound (select-all, open-inspect,
 //   open-comments) so their native browser keys keep working; see
 //   lib/viewer-shortcuts.
@@ -63,8 +72,22 @@ import { tr } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 import { profileUpdateParams, updateProfile } from "@/lib/settings";
 import { createShortcutMatcher, customShortcutsFromProfile, isMacos } from "@/lib/shortcuts";
-import { type OverlaySpec, type ViewerAction } from "@/lib/viewer-interactions";
-import { closeOverlay, openOverlay, toggleOverlay } from "@/lib/viewer-overlays";
+import {
+  animatePlans,
+  findGoToFrame,
+  planCloseOverlay,
+  planGoToFrame,
+  planOpenOverlay,
+  type OverlayAnimationEntry,
+  type ViewerAnimationEntry,
+  type ViewerAnimations,
+} from "@/lib/viewer-animations";
+import {
+  invertDirection,
+  type OverlaySpec,
+  type ViewerAction,
+} from "@/lib/viewer-interactions";
+import { closeOverlay, openOverlay } from "@/lib/viewer-overlays";
 import {
   autoFrameIndex,
   buildViewerPages,
@@ -180,6 +203,12 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // dv/open-overlay / toggle-overlay / close-overlay: the open overlay
   // frames, in open order (the later entries stack above).
   const [overlays, setOverlays] = useState<OverlaySpec[]>([]);
+  // :viewer-animations: the pending navigation / overlay WAAPI animations,
+  // one per frame id (lib/viewer-animations).
+  const [animations, setAnimations] = useState<ViewerAnimations>({});
+  // The padded bounds of the origin viewport of a navigation animation; the
+  // selrect stands in until its first report (see handleOrigBounds).
+  const [origBounds, setOrigBounds] = useState<ViewerWasmBounds | null>(null);
 
   // The measured #viewer-section size: the zoom math input. A ref, not
   // state, because a resize only refreshes it (the recompute hangs off
@@ -188,6 +217,20 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // bundle-fetched normalizes once per file; a back-button visit of an
   // older URL must not be re-normalized.
   const normalizedRef = useRef<string | null>(null);
+
+  // The containers the animations move (viewer-wrapper refs) and the open
+  // overlay list as the action handlers see it (the CLJS handlers read the
+  // store at event time).
+  const currentViewportRef = useRef<HTMLDivElement | null>(null);
+  const origViewportRef = useRef<HTMLDivElement | null>(null);
+  const overlaysRef = useRef<OverlaySpec[]>(overlays);
+  useEffect(() => {
+    overlaysRef.current = overlays;
+  });
+  // The entries already playing, so a bounds or overlay change does not
+  // restart a run in flight.
+  const startedGoToFrameRef = useRef<ViewerAnimationEntry | null>(null);
+  const startedOverlaysRef = useRef(new Set<OverlayAnimationEntry>());
 
   // check-platform? :macos resolves after mount so the server render stays
   // stable, like the dashboard provider.
@@ -244,12 +287,34 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   const displayIndex = query.index ?? (page !== undefined ? autoFrameIndex(page) : 0);
   const frame = displayIndex >= 0 && displayIndex < frames.length ? frames[displayIndex] : undefined;
 
+  // The navigation animation in flight and the frame it left: the origin
+  // viewport renders below the current one while the entry is pending
+  // (viewer.cljs orig-frame).
+  const goToFrame = findGoToFrame(animations);
+  const origFrame =
+    goToFrame !== null ? frames.find((f) => f.id === goToFrame.origFrameId) : undefined;
+
+  // The padded bounds the blit viewports report, zoomed; the selrects stand
+  // in until the first report. The wrapper reserves the larger of the two
+  // during a navigation (calculate-wrapper).
+  const frameWidth = (wasmBounds?.baseWidth ?? frame?.selrect?.width ?? 0) * zoom;
+  const frameHeight = (wasmBounds?.baseHeight ?? frame?.selrect?.height ?? 0) * zoom;
+  const origWidth = (origBounds?.baseWidth ?? origFrame?.selrect?.width ?? 0) * zoom;
+  const origHeight = (origBounds?.baseHeight ?? origFrame?.selrect?.height ?? 0) * zoom;
+  const wrapperWidth = origFrame !== undefined ? Math.max(frameWidth, origWidth) : frameWidth;
+  const wrapperHeight = origFrame !== undefined ? Math.max(frameHeight, origHeight) : frameHeight;
+
   // Drop the reported bounds when the frame changes: they describe the
   // previous frame, and the wrapper would size from stale numbers while
   // the next one decodes.
   useEffect(() => {
     setWasmBounds(null);
   }, [frame?.id]);
+
+  // Same for the origin bounds of a navigation animation.
+  useEffect(() => {
+    setOrigBounds(null);
+  }, [origFrame?.id]);
 
   const permissions = (data?.permissions ?? {}) as Record<string, unknown>;
   const inTeam = permissions["in-team"] === true;
@@ -382,11 +447,14 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
 
   // select-prev-frame / select-next-frame / select-first-frame: the
   // navigation rebuilds the full param set (frame-id included, like the
-  // CLJS assoc) and the bounds guard the neighbours. The callbacks feed the
-  // shortcut matcher below, so they carry their state as dependencies.
+  // CLJS assoc) and the bounds guard the neighbours. The prev / next events
+  // also drop the pending animations and overlays; select-first-frame
+  // leaves both alone, like the CLJS. The callbacks feed the shortcut
+  // matcher below, so they carry their state as dependencies.
   const handlePrev = useCallback(() => {
     if (!canSelectPrev(displayIndex)) return;
     setOverlays([]);
+    setAnimations({});
     const base = viewerQueryToHrefParams(query);
     if (base === null) return;
     navigate(viewerHref({ ...base, index: displayIndex - 1 }));
@@ -395,6 +463,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   const handleNext = useCallback(() => {
     if (!canSelectNext(displayIndex, frames.length)) return;
     setOverlays([]);
+    setAnimations({});
     const base = viewerQueryToHrefParams(query);
     if (base === null) return;
     navigate(viewerHref({ ...base, index: displayIndex + 1 }));
@@ -485,6 +554,88 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     setWasmBounds(bounds);
   }, []);
 
+  const handleOrigBounds = useCallback((bounds: ViewerWasmBounds | null) => {
+    setOrigBounds(bounds);
+  }, []);
+
+  // The go-to-frame animation (the viewer.cljs effect): started once both
+  // the current and the origin viewports have reported bounds (both frames
+  // painted), then the plans move the containers; the finish clears the
+  // entry (dv/complete-animation).
+  useEffect(() => {
+    if (goToFrame === null) {
+      startedGoToFrameRef.current = null;
+      return;
+    }
+    if (startedGoToFrameRef.current === goToFrame) return;
+    if (origFrame === undefined) {
+      // The origin frame left the page (a cross-page jump mid-animation);
+      // drop the entry instead of dereferencing a missing viewport.
+      setAnimations({});
+      return;
+    }
+    if (wasmBounds === null || origBounds === null) return;
+    const currentViewport = currentViewportRef.current;
+    const origViewport = origViewportRef.current;
+    if (currentViewport === null || origViewport === null) return;
+    startedGoToFrameRef.current = goToFrame;
+    const currentSize = {
+      width: wasmBounds.baseWidth * zoom,
+      height: wasmBounds.baseHeight * zoom,
+    };
+    const origSize = {
+      width: origBounds.baseWidth * zoom,
+      height: origBounds.baseHeight * zoom,
+    };
+    const wrapperSize = {
+      width: Math.max(currentSize.width, origSize.width),
+      height: Math.max(currentSize.height, origSize.height),
+    };
+    const plans = planGoToFrame(goToFrame.animation, currentSize, origSize, wrapperSize);
+    animatePlans({ current: currentViewport, orig: origViewport }, plans, () =>
+      setAnimations({}),
+    );
+  }, [goToFrame, origFrame, wasmBounds, origBounds, zoom]);
+
+  // The overlay animations (the viewer.cljs effect): every pending open /
+  // close-overlay entry animates its rendered container; a finished close
+  // also drops the overlay (data/viewer.cljs close-overlay*). The entries
+  // already playing keep running across overlay / zoom changes.
+  useEffect(() => {
+    const pending = Object.values(animations).filter((entry) => entry.kind !== "go-to-frame");
+    for (const started of [...startedOverlaysRef.current]) {
+      if (!pending.includes(started)) startedOverlaysRef.current.delete(started);
+    }
+    for (const entry of pending) {
+      if (startedOverlaysRef.current.has(entry)) continue;
+      const element = document.getElementById("overlay-" + entry.overlayFrameId);
+      if (element === null) continue;
+      const overlay = overlaysRef.current.find((o) => o.frameId === entry.overlayFrameId);
+      if (overlay === undefined) continue;
+      startedOverlaysRef.current.add(entry);
+      // The overlay size is measured on the rendered container (its
+      // reported padded bounds, or the selrect stand-in).
+      const rect = element.getBoundingClientRect();
+      const overlaySize = { width: rect.width, height: rect.height };
+      const overlayPosition = {
+        x: overlay.position.x * zoom,
+        y: overlay.position.y * zoom,
+      };
+      const wrapperSize = { width: wrapperWidth, height: wrapperHeight };
+      const plans =
+        entry.kind === "open-overlay"
+          ? planOpenOverlay(entry.animation, overlaySize, overlayPosition, wrapperSize)
+          : planCloseOverlay(entry.animation, overlaySize, overlayPosition, wrapperSize);
+      const overlayFrameId = entry.overlayFrameId;
+      animatePlans({ overlay: element }, plans, () => {
+        setAnimations({});
+        if (entry.kind === "close-overlay") {
+          setOverlays((current) => closeOverlay(current, overlayFrameId));
+        }
+      });
+    }
+  }, [animations, zoom, wrapperWidth, wrapperHeight]);
+
   // click-on-screen: a click on the section itself toggles the forced
   // visibility of the controls. The attribute is flipped imperatively, so
   // it survives until the show-thumbnails state writes the attribute again
@@ -512,10 +663,12 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // The hotspot actions of the wasm viewport (the st/emit! calls of
   // shapes.cljs activate-interaction / deactivate-interaction). The
   // overlay branches drive the open list (dv/open-overlay and friends via
-  // lib/viewer-overlays). The prev-screen guard mirrors rt/nav-back-local:
-  // only a same-origin (or absent) referrer allows history.back(). The
-  // open-url window matches dom/open-new-window's default "_blank" +
-  // noopener,noreferrer.
+  // lib/viewer-overlays); with an animation the entry records the WAAPI
+  // rewind (data/viewer.cljs): a close defers its removal to the finished
+  // animation and a toggle close inverts the animation. The prev-screen
+  // guard mirrors rt/nav-back-local: only a same-origin (or absent)
+  // referrer allows history.back(). The open-url window matches
+  // dom/open-new-window's default "_blank" + noopener,noreferrer.
   const handleViewerAction = useCallback(
     (action: ViewerAction) => {
       switch (action.kind) {
@@ -524,19 +677,84 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
           if (base === null) return;
           const index = frameIndexById(frames, action.frameId);
           setOverlays([]);
+          // go-to-frame keys the entry by the frame being left, the index
+          // of the query before the navigation (data/viewer.cljs).
+          if (action.animation !== undefined && frame !== undefined) {
+            const animation = action.animation;
+            const origFrameId = frame.id;
+            setAnimations((current) => ({
+              ...current,
+              [origFrameId]: { kind: "go-to-frame", origFrameId, animation },
+            }));
+          }
           navigate(viewerHref({ ...base, index: index >= 0 ? index : 0 }));
           return;
         }
         case "open-overlay": {
-          setOverlays((current) => openOverlay(current, action.overlay));
+          // The functional update keeps every action of one pointer event
+          // (a shape can carry several interactions); the ref only decides
+          // whether an animation is worth recording (an already open frame
+          // is a no-op in the CLJS).
+          const overlay = action.overlay;
+          setOverlays((current) => openOverlay(current, overlay));
+          if (
+            overlay.animation !== undefined &&
+            !overlaysRef.current.some((o) => o.frameId === overlay.frameId)
+          ) {
+            const animation = overlay.animation;
+            const overlayFrameId = overlay.frameId;
+            setAnimations((current) => ({
+              ...current,
+              [overlayFrameId]: { kind: "open-overlay", overlayFrameId, animation },
+            }));
+          }
           return;
         }
         case "toggle-overlay": {
-          setOverlays((current) => toggleOverlay(current, action.overlay));
+          const overlay = action.overlay;
+          const wasOpen = overlaysRef.current.some((o) => o.frameId === overlay.frameId);
+          if (!wasOpen) {
+            setOverlays((current) => openOverlay(current, overlay));
+            if (overlay.animation !== undefined) {
+              const animation = overlay.animation;
+              const overlayFrameId = overlay.frameId;
+              setAnimations((current) => ({
+                ...current,
+                [overlayFrameId]: { kind: "open-overlay", overlayFrameId, animation },
+              }));
+            }
+          } else {
+            // The toggle close inverts the animation of the interaction
+            // (the rewind of the open); without one the overlay drops at
+            // once (data/viewer.cljs toggle-overlay).
+            const inverted = invertDirection(overlay.animation);
+            if (inverted === undefined) {
+              setOverlays((current) => closeOverlay(current, overlay.frameId));
+            } else {
+              const animation = inverted;
+              const overlayFrameId = overlay.frameId;
+              setAnimations((current) => ({
+                ...current,
+                [overlayFrameId]: { kind: "close-overlay", overlayFrameId, animation },
+              }));
+            }
+          }
           return;
         }
         case "close-overlay": {
-          setOverlays((current) => closeOverlay(current, action.frameId));
+          // An animated close holds the overlay until the rewind finishes
+          // (data/viewer.cljs close-overlay*); without one the removal is
+          // immediate.
+          if (action.animation !== undefined) {
+            const animation = action.animation;
+            const overlayFrameId = action.frameId;
+            setAnimations((current) => ({
+              ...current,
+              [overlayFrameId]: { kind: "close-overlay", overlayFrameId, animation },
+            }));
+          } else {
+            setOverlays((current) => closeOverlay(current, action.frameId));
+          }
           return;
         }
         case "prev-screen": {
@@ -560,7 +778,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
           return;
       }
     },
-    [query, frames, navigate, router],
+    [query, frames, frame, navigate, router],
   );
 
   // toggle-zoom-style: fit -> fill, anything else -> fit.
@@ -661,8 +879,6 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
       </section>
     );
   } else {
-    const frameWidth = (wasmBounds?.baseWidth ?? frame.selrect?.width ?? 0) * zoom;
-    const frameHeight = (wasmBounds?.baseHeight ?? frame.selrect?.height ?? 0) * zoom;
     content = (
       <>
         <ViewerPagination
@@ -672,10 +888,32 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
           onNext={handleNext}
           onFirst={handleFirst}
         />
-        <div className="pp-viewer-wrapper" style={{ width: frameWidth, height: frameHeight }}>
+        <div className="pp-viewer-wrapper" style={{ width: wrapperWidth, height: wrapperHeight }}>
           <div className="pp-viewer-clipper">
+            {origFrame !== undefined ? (
+              // The origin viewport of a navigation animation: the frame
+              // being left, below the current one (viewer-wrapper).
+              <div
+                className="pp-viewport-container"
+                ref={origViewportRef}
+                style={{ width: origWidth, height: origHeight, position: "relative" }}
+              >
+                <ViewerWasmViewport
+                  fileId={fileId}
+                  shareId={shareId}
+                  pageId={page.id}
+                  frameId={origFrame.id}
+                  frameName={origFrame.name ?? ""}
+                  zoom={zoom}
+                  onBounds={handleOrigBounds}
+                  overlaysIds={overlaysIds}
+                  onAction={handleViewerAction}
+                />
+              </div>
+            ) : null}
             <div
               className="pp-viewport-container"
+              ref={currentViewportRef}
               style={{ width: frameWidth, height: frameHeight, position: "relative" }}
             >
               <ViewerWasmViewport
