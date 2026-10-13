@@ -45,3 +45,18 @@ describe("config.flags", () => {
     expect(config.isSaas).toBe(false);
   });
 });
+
+describe("config.plugins", () => {
+  // cf/plugins-list-uri: the plugin manager links to the penpot.app hub when
+  // the environment does not point it elsewhere (the penpotPluginsListURI
+  // global of a hosted deployment).
+  it("points the plugin manager at the penpot hub by default", () => {
+    expect(config.pluginsListUri).toBe("https://penpot.app/penpothub/plugins");
+  });
+
+  // cf/plugins-whitelist: hosts whose plugins skip the permissions
+  // disclaimer; unset means none.
+  it("starts with an empty plugins whitelist", () => {
+    expect(config.pluginsWhitelist).toEqual([]);
+  });
+});

@@ -27,6 +27,12 @@ export interface PenpotConfig {
   // build stamp; the shell has none, so it comes from the environment and the
   // menu hides the entry when it is unset.
   version: string | null;
+  // The plugin hub the plugin manager links to, the port of cf/plugins-list-uri
+  // (the penpotPluginsListURI global), which defaults to the penpot.app hub.
+  pluginsListUri: string;
+  // Hosts whose plugins skip the permissions disclaimer, the port of
+  // cf/plugins-whitelist (the penpotPluginsWhitelist global).
+  pluginsWhitelist: string[];
 }
 
 // Next.js only inlines `process.env.NEXT_PUBLIC_*` expressions that appear
@@ -41,6 +47,8 @@ const publicEnv: Record<string, string | undefined> = {
   NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI: process.env.NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI,
   NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI: process.env.NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI,
   NEXT_PUBLIC_PENPOT_VERSION: process.env.NEXT_PUBLIC_PENPOT_VERSION,
+  NEXT_PUBLIC_PENPOT_PLUGINS_LIST_URI: process.env.NEXT_PUBLIC_PENPOT_PLUGINS_LIST_URI,
+  NEXT_PUBLIC_PENPOT_PLUGINS_WHITELIST: process.env.NEXT_PUBLIC_PENPOT_PLUGINS_WHITELIST,
 };
 
 function readEnv(name: string, fallback: string): string {
@@ -127,6 +135,14 @@ export const config: PenpotConfig = {
   termsOfServiceUri: readOptionalEnv("NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI"),
   privacyPolicyUri: readOptionalEnv("NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI"),
   version: readOptionalEnv("NEXT_PUBLIC_PENPOT_VERSION"),
+  pluginsListUri: readEnv(
+    "NEXT_PUBLIC_PENPOT_PLUGINS_LIST_URI",
+    "https://penpot.app/penpothub/plugins",
+  ),
+  pluginsWhitelist: readEnv("NEXT_PUBLIC_PENPOT_PLUGINS_WHITELIST", "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter((host) => host.length > 0),
 };
 
 export function hasFlag(flag: string): boolean {

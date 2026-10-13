@@ -14,6 +14,9 @@
 // Still TODO(Phase-F, needed by F6/F9): the file-data write handlers used by
 // the workspace/viewer (points, matrices, change vectors) and "~#with-meta"
 // forms; port them together with the commands that carry them.
+//
+// F7.3: the plugin sandbox (SES) cannot survive the transit-js guid caches
+// on Date and Uint8Array; see the SES compatibility section below.
 
 import transit from "transit-js";
 
@@ -241,7 +244,59 @@ const readerOptions = {
 };
 
 const reader = transit.reader("json", readerOptions);
-const writer = transit.writer("json");
+
+// --- SES compatibility (plugin sandbox) ------------------------------------
+//
+// F7.3: the plugin sandbox repairs the JS intrinsics with SES
+// (repairIntrinsics in @penpot/plugins-runtime, run when the runtime module
+// evaluates) and it deletes every unrecognized own property of the
+// intrinsics, throwing when one resists deletion. Building the transit
+// writer registers its default handler table, and the registration tags
+// every constructor it meets with a `transit$guid$<uuid>` cache id — Date
+// and Uint8Array among them — storing it with a defineProperty call that
+// misses `configurable:true`. The sandbox always boots after the RPC layer,
+// so without the flag the repair would die on those two caches and the
+// runtime never initialize. The property name is minted inside transit-js
+// and is not exported, so the writer build runs under
+// withDeletableTransitGuids, which adds the missing flag to exactly that
+// property. The boot then calls resetTransitGuids right after the import
+// (see lib/plugin-runtime.ts): the repair has deleted the caches, and the
+// handler table of the previous writer keys on them, so the writer must be
+// rebuilt before the first plugin open hardens the intrinsics — a first
+// lazy re-add after that would throw on the frozen constructor.
+const TRANSIT_GUID_PREFIX = "transit$guid$";
+
+function withDeletableTransitGuids<T>(build: () => T): T {
+  const original = Object.defineProperty;
+  const guarded = (target: object, key: PropertyKey, attributes: PropertyDescriptor): object => {
+    if (
+      typeof target === "function" &&
+      typeof key === "string" &&
+      key.startsWith(TRANSIT_GUID_PREFIX)
+    ) {
+      attributes = { ...attributes, configurable: true };
+    }
+    return original(target, key, attributes);
+  };
+  Object.defineProperty = guarded as typeof Object.defineProperty;
+  try {
+    return build();
+  } finally {
+    Object.defineProperty = original;
+  }
+}
+
+function buildJsonWriter() {
+  return withDeletableTransitGuids(() => transit.writer("json"));
+}
+
+let writer = buildJsonWriter();
+
+// Rebuilds the guid caches and swaps the shared writer, whose handler table
+// no longer matches the cache ids the sandbox deleted.
+export function resetTransitGuids(): void {
+  writer = buildJsonWriter();
+}
 
 // t/decode-str in app.common.transit builds a fresh reader for every call.
 // The nested decode of the objects-map shapes must do the same: the shared

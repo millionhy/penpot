@@ -20,18 +20,28 @@
 // - nitrate/subscription blocks (profile-section*, F5.7b) render above this
 //   menu in components/subscription.tsx; comments-section is still out of the
 //   shell.
+// - The plugins-manager entry (F7.2, F7.3) opens PluginManagementDialog from
+//   here and passes the editor permission of the team (the CLJS reads it
+//   from the workspace permissions); the CLJS menus live in the workspace
+//   (main_menu.cljs / top_toolbar.cljs) and the shell has none until F9. The
+//   entry follows the same active-feature? "plugins/runtime" guard the
+//   workspace menu uses.
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { runCheckForUpdates } from "@/components/check-updates";
 import { useModal } from "@/components/modal";
+import { PluginManagementDialog } from "@/components/plugin-management";
 import { logout } from "@/lib/auth";
 import { generateAvatar } from "@/lib/avatars";
 import { config } from "@/lib/config";
+import { canEdit } from "@/lib/dashboard";
+import { useDashboard } from "@/lib/dashboard-context";
 import { tr } from "@/lib/i18n";
 import { routePaths } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { feedbackVisible, profilePhotoUrl, type RuntimeProfile } from "@/lib/settings";
+import { globalEnabledFeatures } from "@/lib/team";
 
 type SubMenuName = "help-learning" | "community-contributions" | "about-penpot";
 
@@ -57,8 +67,15 @@ function communityEntries(): ExternalEntry[] {
 
 export function DashboardProfileMenu() {
   const { profile, refresh } = useSession();
+  const { team } = useDashboard();
   const router = useRouter();
   const runtime = (profile ?? null) as RuntimeProfile | null;
+
+  // features/active-feature? "plugins/runtime": the global default feature
+  // set union the team features (the shell has no runtime toggles yet).
+  const pluginsEnabled =
+    globalEnabledFeatures().includes("plugins/runtime") ||
+    (team?.features?.includes("plugins/runtime") ?? false);
 
   const [open, setOpen] = useState(false);
   const [subMenu, setSubMenu] = useState<SubMenuName | null>(null);
@@ -158,6 +175,22 @@ export function DashboardProfileMenu() {
               {tr("labels.your-account")}
             </button>
           </li>
+          {pluginsEnabled ? (
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                className="pp-profile-dropdown-item"
+                data-testid="plugins-manager"
+                onClick={() => {
+                  setOpen(false);
+                  modal.open(<PluginManagementDialog userCanEdit={canEdit(team)} />);
+                }}
+              >
+                {tr("workspace.plugins.menu.plugins-manager")}
+              </button>
+            </li>
+          ) : null}
           <li className="pp-profile-separator" role="separator" />
 
           <li role="none">

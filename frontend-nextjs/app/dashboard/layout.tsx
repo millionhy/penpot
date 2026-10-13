@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AuthGuard } from "@/components/auth-guard";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import { PluginInstallFlow } from "@/components/plugin-install-flow";
 import { ProgressProvider } from "@/components/progress-notification";
 import { singleSelectedFileId, workspaceHref } from "@/lib/dashboard";
 import { DashboardProvider, useDashboard } from "@/lib/dashboard-context";
@@ -41,7 +42,11 @@ function DashboardFrame({ children }: { children: React.ReactNode }) {
   }, [selection, teamId, router]);
 
   return (
-    <main className="pp-dashboard pp-dashboard-main" key={teamId ?? ""} data-testid="dashboard">
+    <>
+      {/* use-plugin-register in dashboard*: consumes ?plugin= (or the tab
+          session) once the default project resolves (F7.2). */}
+      <PluginInstallFlow />
+      <main className="pp-dashboard pp-dashboard-main" key={teamId ?? ""} data-testid="dashboard">
       <DashboardSidebar />
       {/* dashboard-content* clears the file selection on any click that
           bubbles up from the section (grid items stop propagation when the
@@ -53,6 +58,7 @@ function DashboardFrame({ children }: { children: React.ReactNode }) {
         <ProgressProvider>{children}</ProgressProvider>
       </div>
     </main>
+    </>
   );
 }
 

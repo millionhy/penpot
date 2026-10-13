@@ -7,8 +7,13 @@
 //
 // The CLJS app sets the class on <body>; the shell sets it on <html> so the
 // server-rendered markup already carries a theme and there is no flash.
+//
+// Every apply also feeds the plugins runtime (F7.3): the themechange event
+// of the plugin API fires from here, with the dedupe living in the
+// plugin-context module.
 
 import { useEffect } from "react";
+import { notifyPluginThemeChange } from "@/lib/plugin-context";
 import { useSession } from "@/lib/session";
 import { resolveTheme, themeClass, type ResolvedTheme } from "@/lib/settings";
 
@@ -20,10 +25,11 @@ function systemTheme(): ResolvedTheme {
 }
 
 function applyTheme(profileTheme: string | undefined) {
-  const next = themeClass(resolveTheme(profileTheme, systemTheme()));
+  const resolved = resolveTheme(profileTheme, systemTheme());
   const root = document.documentElement;
   root.classList.remove("light", "default");
-  root.classList.add(next);
+  root.classList.add(themeClass(resolved));
+  notifyPluginThemeChange(resolved);
 }
 
 export function ThemeManager() {

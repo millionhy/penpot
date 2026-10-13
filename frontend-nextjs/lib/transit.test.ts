@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import transit from "transit-js";
-import { decodeTransit, encodeTransit, isPathData, PathData } from "@/lib/transit";
+import { decodeTransit, encodeTransit, isPathData, PathData, resetTransitGuids } from "@/lib/transit";
 
 // The fdata objects-map ("penpot/objects-map/v2",
 // common/src/app/common/types/objects_map.cljc) arrives as a map of
@@ -167,5 +167,44 @@ describe("decodeTransit penpot/path-data", () => {
     const result = decodeTransit('["~#penpot/path-data","M0,0L1,1"]');
     expect(result).toBe("M0,0L1,1");
     expect(isPathData(result)).toBe(false);
+  });
+});
+
+// The plugin sandbox repairs the JS intrinsics with SES and deletes every
+// unrecognized own property of them, throwing when one resists deletion.
+// The transit guid caches on Date and Uint8Array must therefore stay
+// deletable, and the shared writer must be rebuilt after the sandbox import
+// deleted the cache ids its handler table keys on (see the SES section in
+// lib/transit). Freezing the constructors (hardenIntrinsics) is not
+// exercised here: Object.freeze cannot be undone and the suite shares the
+// realm.
+describe("SES-compatible transit guids", () => {
+  function guidNames(target: object): string[] {
+    return Object.getOwnPropertyNames(target).filter((name) =>
+      name.startsWith("transit$guid$"),
+    );
+  }
+
+  it("stores the guid caches of Date and Uint8Array configurable", () => {
+    for (const target of [Date, Uint8Array]) {
+      const names = guidNames(target);
+      expect(names.length).toBeGreaterThan(0);
+      for (const name of names) {
+        expect(Object.getOwnPropertyDescriptor(target, name)?.configurable).toBe(true);
+      }
+    }
+  });
+
+  it("rebuilds the caches and the writer after the sandbox deleted them", () => {
+    for (const target of [Date, Uint8Array]) {
+      for (const name of guidNames(target)) Reflect.deleteProperty(target, name);
+    }
+    expect(guidNames(Date)).toEqual([]);
+
+    resetTransitGuids();
+
+    expect(guidNames(Date).length).toBeGreaterThan(0);
+    expect(encodeTransit(new Date(86400000))).toBe("[\"~#'\",\"~m86400000\"]");
+    expect(encodeTransit(new Uint8Array([1, 2, 3]))).toBe("[\"~#'\",\"~bAQID\"]");
   });
 });
