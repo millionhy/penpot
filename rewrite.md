@@ -42,7 +42,7 @@
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | 🔧 | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；切成 F7.1–F7.4 四片（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入完成；F7.4 完整 API 上下文依赖 F9），见下与第 4 节 |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布进行中（f94a–f94f 完成，见 7.23）；Web Worker + 协作光标等留 F8 后 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布完成（f94a–f94j，见 7.23）；Web Worker + 协作光标等留 F8 后 |
 
 ### 阶段 B：backend-rust（Rust + axum，受门禁）
 
@@ -328,7 +328,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1 只读画布进行中)
+阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1 只读画布完成)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -1221,13 +1221,12 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - 下一步：F7.4 完整 API 上下文（阻塞于 F9）；i18n 如需更多语言，po 已具备，加
   `locales` 表项后重跑生成器即可。
 
-### 7.23 本轮（2026-10-13，第二十二批：F9.1 数据基础与只读画布，进行中）
+### 7.23 本轮（2026-10-13，第二十二批：F9.1 数据基础与只读画布）
 
 - 动机：F7.4（完整 Plugin API 上下文）阻塞于 F9 workspace。F9 最高风险，按切片
   推进：F9.1 = 只读画布切片（数据层 + 视口数学 + WASM 直绘 + /workspace 路由），
-  不依赖 F8，不含 Web Worker / 协作光标 / 编辑交互；f94a–f94f 已完成，f94g–f94j
-  收尾中。
-- 交付（已完成部分，均含代码注释登记偏差）：
+  不依赖 F8，不含 Web Worker / 协作光标 / 编辑交互；f94a–f94j 全部完成。
+- 交付（均含代码注释登记偏差）：
   - `lib/file-data.ts`（85 行）：自 viewer 抽出共享件（supportedFeatures、ZERO_UUID、
     FragmentFetcher、resolvePointerMap、parseUuid、resolveFileData）；`lib/viewer.ts`
     改 re-export。
@@ -1237,19 +1236,29 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   - `lib/workspace-viewport.ts`（412 行）：纯数学（视口三支适配 initialViewport、
     zoomBy/scrollBy/resizeViewport、wheelZoomFactor/wheelScrollDeltas/normalizeWheel
     ——移植 data/workspace 的视口与缩放、actions.cljs 滚轮语义、Facebook 归一化）。
-  - `lib/workspace-store.ts`（92 行）：模块级 store（fileId/file/pageId/status +
+  - `lib/workspace-store.ts`（95 行）：模块级 store（fileId/file/pageId/status +
     视口切片 zoom/vbox/vport），React 侧 useSyncExternalStore 绑定；F7.4 的
     workspace 代理将直接读它。
-  - `lib/render-wasm/workspace-data.ts`（115 行）：wasm 侧加载链
+  - `lib/render-wasm/workspace-data.ts`（114 行）：wasm 侧加载链
     （`cmdRaw("get-file")` → `decode-str` → resolveBundlePointers → 顶层 pointer
     重建式移除），WeakMap 缓存与失败驱逐。
-  - `lib/render-wasm/workspace-render.ts`（118 行）：$APP 直调封装
+  - `lib/render-wasm/workspace-render.ts`（117 行）：$APP 直调封装
     （init-canvas-context、resize-canvas! arity 2、initialize-viewport、
     set-view-box、clear-canvas hard teardown）。
+  - 配套小改：interop 的 KEY 增 setViewBox（$app$ 成员，探测核对）；values 的
+    supportedFeatures 引用改到 file-data（随抽出）。
   - `components/workspace-wasm-canvas.tsx`（393 行）：加载链（try-init 一加三重试
     200ms）、滚轮累积器（schedule-zoom!/schedule-scroll! 语义，单 rAF flush）、
     ResizeObserver（= [vport] effect）、延迟一任务的卸载 teardown（StrictMode
     安全）、data-rendered/data-shapes 完成标记。
+  - `components/penpot-loader.tsx`（30 行，自 view 页抽出共享）+ `app/workspace/
+    page.tsx`（155 行）：`/workspace` 接管路由（替换 RouteStub）——AuthGuard >
+    QueryParams > WorkspaceRoute：useSyncExternalStore 绑 store、同 fileId 只
+    重解析、卸载 reset、`title.workspace` 标题；加载/未就绪/异常三分支
+    （PenpotLoader / ExceptionPage）；`styles/workspace.css` 经 globals.css 接入；
+    store 的 `error` 用 `unknown`（可能承载非 RpcError 异常，页内再收窄）；view
+    页改用共享 loader（+3/-29）；词条新增 `title.workspace`（en/zh_cn/zh_hant
+    各 +1 条）。
 - 关键探测（`public/js/shared.js` 静态分析，探测脚本已清理）：`set_view_box` 是
   $APP 成员且自带完整交互链（view-interaction-start!、from-cache 预览、debounced
   finalize 100ms、渐进续帧）→ shell 直接调用不复刻；`render_finish`/
@@ -1257,17 +1266,32 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   `stop_progressive_render!` / `set_canvas_background` 被内联消除；
   `internal_frame_type` 为模块闭包变量不可写回。编译版 `cljs.core/get` 对 plain JS
   对象返回 null → vbox 一律以 CLJS PersistentArrayMap 传递（viewer F6.5 传 JS
-  `{x,y}` 的潜在隐患已登记，F9.1 冒烟时核对）。
+  `{x,y}` 的潜在隐患已登记，F9.1 冒烟核对通过——见下）。
 - 与 CLJS 的有意偏差（代码注释均登记）：不做 page-transition 模糊过渡 / focus
   mode / dpr watcher / position-data pass / web-unavailable modal；滚轮监听绑
   canvas 故 inside-viewport? 恒真、无条件 prevent-default；JS 链与 wasm 链为两
   次 get-file 读同一 rev；卸载 clear-canvas（hard）延迟一任务以便 StrictMode
   重放可取消（clear-canvas 注释：上下文丢失后立即重建在部分浏览器会失败）。
-- 验证：`pnpm typecheck`、`pnpm lint` 干净（f94f 后）；单测与浏览器冒烟待
-  f94h/f94i。
-- 进行中：f94g `/workspace` 路由接管（替换 RouteStub）；f94h vitest 单测 + 全量
-  检查；f94i 冒烟（打开文件、画布渲染、滚轮缩放）；f94j README 与本节定稿。
-- 下一步：F9.1 收尾后评估 F7.4（workspace 代理 + 完整 API 上下文）解锁。
+- 验证：vitest 40 文件 935 例全过（较上批 881 增 54：workspace-viewport 35、
+  workspace 11、workspace-store 8）；`pnpm typecheck`、`pnpm lint` 干净。
+- 浏览器冒烟（:3450 + 真实浏览器，一次性账号）：注册新账号 → dashboard 模板
+  「UI mockup example」导入为文件「Plants-app」→ 打开 `/workspace?team-id=…&`
+  `file-id=…`：canvas 就位并到达完成态（data-shapes / data-rendered 均 true，
+  渐进渲染完成事件送达）；ctrl+滚轮放大：rendered 复位后回 true、144 单元
+  像素指纹 90 个变化（亮度差 34.7）；普通滚轮平移：46 个变化（差 13.1）。
+  vbox 以 PersistentArrayMap 传递的编组核对通过——F6.5 登记的「plain JS
+  `{x,y}` 使编译版 `cljs.core/get` 返回 null」隐患在本切片不复现。
+- 标题排查（冒烟首轮曾观察到 `document.title="Penpot"` 疑为偏差）：探针实验
+  （主标签硬刷新 + iframe 补偿、手动改标题后再交互）证明加载时间线恒为 SSR
+  的 "Penpot" → 1–2s 内切到 "Plants-app - Penpot" 且不回退、重渲染不覆盖；
+  首轮观察是后台标签 rAF 冻结会话的遗留态，实现无缺陷。
+- 字体 404 修复：冒烟 console 的两条错来自 `/internal/gfonts/font/…` 404——dev
+  下 Next 未反代 `/internal/*`（生产由 nginx-external-locations.conf 转发
+  fonts.gstatic.com）。`next.config.mjs` 增 `/internal/:path*` →
+  `PENPOT_ASSETS_ORIGIN` 的 rewrite；临时 :3451 实例实测 200（191016 字节）
+  后清理，用户 :3450 实例未动、重启后生效。
+- 下一步：评估 F7.4（workspace 代理 + 完整 API 上下文）解锁；画布编辑交互、
+  Web Worker、协作光标留 F8 后切片。
 
 ---
 
