@@ -12,6 +12,7 @@ import {
   MIN_ZOOM,
   adjustToViewport,
   clampZoom,
+  clientToWorld,
   initialViewport,
   joinRects,
   normalizeWheel,
@@ -303,6 +304,41 @@ describe("pointToViewport", () => {
         height: 600,
       }),
     ).toEqual({ x: 200, y: 150 });
+  });
+});
+
+describe("clientToWorld", () => {
+  it("maps client coordinates to the world box (the F9.2 alias)", () => {
+    expect(
+      clientToWorld({ x: 500, y: 400 }, { x: 100, y: 100 }, 2, {
+        x: 0,
+        y: 0,
+        width: 800,
+        height: 600,
+      }),
+    ).toEqual({ x: 200, y: 150 });
+  });
+
+  it("adds the vbox origin on an unzoomed canvas", () => {
+    expect(
+      clientToWorld({ x: 10, y: 20 }, { x: 0, y: 0 }, 1, {
+        x: 100,
+        y: 50,
+        width: 800,
+        height: 600,
+      }),
+    ).toEqual({ x: 110, y: 70 });
+  });
+
+  it("combines the canvas offset, the zoom and the panned box", () => {
+    expect(
+      clientToWorld({ x: 300, y: 250 }, { x: 100, y: 50 }, 4, {
+        x: 20,
+        y: 10,
+        width: 800,
+        height: 600,
+      }),
+    ).toEqual({ x: 70, y: 60 });
   });
 });
 

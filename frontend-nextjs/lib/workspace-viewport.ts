@@ -329,6 +329,12 @@ export function pointToViewport(
   };
 }
 
+// clientToWorld (F9.2): the interaction layer's name for the conversion
+// above: `(client - canvasRect.origin) / zoom + vbox.origin`. The F9.1 port
+// already carries the formula as pointToViewport, so this is an alias
+// instead of a second copy (registered deviation from the T4 plan text).
+export const clientToWorld = pointToViewport;
+
 // schedule-scroll!: world-coordinate scroll deltas; on non-mac platforms
 // shift remaps the vertical wheel to horizontal panning (macOS sends
 // deltaX on its own).

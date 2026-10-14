@@ -56,7 +56,7 @@ frontend-nextjs/
 │   ├── dashboard/webhooks/ webhooks-page*（F5.5 列表/空态 hero + 新建/编辑弹窗）
 │   ├── dashboard/settings/ team-settings-page*（F5.5 团队照片/资料块/计数）
 │   ├── view/             Viewer（F6：数据层、导航与缩放、WASM 渲染、interactions）
-│   └── workspace/        只读画布（F9.1：数据层 + 视口数学 + WASM 直绘）
+│   └── workspace/        只读画布 + 交互与选择（F9.1 数据层/视口数学/WASM 直绘；F9.2 悬停/点选/框选/平移 + SVG 覆盖层）
 ├── lib/
 │   ├── rpc.ts            Transit RPC 传输层（对应 app.main.repo 的 send!/cmd!）
 │   ├── transit.ts        Transit 编解码（transit-js）
@@ -93,10 +93,12 @@ frontend-nextjs/
 │   ├── render-wasm/      WASM 直调层（F6/F9：bridge/interop + viewer/frame/workspace 渲染链）
 │   ├── file-data.ts      viewer/workspace 共享文件数据件（F9.1 抽出：features、指针解析、UUID）
 │   ├── workspace.ts      workspace 数据层（F9.1：get-file + 片段解析 + URL 参数）
-│   ├── workspace-viewport.ts 视口数学（F9.1：适配/缩放/平移/滚轮归一化）
-│   ├── workspace-store.ts workspace 模块 store（F9.1：file/page/视口切片）
+│   ├── workspace-viewport.ts 视口数学（F9.1：适配/缩放/平移/滚轮归一化；F9.2：clientToWorld）
+│   ├── workspace-index.ts    命中检测索引（F9.2：quadtree 移植 + overlap/选择矩形查询 + clip 索引）
+│   ├── workspace-selection.ts 选择与悬停语义（F9.2：hover 栈/remove-hover?、$APP 适配器、点击/框选）
+│   ├── workspace-store.ts workspace 模块 store（F9.1：file/page/视口切片；F9.2：选择/hover/框选）
 │   └── types.ts          api-types 生成类型的桥接与别名
-├── components/           视图组件（form/tr/notifications/modal/theme/locale-gate/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/import-dialog/export-dialog/templates-section/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification/team-header/team-invite/team-hero/team-form-modal/team-options-menu/team-leave-flows/leave-and-reassign-modal/webhook-modal/member-avatar/shortcut-keys/shortcut-row/restore-shortcuts-modal/import-shortcuts-diff-modal/workspace-wasm-canvas/penpot-loader…）
+├── components/           视图组件（form/tr/notifications/modal/theme/locale-gate/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/import-dialog/export-dialog/templates-section/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification/team-header/team-invite/team-hero/team-form-modal/team-options-menu/team-leave-flows/leave-and-reassign-modal/webhook-modal/member-avatar/shortcut-keys/shortcut-row/restore-shortcuts-modal/import-shortcuts-diff-modal/workspace-wasm-canvas/workspace-viewport-overlay/penpot-loader…）
 ├── styles/               tokens.css（ds 令牌）+ forms.css + auth.css + settings.css + dashboard.css + viewer.css + workspace.css + error.css
 ├── scripts/              extract-translations.mjs（词条抽取生成器）
 ├── public/               fonts/（worksans、vazirmatn、robotomono）+ images/
@@ -119,7 +121,7 @@ CLJS 用查询串路由（`?screen=<name>`）并保留一段 `#/...` 兼容期�
 | settings | `/settings/profile`、`/settings/password`、`/settings/notifications`、`/settings/options`、`/settings/feedback`、`/settings/shortcuts`、`/settings/subscriptions` | `app.main.ui.settings` | 已迁移（F5.6 补齐 shortcuts，F5.7 补齐 subscription；integrations 未建路由） |
 | dashboard | `/dashboard/recent`、`/dashboard/files`、`/dashboard/libraries`、`/dashboard/search`、`/dashboard/deleted`、`/dashboard/fonts`、`/dashboard/fonts/providers`、`/dashboard/members`、`/dashboard/invitations`、`/dashboard/webhooks`、`/dashboard/settings`（十一路由全部迁移） | `app.main.ui.dashboard` | F5 进行中（F5.1–F5.6 已迁移） |
 | viewer | `/view` | `app.main.ui.viewer` | 已迁移（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions） |
-| workspace | `/workspace` | `app.main.ui.workspace` | F9.1 已迁移（只读画布）；编辑交互随 F9 后续切片 |
+| workspace | `/workspace` | `app.main.ui.workspace` | F9.1/F9.2 已迁移（只读画布；悬停/点选/框选/平移 + SVG 覆盖层，零写入）；编辑交互随 F9 后续切片 |
 
 ## 表单、词条与通知（F3 引入、F4 扩展的公共设施）
 
@@ -250,11 +252,13 @@ WebSocket（`/ws/notifications`）不经 Next rewrite（rewrite 不转发 HTTP u
 ## 下一步
 
 见根目录 `rewrite.md` 的「阶段 F：frontend-nextjs」与第 7 节的批次记录。
-进度总览（2026-10-13）：F0–F4 完成；F5 dashboard 十一路由已迁移（F5.1–F5.6
+进度总览（2026-10-14）：F0–F4 完成；F5 dashboard 十一路由已迁移（F5.1–F5.6
 完整，F5.7 大半——organization/team switch 与 subscription/nitrate 已完成，
 comments、插件注册、WebSocket 实时刷新留后）；F6 viewer 完整（F6.1–F6.6：
 数据层、外壳、导航与缩放、WASM 渲染、interactions）；F7 插件 F7.1–F7.3 完成
 （数据层、安装与管理 UI、运行时接入），F7.4 完整 API 上下文阻塞于 F9；F9.1
-workspace 只读画布完成（数据层、视口数学、WASM 直绘、`/workspace` 路由）。
+workspace 只读画布与 F9.2 画布交互与选择完成（数据层、视口数学、WASM 直绘、
+悬停/点选/框选/空格与中键平移、静态手柄与 SVG 覆盖层、`/workspace` 路由；
+全程零写入）。
 接下来：评估 F7.4 解锁，推进 F8 WebSocket 协作客户端与 F9 后续切片（编辑
-交互、Web Worker、协作光标）。
+交互/移动、Web Worker、协作光标）。

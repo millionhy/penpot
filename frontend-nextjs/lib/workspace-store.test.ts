@@ -7,13 +7,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  clearSelection,
   getInitialWorkspaceState,
   getWorkspaceState,
   getWorkspaceViewport,
   resetWorkspaceState,
+  setAreaSelect,
+  setHover,
+  setHoverShapeId,
+  setHoverTopFrameId,
+  setSelection,
   setWorkspaceState,
   setWorkspaceViewport,
   subscribeWorkspace,
+  toggleSelection,
 } from "@/lib/workspace-store";
 
 beforeEach(() => {
@@ -28,6 +35,11 @@ describe("getInitialWorkspaceState", () => {
     expect(initial.file).toBeNull();
     expect(initial.pageId).toBeNull();
     expect(initial.error).toBeNull();
+    expect(initial.selection).toEqual([]);
+    expect(initial.hover).toBeNull();
+    expect(initial.hoverTopFrameId).toBeNull();
+    expect(initial.hoverShapeId).toBeNull();
+    expect(initial.areaSelect).toBeNull();
   });
 
   it("keeps its identity across writes", () => {
@@ -107,6 +119,64 @@ describe("viewport slice", () => {
   });
 });
 
+describe("selection slice", () => {
+  it("replaces the selection with the ordered unique ids", () => {
+    setSelection(["a", "b", "a"]);
+    expect(getWorkspaceState().selection).toEqual(["a", "b"]);
+  });
+
+  it("toggles a shape in and out keeping the order", () => {
+    setSelection(["a", "b"]);
+    toggleSelection("c", true);
+    expect(getWorkspaceState().selection).toEqual(["a", "b", "c"]);
+    toggleSelection("a", true);
+    expect(getWorkspaceState().selection).toEqual(["b", "c"]);
+  });
+
+  it("replaces the whole selection on a plain click", () => {
+    setSelection(["a", "b"]);
+    toggleSelection("c");
+    expect(getWorkspaceState().selection).toEqual(["c"]);
+  });
+
+  it("clears the selection", () => {
+    setSelection(["a"]);
+    clearSelection();
+    expect(getWorkspaceState().selection).toEqual([]);
+  });
+});
+
+describe("hover slice", () => {
+  it("normalizes an empty or null stack to null", () => {
+    setHover(["a", "b"]);
+    expect(getWorkspaceState().hover).toEqual(["a", "b"]);
+    setHover([]);
+    expect(getWorkspaceState().hover).toBeNull();
+    setHover(null);
+    expect(getWorkspaceState().hover).toBeNull();
+  });
+
+  it("stores the hover top frame and the area rect", () => {
+    setHoverTopFrameId("frame-1");
+    setAreaSelect({ x: 1, y: 2, width: 3, height: 4 });
+    const state = getWorkspaceState();
+    expect(state.hoverTopFrameId).toBe("frame-1");
+    expect(state.areaSelect).toEqual({ x: 1, y: 2, width: 3, height: 4 });
+
+    setHoverTopFrameId(null);
+    setAreaSelect(null);
+    expect(getWorkspaceState().hoverTopFrameId).toBeNull();
+    expect(getWorkspaceState().areaSelect).toBeNull();
+  });
+
+  it("stores the hover shape the outline draws", () => {
+    setHoverShapeId("shape-1");
+    expect(getWorkspaceState().hoverShapeId).toBe("shape-1");
+    setHoverShapeId(null);
+    expect(getWorkspaceState().hoverShapeId).toBeNull();
+  });
+});
+
 describe("resetWorkspaceState", () => {
   it("restores the initial slice and notifies the listeners", () => {
     const listener = vi.fn();
@@ -125,6 +195,11 @@ describe("resetWorkspaceState", () => {
     expect(state.fileId).toBeNull();
     expect(state.file).toBeNull();
     expect(state.pageId).toBeNull();
+    expect(state.selection).toEqual([]);
+    expect(state.hover).toBeNull();
+    expect(state.hoverTopFrameId).toBeNull();
+    expect(state.hoverShapeId).toBeNull();
+    expect(state.areaSelect).toBeNull();
     expect(getWorkspaceViewport()).toBeNull();
     expect(listener).toHaveBeenCalledTimes(3);
     unsub();

@@ -26,13 +26,12 @@
 //   the same steps live in drawBitmap, including the "#screenshot-<id>"
 //   marker the CLJS original sets on the canvas.
 
-import { arrayMap, call, keyword, KEY, type RendererApp } from "./interop";
+import { arrayMap, call, keyword, KEY, uuidToU32, type RendererApp } from "./interop";
 import {
   drawBitmap,
   enqueueRender,
   renderSyncShape,
   softClearOptions,
-  uuidToU32,
 } from "./pass-common";
 import { resetViewerSnapshot } from "./viewer-render";
 

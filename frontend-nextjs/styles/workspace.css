@@ -18,3 +18,37 @@
 .pp-workspace-message {
   height: 100vh;
 }
+
+/* The viewport overlay of the canvas (F9.2): an SVG in world coordinates
+   (viewBox = the store vbox) layered over the canvas, the role of the
+   svg.viewport-controls of viewport_wasm.cljs. It never takes pointer
+   events; the canvas below owns every gesture. Colors follow
+   viewport/selection.cljs: accent tertiary for the outline strokes,
+   static-white for the handle fill and the muted accent select for the
+   marquee fill (see the component header for the deviations). */
+.pp-workspace-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.pp-overlay-outline,
+.pp-overlay-bounds-box,
+.pp-overlay-hover {
+  fill: none;
+  stroke: var(--color-accent-tertiary);
+}
+
+.pp-overlay-handle {
+  fill: var(--color-static-white);
+  stroke: var(--color-accent-tertiary);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+.pp-overlay-area {
+  fill: var(--color-accent-select);
+  stroke: var(--color-accent-tertiary);
+}

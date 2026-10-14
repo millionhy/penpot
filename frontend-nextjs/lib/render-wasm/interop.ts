@@ -60,6 +60,7 @@ export const KEY = {
   val: "$cljs$core$val$$",
   assoc: "$cljs$core$assoc$$",
   str: "$cljs$core$str$$",
+  vec: "$cljs$core$vec$$",
   persistentArrayMap: "$cljs$core$PersistentArrayMap$$",
 
   // app.common
@@ -73,6 +74,55 @@ export const KEY = {
   // build) and switches on arguments.length, so call()'s direct fallback
   // runs the 1-arg form (verified at runtime by the F6.5 probe).
   transformStr: "$app$common$geom$shapes$transform_str$$",
+
+  // --- F9.2 probe: canvas-interaction reuse surface (public/js/shared.js) ---
+  // Available on $APP, registered below: app.common.types.shape-tree
+  // sort-z-index (arities 2 and 3; F9.2 calls arity 3 with the
+  // bottom-frames? options map) and top-nested-frame (arity 4), for hover
+  // ordering and frame resolution; app.common.files.helpers
+  // get-immediate-children (arity 2 and 3), get-children-ids,
+  // get-children-ids-with-self, get-parent-ids, frame-shape?, root-frame?,
+  // group-shape?, group-like-shape? (arity 1), mask-shape?, svg-raw-shape?,
+  // is-direct-child-of-root? (arity 1); app.common.types.component
+  // instance-head? and main-instance?. sort-z-index-objects stayed local
+  // (both arities) and is not registered.
+  // Inlined away (absent from $APP; ported to TypeScript instead):
+  // app.common.geom.shapes.intersect/overlaps?, rect-contains-shape? and
+  // overlaps-path? -> lib/workspace-index.ts; app.common.geom.shapes.text/
+  // shape->bounds -> same port (shape->rect IS on $APP, but it skips the
+  // shape transform and transform-matrix is inlined too, so the port
+  // applies the matrix itself); app.common.files.helpers/hidden-parent? and
+  // get-parents-with-self -> lib/workspace-selection.ts; app.common.files
+  // .indices/generate-child-all-parents-index and create-clip-index ->
+  // workspace-index.ts; app.render-wasm.api/intersect-position-in-shape ->
+  // replicated below through the internal module.
+  sortZIndexArity2:
+    "$app$common$types$shape_tree$sort_z_index$cljs$0core$0IFn$0_invoke$0arity$02$$",
+  sortZIndexArity3:
+    "$app$common$types$shape_tree$sort_z_index$cljs$0core$0IFn$0_invoke$0arity$03$$",
+  topNestedFrame:
+    "$app$common$types$shape_tree$top_nested_frame$cljs$0core$0IFn$0_invoke$0arity$04$$",
+  getImmediateChildrenArity2:
+    "$app$common$files$helpers$get_immediate_children$cljs$0core$0IFn$0_invoke$0arity$02$$",
+  getImmediateChildrenArity3:
+    "$app$common$files$helpers$get_immediate_children$cljs$0core$0IFn$0_invoke$0arity$03$$",
+  getChildrenIds: "$app$common$files$helpers$get_children_ids$$",
+  getChildrenIdsWithSelf: "$app$common$files$helpers$get_children_ids_with_self$$",
+  getParentIds: "$app$common$files$helpers$get_parent_ids$$",
+  frameShapeQmark: "$app$common$files$helpers$frame_shape_QMARK_$$",
+  rootFrameQmark: "$app$common$files$helpers$root_frame_QMARK_$$",
+  groupShapeQmark: "$app$common$files$helpers$group_shape_QMARK_$$",
+  groupLikeShapeQmark:
+    "$app$common$files$helpers$group_like_shape_QMARK_$cljs$0core$0IFn$0_invoke$0arity$01$$",
+  maskShapeQmark: "$app$common$files$helpers$mask_shape_QMARK_$$",
+  svgRawShapeQmark: "$app$common$files$helpers$svg_raw_shape_QMARK_$$",
+  isDirectChildOfRootQmark:
+    "$app$common$files$helpers$is_direct_child_of_root_QMARK_$cljs$0core$0IFn$0_invoke$0arity$01$$",
+  instanceHeadQmark: "$app$common$types$component$instance_head_QMARK_$$",
+  mainInstanceQmark: "$app$common$types$component$main_instance_QMARK_$$",
+  // app.common.geom.point/point. Constructs the position argument the
+  // compiled tree functions read with dm/get-prop (a CLJS point record).
+  point: "$app$common$geom$point$point$$",
 
   // app.main.ui.viewer.viewport-common. prepare-objects is the only member
   // on $APP: prepare-page-objects and viewer-scale were inlined by the
@@ -137,6 +187,47 @@ export function arrayMap(
   for (const [k, v] of entries) arr.push(k, v);
   const Ctor = app[KEY.persistentArrayMap] as PAMConstructor;
   return new Ctor(null, arr.length, arr, null);
+}
+
+// A CLJS vector from a JS array (cljs.core/vec), for $APP functions whose
+// collection arguments are compiled-cljs values (e.g. sort-z-index's id
+// list).
+export function vec(app: RendererApp, items: readonly unknown[]): unknown {
+  return call(app, KEY.vec, items);
+}
+
+// The four big-endian u32 words of a uuid string, the shape the wasm ABI
+// takes. Mirrors uuid/get-u32 (getUnsignedParts in
+// common/src/app/common/uuid_impl.js): every 8 hex digits of the dashless
+// string read as one big-endian u32.
+export function uuidToU32(id: string): [number, number, number, number] {
+  const hex = id.replace(/-/g, "");
+  return [
+    Number.parseInt(hex.slice(0, 8), 16),
+    Number.parseInt(hex.slice(8, 16), 16),
+    Number.parseInt(hex.slice(16, 24), 16),
+    Number.parseInt(hex.slice(24, 32), 16),
+  ];
+}
+
+// app.render-wasm.api/intersect-position-in-shape: whether the already
+// loaded shape's rendered area contains the position (the workspace hover
+// uses it to filter text shapes over their glyph outlines). The $APP entry
+// point was inlined by the optimizer (F9.2 probe), so this replicates the
+// body: one internal call — the four uuid words plus the position —
+// answering 1 when inside. The original's initialized? guard is
+// wasm/ready?; the same wasmReady gate runs here and a not-ready renderer
+// answers false (no glyphs are laid out).
+export function intersectPositionInShape(
+  app: RendererApp,
+  id: string,
+  x: number,
+  y: number,
+): boolean {
+  if (call(app, KEY.wasmReady) !== true) return false;
+  const [a, b, c, d] = uuidToU32(id);
+  const internal = app[KEY.internalModule] as Record<string, (...args: number[]) => unknown>;
+  return internal._intersect_position_in_shape(a, b, c, d, x, y) === 1;
 }
 
 export function sleep(ms: number): Promise<void> {

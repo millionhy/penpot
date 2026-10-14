@@ -7,10 +7,12 @@
 // :workspace-local...). The React binding is useSyncExternalStore in the
 // route components.
 //
-// Only the read-only slice F9.1 needs lives here; page switching, history
-// and the rest of workspace-local arrive with the next slices.
+// Only the read-only slice F9.1 needs lives here; F9.2 adds the
+// selection/hover/area slice; page switching, history and the rest of
+// workspace-local arrive with the next slices.
 
 import type { WorkspaceFile } from "@/lib/workspace";
+import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";
 import type { ViewportRect, ViewportState } from "@/lib/workspace-viewport";
 
 export type WorkspaceStatus = "idle" | "loading" | "ready" | "error";
@@ -32,6 +34,21 @@ export interface WorkspaceState {
   zoom: number | null;
   vbox: ViewportRect | null;
   vport: { width: number; height: number } | null;
+  // The current selection as an ordered set of ids (F9.2).
+  selection: string[];
+  // The hover stack under the cursor (front-most first, already filtered);
+  // null when the cursor is not over anything.
+  hover: string[] | null;
+  // The top-most nested frame under the cursor (the caller debounces the
+  // updates, like the CLJS 50ms stream).
+  hoverTopFrameId: string | null;
+  // The single hover shape the outline overlay draws (the CLJS :id @hover):
+  // the first id of the stack that survives the remove-hover? / mod filters
+  // (hoverShapeId of lib/workspace-selection); null when nothing drawable is
+  // under the cursor.
+  hoverShapeId: string | null;
+  // The live marquee rectangle in world coordinates while area-selecting.
+  areaSelect: ViewportRect | null;
 }
 
 const initialState: WorkspaceState = {
@@ -43,6 +60,11 @@ const initialState: WorkspaceState = {
   zoom: null,
   vbox: null,
   vport: null,
+  selection: [],
+  hover: null,
+  hoverTopFrameId: null,
+  hoverShapeId: null,
+  areaSelect: null,
 };
 
 let state: WorkspaceState = initialState;
@@ -91,4 +113,46 @@ export function getWorkspaceViewport(): ViewportState | null {
 // Write the viewport slice back in one shot.
 export function setWorkspaceViewport(viewport: ViewportState): void {
   setWorkspaceState({ zoom: viewport.zoom, vbox: viewport.vbox, vport: viewport.vport });
+}
+
+// --- Selection, hover and area (F9.2) ---------------------------------------
+
+// select-shapes: replace the whole selection (ordered set, duplicates
+// dropped).
+export function setSelection(ids: readonly string[]): void {
+  setWorkspaceState({ selection: orderedUnique(ids) });
+}
+
+// select-shape: a plain call replaces the selection with the shape; the
+// toggle variant (shift-click) adds or removes it keeping the order.
+export function toggleSelection(id: string, toggle = false): void {
+  setWorkspaceState({
+    selection: selectionAfterClick(getWorkspaceState().selection, id, toggle),
+  });
+}
+
+// deselect-all.
+export function clearSelection(): void {
+  setWorkspaceState({ selection: [] });
+}
+
+// The hover stack (front-most first); an empty stack normalizes to null,
+// the "nothing under the cursor" state.
+export function setHover(ids: readonly string[] | null): void {
+  setWorkspaceState({ hover: ids === null || ids.length === 0 ? null : [...ids] });
+}
+
+export function setHoverTopFrameId(id: string | null): void {
+  setWorkspaceState({ hoverTopFrameId: id });
+}
+
+// The hover outline follows the single hover shape, not the whole stack.
+export function setHoverShapeId(id: string | null): void {
+  setWorkspaceState({ hoverShapeId: id });
+}
+
+// The marquee rectangle while dragging (world coordinates); null when no
+// area selection is running.
+export function setAreaSelect(rect: ViewportRect | null): void {
+  setWorkspaceState({ areaSelect: rect });
 }

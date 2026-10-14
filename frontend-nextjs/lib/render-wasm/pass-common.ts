@@ -13,21 +13,7 @@
 // Both were verified in a live pass: the fresh pass, the reuse pass and the
 // pass after a resize all painted pixels onto the blit target.
 
-import { arrayMap, call, keyword, KEY, type RendererApp } from "./interop";
-
-// The four big-endian u32 words of a uuid string, the shape the wasm ABI
-// takes. Mirrors uuid/get-u32 (getUnsignedParts in
-// common/src/app/common/uuid_impl.js): every 8 hex digits of the dashless
-// string read as one big-endian u32.
-export function uuidToU32(id: string): [number, number, number, number] {
-  const hex = id.replace(/-/g, "");
-  return [
-    Number.parseInt(hex.slice(0, 8), 16),
-    Number.parseInt(hex.slice(8, 16), 16),
-    Number.parseInt(hex.slice(16, 24), 16),
-    Number.parseInt(hex.slice(24, 32), 16),
-  ];
-}
+import { arrayMap, call, keyword, KEY, uuidToU32, type RendererApp } from "./interop";
 
 // enqueue-wasm-render!: one offscreen render starts only when the previous
 // finished. The chain itself never stays rejected.
