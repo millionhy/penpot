@@ -42,7 +42,7 @@
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | 🔧 | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；切成 F7.1–F7.4 四片（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入完成；F7.4 完整 API 上下文依赖 F9），见下与第 4 节 |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布完成（f94a–f94j，见 7.23）；Web Worker + 协作光标等留 F8 后 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）与 F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）完成；Web Worker + 协作光标等留 F8 后 |
 
 ### 阶段 B：backend-rust（Rust + axum，受门禁）
 
@@ -298,8 +298,9 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - **F8 WebSocket 协作客户端**：连 `/ws/notifications`（直连后端源），订阅文件变更广播。
 - **F9 workspace**：最后迁移、最高风险。切成 F9.1–F9.x 多片：F9.1 数据基础与只读画布
   已启动（受 F7.4 阻塞所迫提前，不依赖 F8；数据层 + 视口数学 + WASM 直绘 + /workspace
-  路由，见 7.23）；Web Worker（缩略图/索引/导入）+ 协作光标 + 全部绘制/布尔/交互/token
-  子流程仍在 F3–F8 验证后推进。
+  路由，见 7.23）；F9.2 画布交互与选择完成（悬停/点选/框选/平移 + SVG 覆盖层，零
+  写入，见 7.24）；Web Worker（缩略图/索引/导入）+ 协作光标 + 全部绘制/布尔/编辑/
+  token 子流程仍在 F3–F8 验证后推进。
 
 每个路由组的完成标准（DoD）：
 
@@ -328,7 +329,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1 只读画布完成)
+阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.2 完成：只读画布 + 画布交互与选择)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
@@ -1292,6 +1293,53 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   后清理，用户 :3450 实例未动、重启后生效。
 - 下一步：评估 F7.4（workspace 代理 + 完整 API 上下文）解锁；画布编辑交互、
   Web Worker、协作光标留 F8 后切片。
+
+### 7.24 本轮（2026-10-14，第二十三批：F9.2 画布交互与选择）
+
+- 动机：F9.1 只读画布之后补齐「选择与导航」层（悬停/点选/框选/平移），仍不产生
+  写入；T1–T6 完成（$APP 复用面探测、命中检测库、选择语义与 store、指针/键盘
+  交互、Overlay 渲染、集成验收）。
+- 交付（均含代码注释登记偏差）：
+  - `lib/workspace-index.ts`（1241 行）：worker 命中检测的同步移植——quadtree
+    （app.util.quadtree）+ query-selection（include-frames/full-frame/ignore-groups/
+    clip-children/using-selrect 全选项）+ overlaps（rect/circle/path/bool + stroke
+    ring 环判定）+ clip 索引 + shapes->rect。
+  - `lib/workspace-selection.ts`（546 行）：hover 栈（remove-hover?、mod no-fill
+    帧过滤）、hoverShapeId、点击选择（select-shape/toggle）、框选语义
+    （handle-area-selection：append=shift、remove=shift+mod、宽或高 >10/zoom 最小
+    尺寸、全包）与 $APP 适配器（sort-ids/intersect-position/top-nested-frame）。
+  - `lib/workspace-viewport.ts`（417 行）：+clientToWorld 别名（=pointToViewport，
+    登记偏差）。
+  - `lib/workspace-store.ts`（158 行）：选择/hover 切片（selection、hover、
+    hoverTopFrameId、hoverShapeId、areaSelect 与动作）。
+  - `components/workspace-wasm-canvas.tsx`（977 行）：指针/键盘交互层——pointerdown/
+    move/up/cancel/leave、space/shift/mod/Esc/blur 全局键、rAF 合并 hover 查询、
+    50ms 顶帧 debounce、5px 点击阈值、中键/空格平移累积器、指针捕获、光标
+    default/pointer/grab/grabbing。
+  - `components/workspace-viewport-overlay.tsx`（249 行，新）：SVG 覆盖层
+    （viewBox=vbox，世界坐标直画，pointer-events none）——选择外形（rect/polygon）、
+    总框 + 8 个静态方块手柄、hover 细线外框、框选虚线矩形；`styles/workspace.css`
+    （54 行）色板对齐 selection.cljs。
+- 关键语义（对齐 CLJS 原文）：框选起手非 append/remove 即 deselect-all；shift+mod=
+  remove；mod 起手强制框选；mod 变化重查 hover（mod-str）；Esc=cancelGesture+
+  clear-selection；hover 外框只画单形状（:id @hover）——store 增 hoverShapeId 由
+  canvas 计算写入。
+- 与 CLJS 的有意偏差（代码注释均登记）：pointerup 5px 阈值替代 DOM click
+  （drag/move-selected 归 F9.3）；mod+space 平移替代 start-zooming；hover 同步 rAF
+  合并替代 worker ask-buffered 流；overlay 选择与 hover 同用 accent-tertiary（组件
+  高亮色未移植）、外形为 selrect/polygon 几何近似（circle→ellipse、path d 留后）、
+  手柄 8/zoom 方块只渲染（CLJS 圆 + 交互）、框选虚线（CLJS 实线）且以
+  --color-accent-select 代替 tertiary-muted；无双击穿透/进帧、帧标题、焦点模式。
+- 验证：vitest 42 文件 998 例全过（较 F9.1 935 增 63：workspace-viewport 38、
+  workspace-selection 31、workspace-index 22、workspace-store 15）；`pnpm typecheck`、
+  `pnpm lint` 干净；`pnpm build` 通过（/workspace 12 kB）。
+- 浏览器冒烟（:3450 + 真实后端 + 既有账号 + Plants-app 文件）：清单 1–5 全过——
+  悬停出现/移出消失、点选 1 外形 + 8 手柄、shift 加选 2/反选 1、点空清空、框选
+  虚线矩形 + 松开选择 3、空格与中键拖拽 viewBox 变化、Esc 清空；资源时序 +
+  fetch/XHR 钩子核对全程零写请求（仅 get-profile/get-teams/get-file 等只读）。
+  环境备注：窗口被遮挡致合成器停帧（rAF 停摆、截图超时），子代理以 rAF 垫片 +
+  合成 Pointer 事件（setPointerCapture 打补丁）驱动，断言以 DOM/SVG 属性为准。
+- 下一步：F9.3 移动/拖拽与手柄交互；Web Worker、协作光标留 F8 后。
 
 ---
 
