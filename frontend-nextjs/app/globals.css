@@ -9,6 +9,7 @@
 @import "../styles/settings.css";
 @import "../styles/dashboard.css";
 @import "../styles/viewer.css";
+@import "../styles/workspace.css";
 @import "../styles/error.css";
 
 @font-face {

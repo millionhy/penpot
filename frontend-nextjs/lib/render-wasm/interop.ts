@@ -28,6 +28,12 @@ export const KEY = {
   setRulersVisible: "$app$render_wasm$api$set_rulers_visible_BANG_$$",
   requestRender: "$app$render_wasm$api$request_render$$",
   getDpr: "$app$render_wasm$api$get_dpr$$",
+  // set-view-box: a $APP member in this build (probe-verified against the
+  // compiled artifact). The interaction bookkeeping (fast mode, from-cache
+  // preview, debounced finalize with the progressive continuation) lives
+  // inside it, so the workspace viewport calls it as-is. It reads the vbox
+  // with (:x vbox), hence the PersistentArrayMap the callers pass.
+  setViewBox: "$app$render_wasm$api$set_view_box$$",
   // Multi-arity vars export one entry per arity and the whole munged name
   // IS the key; call() invokes the extracted method directly (see below).
   resizeCanvas: "$app$render_wasm$api$resize_canvas_BANG_$cljs$0core$0IFn$0_invoke$0arity$02$$",

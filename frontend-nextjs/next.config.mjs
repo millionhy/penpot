@@ -1,9 +1,10 @@
 // Next.js configuration for the Penpot Next.js shell.
 //
 // Strangler Fig seam: the browser talks to a single origin. In dev, Next
-// rewrites proxy /api/* to the running Clojure backend (backend:6060) and
-// /assets/* to PENPOT_ASSETS_ORIGIN. In production the existing nginx already
-// proxies both, so the same relative URLs work unchanged.
+// rewrites proxy /api/* to the running Clojure backend (backend:6060),
+// /assets/* and /internal/* to PENPOT_ASSETS_ORIGIN. In production the
+// existing nginx already proxies all three, so the same relative URLs work
+// unchanged.
 //
 // NOTE: WebSocket (/ws/notifications) is NOT proxied by Next rewrites (they do
 // not forward the HTTP upgrade). The collab socket connects directly to the
@@ -42,6 +43,14 @@ const nextConfig = {
       {
         source: "/assets/:path*",
         destination: `${assetsOrigin}/assets/:path*`,
+      },
+      {
+        // The Google Fonts provider (the compiled render-wasm fetches text
+        // fonts under this prefix; enabled by default). nginx answers it in
+        // production through its own upstream (nginx-external-locations
+        // .conf), so point dev at the same frontend origin as the assets.
+        source: "/internal/:path*",
+        destination: `${assetsOrigin}/internal/:path*`,
       },
     ];
   },

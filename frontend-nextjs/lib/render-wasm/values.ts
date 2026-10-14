@@ -7,9 +7,9 @@
 // the penpot transit handlers (objects-map/v2, path-data, pointer...) also
 // live. It mirrors fetch-bundle in app.main.data.viewer one call at a time.
 
+import { supportedFeatures } from "@/lib/file-data";
 import { cmdRaw } from "@/lib/rpc";
 import { set as transitSet } from "@/lib/transit";
-import { supportedFeatures } from "@/lib/viewer";
 import { KEY, arrayMap, call, get, keyword, type RendererApp } from "./interop";
 
 export interface BundleInput {

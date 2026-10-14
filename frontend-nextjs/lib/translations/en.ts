@@ -779,6 +779,7 @@ export const en: Record<string, TranslationEntry> = {
   "title.team-settings": "Settings - %s - Penpot",
   "title.team-webhooks": "Webhooks - %s - Penpot",
   "title.viewer": "%s - View mode - Penpot",
+  "title.workspace": "%s - Penpot",
   "viewer.empty-state": "No boards found on the page.",
   "viewer.frame-not-found": "Board not found.",
   "viewer.header.dont-show-interactions": "Don't show interactions",

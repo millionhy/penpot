@@ -21,37 +21,23 @@
 //   order (rt/nav re-serialized the CLJS params map); building the same URL
 //   again is skipped instead of pushing a duplicate history entry.
 
+import {
+  ZERO_UUID,
+  parseUuid,
+  resolveFileData,
+  resolvePointerMap,
+  supportedFeatures,
+  type FragmentFetcher,
+} from "@/lib/file-data";
 import { routePaths } from "@/lib/routes";
 import { cmd } from "@/lib/rpc";
-import { isPointer, set as transitSet } from "@/lib/transit";
+import { set as transitSet } from "@/lib/transit";
 
-// --- Feature set (app.common.features/supported-features) -------------------
-//
-// The viewer reports every feature the frontend supports (not just the ones
-// enabled for a team): anonymous share-link visitors cannot read the team, so
-// the backend cannot intersect client and team features otherwise.
-export const supportedFeatures: readonly string[] = [
-  "fdata/objects-map",
-  "fdata/pointer-map",
-  "fdata/shape-data-type",
-  "fdata/path-data",
-  "components/v2",
-  "styles/v2",
-  "layout/grid",
-  "plugins/runtime",
-  "tokens/numeric-input",
-  "design-tokens/v1",
-  "text-editor/v2-html-paste",
-  "text-editor/v2",
-  "text-editor-wasm/v1",
-  "render-wasm/v1",
-  "variants/v1",
-];
-
-// --- Shape slice ------------------------------------------------------------
-
-// uuid/zero in app.common.uuid. The root of every page objects map.
-export const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+// The feature list, uuid/zero and the fragment resolution moved to
+// lib/file-data (F9.1), where the workspace data layer shares them; the
+// re-export keeps this module's API stable for the F6 consumers.
+export { ZERO_UUID, resolvePointerMap, supportedFeatures };
+export type { FragmentFetcher };
 
 // The slice of shape data the viewer frame lists and zoom math read. The
 // full file shape is far wider (F9); unknown keys stay accessible through
@@ -272,38 +258,14 @@ export interface ViewerPage extends ViewerPageData {
   allFrames: ViewerShape[];
 }
 
-export type FragmentFetcher = (fragmentId: string) => Promise<unknown>;
-
-// The resolve step of fetch-bundle: a pointer-mapped value loads through
-// get-file-fragment and replaces the pointer in place.
-export async function resolvePointerMap<T = unknown>(
-  values: Record<string, T>,
-  fetchFragment: FragmentFetcher,
-): Promise<Record<string, unknown>> {
-  const keys = Object.keys(values);
-  const resolved = await Promise.all(
-    keys.map(async (key): Promise<[string, unknown]> => {
-      const value = values[key];
-      if (isPointer(value)) {
-        return [key, await fetchFragment(value.id)];
-      }
-      return [key, value];
-    }),
-  );
-  return Object.fromEntries(resolved);
-}
-
-// The two-pass pointer resolution of fetch-bundle: pages-index first, then
-// the top-level data keys (the pass also walks the freshly resolved
-// pages-index, exactly like the CLJS stream does).
-export async function resolveViewerFileData(
+// The two-pass pointer resolution of fetch-bundle moved to lib/file-data
+// (F9.1), where the workspace load shares it; the wrapper keeps this
+// module's API stable for the F6 consumers.
+export function resolveViewerFileData(
   fileData: ViewerFileData,
   fetchFragment: FragmentFetcher,
 ): Promise<ViewerFileData> {
-  const pagesIndex = await resolvePointerMap(fileData["pages-index"] ?? {}, fetchFragment);
-  const data: Record<string, unknown> = { ...fileData, "pages-index": pagesIndex };
-  const resolved = await resolvePointerMap(data, fetchFragment);
-  return resolved as unknown as ViewerFileData;
+  return resolveFileData(fileData, fetchFragment);
 }
 
 export interface FetchViewerBundleInput {
@@ -371,15 +333,8 @@ export interface ViewerQueryParams {
   interactionsMode: string | null;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 // parse-long: a strict integer (no decimals, no exponents, no padding).
 const INT_RE = /^-?\d+$/;
-
-// uuid/parse: a malformed uuid parses to nil, so callers treat it as absent.
-function parseUuid(value: string | null): string | null {
-  return value !== null && UUID_RE.test(value) ? value : null;
-}
 
 // rt/get-query-param + uuid/parse + parse-long over the viewer parameters.
 export function parseViewerQuery(search: URLSearchParams): ViewerQueryParams {

@@ -55,8 +55,8 @@ frontend-nextjs/
 │   ├── dashboard/invitations/ invitation-section*（F5.5 排序表 + 勾选 + 复制链接 + 重发）
 │   ├── dashboard/webhooks/ webhooks-page*（F5.5 列表/空态 hero + 新建/编辑弹窗）
 │   ├── dashboard/settings/ team-settings-page*（F5.5 团队照片/资料块/计数）
-│   ├── view/             占位（Viewer，后续集成 WASM 渲染）
-│   └── workspace/        占位（编辑器，最后迁移）
+│   ├── view/             Viewer（F6：数据层、导航与缩放、WASM 渲染、interactions）
+│   └── workspace/        只读画布（F9.1：数据层 + 视口数学 + WASM 直绘）
 ├── lib/
 │   ├── rpc.ts            Transit RPC 传输层（对应 app.main.repo 的 send!/cmd!）
 │   ├── transit.ts        Transit 编解码（transit-js）
@@ -89,15 +89,21 @@ frontend-nextjs/
 │   ├── check-updates.ts    check-for-updates 无头逻辑（版本比较、CHANGES.md 解析、highlights）
 │   ├── avatars.ts        canvas 首字母头像（仅客户端，对应 app.util.profile）
 │   ├── dom.ts            useDocumentTitle、triggerDownload/Uri、normalizeWheel、pickFiles（标题副作用与浏览器交互助手）
+│   ├── viewer.ts         viewer 数据层（F6：文件加载、frame 选择与缩放）
+│   ├── render-wasm/      WASM 直调层（F6/F9：bridge/interop + viewer/frame/workspace 渲染链）
+│   ├── file-data.ts      viewer/workspace 共享文件数据件（F9.1 抽出：features、指针解析、UUID）
+│   ├── workspace.ts      workspace 数据层（F9.1：get-file + 片段解析 + URL 参数）
+│   ├── workspace-viewport.ts 视口数学（F9.1：适配/缩放/平移/滚轮归一化）
+│   ├── workspace-store.ts workspace 模块 store（F9.1：file/page/视口切片）
 │   └── types.ts          api-types 生成类型的桥接与别名
-├── components/           视图组件（form/tr/notifications/modal/theme/locale-gate/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/import-dialog/export-dialog/templates-section/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification/team-header/team-invite/team-hero/team-form-modal/team-options-menu/team-leave-flows/leave-and-reassign-modal/webhook-modal/member-avatar/shortcut-keys/shortcut-row/restore-shortcuts-modal/import-shortcuts-diff-modal…）
-├── styles/               tokens.css（ds 令牌）+ forms.css + auth.css + settings.css + dashboard.css
+├── components/           视图组件（form/tr/notifications/modal/theme/locale-gate/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/import-dialog/export-dialog/templates-section/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification/team-header/team-invite/team-hero/team-form-modal/team-options-menu/team-leave-flows/leave-and-reassign-modal/webhook-modal/member-avatar/shortcut-keys/shortcut-row/restore-shortcuts-modal/import-shortcuts-diff-modal/workspace-wasm-canvas/penpot-loader…）
+├── styles/               tokens.css（ds 令牌）+ forms.css + auth.css + settings.css + dashboard.css + viewer.css + workspace.css + error.css
 ├── scripts/              extract-translations.mjs（词条抽取生成器）
 ├── public/               fonts/（worksans、vazirmatn、robotomono）+ images/
 ├── packages/api-types/   生成的 RPC 类型（占位）
 ├── types/transit-js.d.ts transit-js 的类型垫片
 ├── vitest.config.ts      无头逻辑单测（lib/**）
-├── next.config.mjs       开发期反代 /api 到 backend、/assets 到 assets 源
+├── next.config.mjs       开发期反代 /api 到 backend、/assets 与 /internal 到 assets 源
 └── pnpm-workspace.yaml   独立工作区（与 frontend/ 隔离，共享 ../.pnpm-store）
 ```
 
@@ -112,8 +118,8 @@ CLJS 用查询串路由（`?screen=<name>`）并保留一段 `#/...` 兼容期�
 | auth | `/auth/login`、`/auth/register`、`/auth/recovery`、`/auth/verify-token` | `app.main.ui.auth` | 已迁移（SSO/OIDC 按钮除外） |
 | settings | `/settings/profile`、`/settings/password`、`/settings/notifications`、`/settings/options`、`/settings/feedback`、`/settings/shortcuts`、`/settings/subscriptions` | `app.main.ui.settings` | 已迁移（F5.6 补齐 shortcuts，F5.7 补齐 subscription；integrations 未建路由） |
 | dashboard | `/dashboard/recent`、`/dashboard/files`、`/dashboard/libraries`、`/dashboard/search`、`/dashboard/deleted`、`/dashboard/fonts`、`/dashboard/fonts/providers`、`/dashboard/members`、`/dashboard/invitations`、`/dashboard/webhooks`、`/dashboard/settings`（十一路由全部迁移） | `app.main.ui.dashboard` | F5 进行中（F5.1–F5.6 已迁移） |
-| viewer | `/view` | `app.main.ui.viewer` | 占位 |
-| workspace | `/workspace` | `app.main.ui.workspace` | 占位（最后迁移） |
+| viewer | `/view` | `app.main.ui.viewer` | 已迁移（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions） |
+| workspace | `/workspace` | `app.main.ui.workspace` | F9.1 已迁移（只读画布）；编辑交互随 F9 后续切片 |
 
 ## 表单、词条与通知（F3 引入、F4 扩展的公共设施）
 
@@ -149,8 +155,8 @@ CLJS 用查询串路由（`?screen=<name>`）并保留一段 `#/...` 兼容期�
 `@penpot/ui`（ds 的 input/button/menu/modal）仍未接线：该包是 React +
 react-aria-components + SCSS modules，`exports` 指向未构建的 `dist/`。F4 的
 settings 与 dashboard（F5.1）视图都沿用外壳临时样式（`styles/settings.css`、
-`styles/dashboard.css`），menu/dropdown 用轻量自绘；`@penpot/ui` 的接线随后续
-F5 切片（完整网格的右键菜单、team 切换菜单）按需评估。
+`styles/dashboard.css`），menu/dropdown 用轻量自绘；`@penpot/ui` 的接线继续推迟
+（menu/modal 由外壳组件承担）。
 
 ## RPC 传输层
 
@@ -196,8 +202,9 @@ pnpm translations # 重新生成 lib/translations/*.ts（en + 中文目录）
 pnpm build        # 生产构建；别在 dev server 运行时执行，原因见下
 ```
 
-开发期 `next.config.mjs` 把 `/api/*` 反代到后端、`/assets/*` 反代到
-`PENPOT_ASSETS_ORIGIN`，浏览器只面对单一源，既避免 CORS，也保住 cookie 的 SameSite。
+开发期 `next.config.mjs` 把 `/api/*` 反代到后端、`/assets/*` 与 `/internal/*`
+反代到 `PENPOT_ASSETS_ORIGIN`，浏览器只面对单一源，既避免 CORS，也保住 cookie
+的 SameSite。
 生产环境沿用既有 nginx 反代，同样的相对 URL 不变即可工作。
 
 **头像/缩略图是坏图？** 存储后端为 `fs` 时（compose 默认
@@ -211,6 +218,12 @@ frontend nginx（compose 里是 `http://localhost:9001`）：
 ```powershell
 $env:PENPOT_ASSETS_ORIGIN = "http://localhost:9001"; pnpm dev
 ```
+
+**字体 404？** render-wasm 的文本渲染从 Google Fonts provider（默认开启）按
+`/internal/gfonts/font/*` 拉字体文件（CSS 同前缀）。CLJS 生产由 nginx 代理到
+`fonts.gstatic.com`（`docker/images/files/nginx-external-locations.conf`）；dev
+下这条 rewrite 与 `/assets` 共用 `PENPOT_ASSETS_ORIGIN`，指向同一个 penpot
+frontend nginx 即可。
 
 `next dev` 与 `next build` 共用同一个 `.next`：构建会把开发态 chunk 换成带哈希的生产
 文件，正在跑的 dev server 随即对 `main-app.js` 返回 404，页面卡在「Loading...」不再
@@ -227,7 +240,7 @@ WebSocket（`/ws/notifications`）不经 Next rewrite（rewrite 不转发 HTTP u
 | `NEXT_PUBLIC_PENPOT_PUBLIC_URI` | 空（同源相对） | RPC 基址，对应 `cf/public-uri` |
 | `NEXT_PUBLIC_PENPOT_BACKEND_ORIGIN` | `http://localhost:6060` | WS/直连后端源 |
 | `PENPOT_BACKEND_ORIGIN` | `http://localhost:6060` | 服务端 rewrite 反代 `/api` 的目标 |
-| `PENPOT_ASSETS_ORIGIN` | 同 `PENPOT_BACKEND_ORIGIN` | 服务端 rewrite 反代 `/assets` 的目标；`fs` 存储下要指向能处理 `x-accel-redirect` 的 nginx |
+| `PENPOT_ASSETS_ORIGIN` | 同 `PENPOT_BACKEND_ORIGIN` | 服务端 rewrite 反代 `/assets` 与 `/internal`（Google Fonts 字体）的目标；`fs` 存储下要指向能处理 `x-accel-redirect` 的 nginx |
 | `NEXT_PUBLIC_PENPOT_FLAGS` | 空 | 特性开关，对应 `cf/flags`；语法同 `penpotFlags`（`enable-x` / `disable-x`），在 `common/src/app/common/flags.cljc` 的默认集之上叠加 |
 | `NEXT_PUBLIC_PENPOT_TERMS_OF_SERVICE_URI` | 空 | 注册页条款链接，对应 `cf/terms-of-service-uri` |
 | `NEXT_PUBLIC_PENPOT_PRIVACY_POLICY_URI` | 空 | 注册页隐私链接，对应 `cf/privacy-policy-uri` |
@@ -236,24 +249,12 @@ WebSocket（`/ws/notifications`）不经 Next rewrite（rewrite 不转发 HTTP u
 
 ## 下一步
 
-见根目录 `rewrite.md` 的「阶段 F：frontend-nextjs」。F5 dashboard 已切片推进，F5.1
-（外壳 + 数据基座 + `/dashboard/recent` + 侧边栏 + profile-section 菜单）、F5.2
-（完整网格 `grid.cljs`：多选、右键/…菜单、重命名/复制/移动/删除、layout 切换、inline
-编辑、check-for-updates，与 `/dashboard/files`）、F5.3（`/dashboard/libraries` 摘要卡、
-`/dashboard/search` 三态占位、`/dashboard/deleted` 回收站：SSE 批量恢复/彻底删除 +
-进度组件 + 项目级菜单 + Recent/Deleted 页签）、F5.4（`/dashboard/fonts`：上传队列 +
-已安装字体表——TTF/OTF/WOFF 元数据解析与高度告警、分块上传、@font-face 注册表、
-重命名/删除/下载；`/dashboard/fonts/providers` 页头占位；补回 F5.3 推迟的 typography
-样本字体加载）与 F5.5（团队管理：`/dashboard/members` 成员表与三种离开流程、
-`/dashboard/invitations` 排序表与重发/删除、`/dashboard/webhooks` 列表与新建/编辑、
-`/dashboard/settings` 团队照片与计数；recent 页 team-hero；change-owner 与 team-form
-弹窗；侧边栏团队名旁的「…」团队管理菜单——成员/邀请/webhook/设置/重命名/离开/
-删除）已完成。F5.6（templates 抽屉——recent/files 页内建模板与库链接；binfile 导出/
-导入——files 页导出弹窗、项目菜单/OS 拖入/空项目卡导入流；dashboard 快捷键注册表——
-settings/shortcuts 三页签树 + 录制编辑 + 导入/导出 + 路由级运行时）已完成；缩略图暂
-只展示既有 media（media-worker 生成随 F9），进度组件的 `:error` 分支未动（导入/导出
-失败在弹窗行内呈现）。`@penpot/ui` 接线继续推迟（menu/modal 由外壳组件承担）。F5.7 的
-organization/team switch（两级组织/团队切换器、leave-organization 与转让流程）与
-subscription/nitrate（侧边栏、members 与团队设置的订阅横幅、`/settings/subscriptions`
-订阅页与五个对话框、nitrate 激活弹窗、trash 的 90 天保留分支）已完成。下一步 F5.7
-收尾：comments、插件注册、WebSocket `subscribe-team` 实时刷新（依赖 F8）。
+见根目录 `rewrite.md` 的「阶段 F：frontend-nextjs」与第 7 节的批次记录。
+进度总览（2026-10-13）：F0–F4 完成；F5 dashboard 十一路由已迁移（F5.1–F5.6
+完整，F5.7 大半——organization/team switch 与 subscription/nitrate 已完成，
+comments、插件注册、WebSocket 实时刷新留后）；F6 viewer 完整（F6.1–F6.6：
+数据层、外壳、导航与缩放、WASM 渲染、interactions）；F7 插件 F7.1–F7.3 完成
+（数据层、安装与管理 UI、运行时接入），F7.4 完整 API 上下文阻塞于 F9；F9.1
+workspace 只读画布完成（数据层、视口数学、WASM 直绘、`/workspace` 路由）。
+接下来：评估 F7.4 解锁，推进 F8 WebSocket 协作客户端与 F9 后续切片（编辑
+交互、Web Worker、协作光标）。

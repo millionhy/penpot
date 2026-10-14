@@ -770,6 +770,7 @@ export const zh_hant: Record<string, TranslationEntry> = {
   "title.team-settings": "設定 - %s - Penpot",
   "title.team-webhooks": "Webhooks - %s - Penpot",
   "title.viewer": "%s - 檢視模式 - Penpot",
+  "title.workspace": "%s - Penpot",
   "viewer.empty-state": "此頁面沒有畫板。",
   "viewer.frame-not-found": "找不到畫板。",
   "viewer.header.dont-show-interactions": "隱藏互動",

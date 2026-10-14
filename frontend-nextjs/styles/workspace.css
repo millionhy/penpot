@@ -1,0 +1,20 @@
+/* Workspace route styles (F9.1). The CLJS workspace paints a grid of
+   sidebars and a viewport section (workspace.scss); the shell keeps a
+   single full-viewport canvas until those slices land, so only the route
+   shell and the page-level states live here. Tokens: styles/tokens.css. */
+
+/* The route shell of the read-only slice: the canvas fills the viewport.
+   position: relative anchors the render-wasm error overlay
+   (.pp-viewport-placeholder, absolute inset 0, in viewer.css). */
+.pp-workspace-shell {
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* The full-height centering frame of the page-level messages (no file-id,
+   generic fetch failure), like .pp-viewer-message; the span centers through
+   .pp-empty-state. */
+.pp-workspace-message {
+  height: 100vh;
+}

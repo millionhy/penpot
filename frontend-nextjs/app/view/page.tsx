@@ -62,6 +62,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, typ
 import { useRouter } from "next/navigation";
 import { ExceptionPage } from "@/components/exception-page";
 import { useNotifications } from "@/components/notifications";
+import { PenpotLoader } from "@/components/penpot-loader";
 import { QueryParams } from "@/components/query-params";
 import { ViewerHeader, type SitemapPage } from "@/components/viewer-header";
 import { ViewerOverlay } from "@/components/viewer-overlay";
@@ -142,33 +143,6 @@ function sameSearch(href: string): boolean {
   const current = window.location.search.replace(/^\?/, "");
   const next = href.split("?")[1] ?? "";
   return normalize(current) === normalize(next);
-}
-
-// loader* with overlay (ds/product/loader): the pen logo with the pencil
-// line animating over it, while the bundle loads.
-function ViewerLoader() {
-  return (
-    <div className="pp-viewer-loader">
-      <div className="pp-loader-content">
-        <svg
-          viewBox="0 0 677.34762 182.15429"
-          role="status"
-          width={100}
-          height={27}
-          className="pp-loader"
-        >
-          <title>{tr("labels.loading")}</title>
-          <g>
-            <path d="M128.273 0l-3.9 2.77L0 91.078l128.273 91.076 549.075-.006V.008L128.273 0zm20.852 30l498.223.006V152.15l-498.223.007V30zm-25 9.74v102.678l-49.033-34.813-.578-32.64 49.61-35.225z" />
-            <path
-              className="pp-loader-line"
-              d="M134.482 157.147v25l518.57.008.002-25-518.572-.008z"
-            />
-          </g>
-        </svg>
-      </div>
-    </div>
-  );
 }
 
 // The full-page message of the states that never reach the viewer layout
@@ -954,7 +928,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   }, [viewportActive, macos, handleDecreaseZoom, handleIncreaseZoom]);
 
   if (data === null) {
-    if (loadError === null) return <ViewerLoader />;
+    if (loadError === null) return <PenpotLoader />;
     return isExceptionCause(loadError) ? (
       <ExceptionPage fileId={fileId} />
     ) : (
@@ -1130,7 +1104,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
 
 export default function Page() {
   return (
-    <QueryParams fallback={<ViewerLoader />}>
+    <QueryParams fallback={<PenpotLoader />}>
       {(params) => <ViewerRoute params={params} />}
     </QueryParams>
   );

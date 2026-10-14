@@ -657,6 +657,7 @@ export const zh_cn: Record<string, TranslationEntry> = {
   "title.team-settings": "设置 - %s - Penpot",
   "title.team-webhooks": "Webhook - %s - Penpot",
   "title.viewer": "%s - 预览模式 - Penpot",
+  "title.workspace": "%s - Penpot",
   "viewer.empty-state": "此页面上未找到画板。",
   "viewer.frame-not-found": "未找到画板。",
   "viewer.header.dont-show-interactions": "不显示交互",
