@@ -100,12 +100,14 @@ async function classifyAndThrow(res: Response, uri: string): Promise<never> {
 
 // The HTTP exchange shared by once (decoded) and rawOnce (raw text): headers,
 // method selection and the fetch network-error mapping, nothing about the
-// response body.
+// response body. rawBody skips the encodeParams step: the update-file commit
+// (F9.3 AD6) hands a body pre-encoded by lib/transit's encodeUpdateFile.
 async function fetchExchange(
   method: "get" | "post",
   uri: string,
   params: Record<string, unknown>,
   opts: RpcOptions,
+  rawBody?: string,
 ): Promise<Response> {
   const headers: Record<string, string> = {
     accept: "application/transit+json,text/event-stream,*/*",
@@ -120,7 +122,7 @@ async function fetchExchange(
   let url = uri;
   if (method === "post") {
     headers["content-type"] = "application/transit+json";
-    init.body = encodeParams(params);
+    init.body = rawBody ?? encodeParams(params);
   } else {
     url = uri + toQuery(params);
   }
@@ -139,8 +141,9 @@ async function once<T>(
   uri: string,
   params: Record<string, unknown>,
   opts: RpcOptions,
+  rawBody?: string,
 ): Promise<T> {
-  const res = await fetchExchange(method, uri, params, opts);
+  const res = await fetchExchange(method, uri, params, opts, rawBody);
   const ctype = res.headers.get("content-type") ?? "";
   if (ctype.startsWith("text/event-stream")) {
     // SSE commands (the ::sse/* set in repo.cljs) go through cmdSse below; a
@@ -346,6 +349,21 @@ export async function cmd<T = unknown>(
   const record = params as unknown as Record<string, unknown>;
   const run = () => once<T>(method, uri, record, opts);
   return method === "get" ? withRetry(run) : run();
+}
+
+// The pre-encoded leg of cmd! (F9.3 AD6): the body comes encoded by
+// lib/transit's encodeUpdateFile — the workspace move commit's change
+// vector needs the writer's tagged path-data and nested keyword maps,
+// which encodeParams over a plain object cannot build. Always POST;
+// response decoding and error classification match cmd (a mutating
+// command is not retried).
+export async function cmdEncoded<T = unknown>(
+  id: string,
+  body: string,
+  opts: RpcOptions = {},
+): Promise<T> {
+  const uri = joinUrl(config.publicUri, METHODS_BASE + id);
+  return once<T>("post", uri, {}, opts, body);
 }
 
 // The undecoded leg of cmd!: the render-wasm value bridge (F6.4) hands the

@@ -358,3 +358,160 @@ export function set(values: Iterable<unknown>): unknown {
 export function instant(value: Date): unknown {
   return value;
 }
+
+// --- update-file write side (F9.3 AD6) ---------------------------------------
+//
+// The workspace move commit encodes its params here instead of through
+// encodeParams: the change vector nests keyword-keyed maps, transit uuids
+// and the penpot/path-data tagged binary, none of which a plain JS object
+// can express. T1 probed the tagged route: transit.tagged ships the bytes
+// through the binary tag ("~b", base64), the exact form the CLJS write
+// handler of app.common.transit emits and the "penpot/path-data" read
+// handler above consumes back. The shape mirrors the CLJS changes of
+// app.main.data.workspace.persistence / app.common.files.changes; the
+// backend schema re-validates it on arrival (schema:change /
+// schema:operation in app.common.files.changes).
+//
+// A selrect rides the "rect" record tag and every point of "points" the
+// "point" tag (the CLJS records write through t/add-handlers!, whose id is
+// the wire tag): the backend schema checks record instances (rect? and
+// point? in app.common.geom.{rect,point} are `instance?` tests), so a
+// plain keyword map decodes to a plain map and the file update rejects it
+// (the T3 E2E got "invalid shape found" until this was fixed; AD6 had
+// assumed the structure check). A position-data item on the other hand is
+// a plain map on both sides and stays untagged.
+
+// One {:type :set :attr <kw> :val <v>} operation of a mod-obj change;
+// attr is the attribute keyword as a string and val its raw JS value.
+export interface UpdateFileSetOperation {
+  type: "set";
+  attr: string;
+  val: unknown;
+}
+
+// {:type :mod-obj :page-id <uuid> :id <uuid> :operations [<set>...]}:
+// replaces attributes of one shape.
+export interface UpdateFileModObjChange {
+  type: "mod-obj";
+  "page-id": string;
+  id: string;
+  operations: UpdateFileSetOperation[];
+}
+
+// {:type :mov-objects :page-id <uuid> :parent-id <uuid> :shapes [<uuid>..]}:
+// re-parents shapes (T4). The ids ride in reverse order like change-parent,
+// no index means append at the tail, and ZERO_UUID is the root frame.
+export interface UpdateFileMovObjectsChange {
+  type: "mov-objects";
+  "page-id": string;
+  "parent-id": string;
+  shapes: string[];
+}
+
+export type UpdateFileChange = UpdateFileModObjChange | UpdateFileMovObjectsChange;
+
+export interface UpdateFileParams {
+  id: string;
+  "session-id": string;
+  revn: number;
+  vern: number;
+  changes: UpdateFileChange[];
+}
+
+// Keys whose values the CLJS file-data holds as uuids (::sm/uuid in the
+// backend schemas) but this boundary normalizes to strings (the "u" reader
+// handler above): the *-ref-id / *-ref-file pairs of the text attrs and
+// fills (app.common.types.text / fills; a span of a text position-data
+// carries them under its :fills) and the id of a fill-image
+// (app.common.types.color). A plain string fails the uuid check of the
+// backend on arrival, so the writer re-tags them; the uuid-form guard
+// keeps string lookalikes (e.g. a "font-id" naming a font, see
+// text-font-attrs) untagged.
+const UUID_VALUE_KEY = /^(id|.+-ref-id|.+-ref-file)$/;
+const UUID_FORM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function encodeUpdateAttrEntry(key: string, value: unknown): unknown {
+  if (typeof value === "string" && UUID_VALUE_KEY.test(key) && UUID_FORM.test(value)) {
+    return uuid(value);
+  }
+  return encodeUpdateAttrValue(value);
+}
+
+// The generic val recursion: packed path content rides the tagged binary;
+// vectors map element-wise (position-data); keyword-keyed maps become
+// transit maps (the position-data items, whose uuid refs re-tag through
+// encodeUpdateAttrEntry); scalars pass through.
+function encodeUpdateAttrValue(value: unknown): unknown {
+  if (isPathData(value)) return transit.tagged("penpot/path-data", value.bytes);
+  if (Array.isArray(value)) return value.map(encodeUpdateAttrValue);
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as MutableRecord).map(([key, entry]) => [
+      key,
+      encodeUpdateAttrEntry(key, entry),
+    ]);
+    return keywordMap(Object.fromEntries(entries));
+  }
+  return value;
+}
+
+// One record value (the Rect / Point defrecords of app.common.geom): tag +
+// keyword-keyed map, the exact form the CLJS write handler emits, so the
+// backend read handler (map->Rect / map->Point) rebuilds a record instance.
+function encodeRecordValue(tag: string, value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return encodeUpdateAttrValue(value);
+  }
+  const entries = Object.entries(value as MutableRecord).map(([key, entry]) => [
+    key,
+    encodeUpdateAttrValue(entry),
+  ]);
+  return transit.tagged(tag, keywordMap(Object.fromEntries(entries)));
+}
+
+function encodePointsValue(value: unknown): unknown {
+  if (!Array.isArray(value)) return encodeUpdateAttrValue(value);
+  return value.map((point) => encodeRecordValue("point", point));
+}
+
+// The val of a set operation, encoded for the attr it targets (see the
+// selrect/points note above).
+function encodeSetOperation(operation: UpdateFileSetOperation): unknown {
+  const attr = operation.attr;
+  let val: unknown;
+  if (attr === "selrect") val = encodeRecordValue("rect", operation.val);
+  else if (attr === "points") val = encodePointsValue(operation.val);
+  else val = encodeUpdateAttrValue(operation.val);
+  return keywordMap({ type: keyword("set"), attr: keyword(attr), val });
+}
+
+function encodeUpdateChange(change: UpdateFileChange): unknown {
+  if (change.type === "mov-objects") {
+    return keywordMap({
+      type: keyword("mov-objects"),
+      "page-id": uuid(change["page-id"]),
+      "parent-id": uuid(change["parent-id"]),
+      shapes: change.shapes.map((id) => uuid(id)),
+    });
+  }
+  return keywordMap({
+    type: keyword("mod-obj"),
+    "page-id": uuid(change["page-id"]),
+    id: uuid(change.id),
+    operations: change.operations.map(encodeSetOperation),
+  });
+}
+
+// The pre-encoded body of one update-file commit (AD5):
+// {:id uuid :session-id uuid :revn int :vern int :changes [<change>...]}
+// with keyword keys, ready for lib/rpc's cmdEncoded.
+export function encodeUpdateFile(params: UpdateFileParams): string {
+  return writer.write(
+    keywordMap({
+      id: uuid(params.id),
+      "session-id": uuid(params["session-id"]),
+      revn: params.revn,
+      vern: params.vern,
+      changes: params.changes.map(encodeUpdateChange),
+    }),
+  );
+}

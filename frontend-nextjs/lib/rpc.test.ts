@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cmd, cmdRaw, cmdUpload, parseSseBlocks } from "@/lib/rpc";
+import { cmd, cmdEncoded, cmdRaw, cmdUpload, parseSseBlocks } from "@/lib/rpc";
 import { encodeTransit, set as transitSet } from "@/lib/transit";
 
 // The blocks the backend sends for the bulk trash commands
@@ -286,5 +286,58 @@ describe("cmdRaw", () => {
     );
 
     await expect(cmdRaw("get-view-only-bundle", {})).rejects.toThrow(/cmdSse/);
+  });
+});
+
+// cmdEncoded (F9.3 AD6): the workspace move commit pre-encodes its body
+// (lib/transit's encodeUpdateFile) and the exchange must hand it to fetch
+// untouched instead of running encodeParams over empty params. Response
+// decoding and error classification match cmd.
+describe("cmdEncoded", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts the pre-encoded body untouched", async () => {
+    const calls = stubUploadFetch();
+    const body = '["^ ","~:id","~u00000000-0000-0000-0000-000000000001"]';
+
+    const result = await cmdEncoded("update-file", body);
+
+    expect(result).toBeUndefined();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toContain("update-file");
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.body).toBe(body);
+    const headers = calls[0].init.headers as Record<string, string>;
+    expect(headers["content-type"]).toBe("application/transit+json");
+  });
+
+  it("decodes a transit answer like cmd", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(encodeTransit({ revn: 7 }), {
+          status: 200,
+          headers: { "content-type": "application/transit+json" },
+        }),
+    );
+
+    await expect(cmdEncoded("update-file", "[]")).resolves.toEqual({ revn: 7 });
+  });
+
+  it("classifies a server error like cmd", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(encodeTransit({ type: "validation", code: "invalid-update" }), {
+          status: 400,
+          headers: { "content-type": "application/transit+json" },
+        }),
+    );
+
+    await expect(cmdEncoded("update-file", "[]")).rejects.toMatchObject({
+      data: { type: "validation", code: "invalid-update", status: 400 },
+    });
   });
 });

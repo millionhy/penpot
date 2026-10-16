@@ -13,10 +13,12 @@ import {
   getWorkspaceViewport,
   resetWorkspaceState,
   setAreaSelect,
+  setDragDelta,
   setHover,
   setHoverShapeId,
   setHoverTopFrameId,
   setSelection,
+  setWorkspaceObjects,
   setWorkspaceState,
   setWorkspaceViewport,
   subscribeWorkspace,
@@ -40,6 +42,8 @@ describe("getInitialWorkspaceState", () => {
     expect(initial.hoverTopFrameId).toBeNull();
     expect(initial.hoverShapeId).toBeNull();
     expect(initial.areaSelect).toBeNull();
+    expect(initial.objects).toBeNull();
+    expect(initial.dragDelta).toBeNull();
   });
 
   it("keeps its identity across writes", () => {
@@ -177,6 +181,23 @@ describe("hover slice", () => {
   });
 });
 
+describe("move slice", () => {
+  it("stores the JS model reference and clears it on reset", () => {
+    const objects = { a: { id: "a", type: "rect" } };
+    setWorkspaceObjects(objects);
+    expect(getWorkspaceState().objects).toBe(objects);
+    setWorkspaceObjects(null);
+    expect(getWorkspaceState().objects).toBeNull();
+  });
+
+  it("stores and clears the drag delta", () => {
+    setDragDelta({ dx: 3, dy: -7 });
+    expect(getWorkspaceState().dragDelta).toEqual({ dx: 3, dy: -7 });
+    setDragDelta(null);
+    expect(getWorkspaceState().dragDelta).toBeNull();
+  });
+});
+
 describe("resetWorkspaceState", () => {
   it("restores the initial slice and notifies the listeners", () => {
     const listener = vi.fn();
@@ -187,6 +208,8 @@ describe("resetWorkspaceState", () => {
       vbox: { x: 0, y: 0, width: 10, height: 10 },
       vport: { width: 10, height: 10 },
     });
+    setWorkspaceObjects({ a: { id: "a", type: "rect" } });
+    setDragDelta({ dx: 1, dy: 1 });
 
     resetWorkspaceState();
 
@@ -200,8 +223,10 @@ describe("resetWorkspaceState", () => {
     expect(state.hoverTopFrameId).toBeNull();
     expect(state.hoverShapeId).toBeNull();
     expect(state.areaSelect).toBeNull();
+    expect(state.objects).toBeNull();
+    expect(state.dragDelta).toBeNull();
     expect(getWorkspaceViewport()).toBeNull();
-    expect(listener).toHaveBeenCalledTimes(3);
+    expect(listener).toHaveBeenCalledTimes(5);
     unsub();
   });
 });

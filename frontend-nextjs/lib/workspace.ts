@@ -64,6 +64,9 @@ export interface WorkspaceFile {
   id: string;
   name: string;
   revn?: number;
+  // The version guard of update-file (F9.3 AD11): echoed back verbatim on
+  // a commit; the backend rejects a vern newer than the stored one.
+  vern?: number;
   data: WorkspaceFileData;
   permissions?: unknown;
   [key: string]: unknown;

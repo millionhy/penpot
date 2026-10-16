@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import transit from "transit-js";
-import { decodeTransit, encodeTransit, isPathData, PathData, resetTransitGuids } from "@/lib/transit";
+import {
+  decodeTransit,
+  encodeTransit,
+  encodeUpdateFile,
+  isPathData,
+  PathData,
+  resetTransitGuids,
+  type UpdateFileParams,
+} from "@/lib/transit";
 
 // The fdata objects-map ("penpot/objects-map/v2",
 // common/src/app/common/types/objects_map.cljc) arrives as a map of
@@ -206,5 +214,230 @@ describe("SES-compatible transit guids", () => {
     expect(guidNames(Date).length).toBeGreaterThan(0);
     expect(encodeTransit(new Date(86400000))).toBe("[\"~#'\",\"~m86400000\"]");
     expect(encodeTransit(new Uint8Array([1, 2, 3]))).toBe("[\"~#'\",\"~bAQID\"]");
+  });
+});
+
+// The update-file write side (F9.3 AD6): the move commit pre-encodes its
+// params through the writer — keyword keys, transit uuids, the
+// penpot/path-data tagged binary — and the shared reader must decode that
+// back into the JS shape it started from. The backend re-validates the
+// same structure (schema:change / schema:operation of
+// app.common.files.changes) AND the record tags: :selrect and every
+// :points item decode through the "rect" / "point" handlers of
+// app.common.geom.{rect,point}, whose instance checks a plain map fails
+// (the T3 E2E hit "invalid shape found" until the tags were added).
+describe("encodeUpdateFile", () => {
+  const FILE_ID = "00000000-0000-0000-0000-0000000000f1";
+  const SESSION_ID = "00000000-0000-0000-0000-0000000000f2";
+  const PAGE_ID = "00000000-0000-0000-0000-0000000000f3";
+  const SHAPE_ID = "00000000-0000-0000-0000-0000000000f4";
+
+  // One translated move-to segment at x=13 y=13 (28 little-endian bytes).
+  function packedMoveBytes(): Uint8Array {
+    const bytes = new Uint8Array(28);
+    const view = new DataView(bytes.buffer);
+    view.setInt16(0, 1, true);
+    view.setFloat32(20, 13, true);
+    view.setFloat32(24, 13, true);
+    return bytes;
+  }
+
+  function moveParams(content: PathData): UpdateFileParams {
+    return {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 5,
+      vern: 2,
+      changes: [
+        {
+          type: "mod-obj",
+          "page-id": PAGE_ID,
+          id: SHAPE_ID,
+          operations: [
+            { type: "set", attr: "x", val: 13 },
+            {
+              type: "set",
+              attr: "selrect",
+              val: { x: 13, y: 13, width: 30, height: 40, x1: 13, y1: 13, x2: 43, y2: 53 },
+            },
+            {
+              type: "set",
+              attr: "points",
+              val: [
+                { x: 13, y: 13 },
+                { x: 43, y: 13 },
+                { x: 43, y: 53 },
+                { x: 13, y: 53 },
+              ],
+            },
+            { type: "set", attr: "content", val: content },
+          ],
+        },
+      ],
+    };
+  }
+
+  it("writes keyword keys, transit uuids and the tagged path binary", () => {
+    const doc = encodeUpdateFile(moveParams(new PathData(packedMoveBytes())));
+    expect(doc.startsWith('["^ "')).toBe(true);
+    expect(doc).toContain('"~:id"');
+    expect(doc).toContain(`"~u${FILE_ID}"`);
+    expect(doc).toContain(`"~u${SESSION_ID}"`);
+    expect(doc).toContain('"~:revn"');
+    expect(doc).toContain('"~:vern"');
+    expect(doc).toContain('"~:changes"');
+    expect(doc).toContain('"~:mod-obj"');
+    expect(doc).toContain('"~:page-id"');
+    expect(doc).toContain('"~:operations"');
+    expect(doc).toContain('"~:set"');
+    expect(doc).toContain('"~:attr"');
+    expect(doc).toContain('"~:selrect"');
+    // The record tags the backend instance checks need: a plain map would
+    // decode as a plain map and fail validation.
+    expect(doc).toContain('"~#rect"');
+    expect(doc).toContain('"~#point"');
+    expect(doc).toMatch(/"~#rect",\["\^ "/);
+    expect(doc).toContain('"~#penpot/path-data"');
+  });
+
+  it("round-trips through the reader into the original JS shape", () => {
+    const doc = encodeUpdateFile(moveParams(new PathData(packedMoveBytes())));
+    const decoded = decodeTransit<UpdateFileParams>(doc);
+    expect(decoded).toEqual({
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 5,
+      vern: 2,
+      changes: [
+        {
+          type: "mod-obj",
+          "page-id": PAGE_ID,
+          id: SHAPE_ID,
+          operations: [
+            { type: "set", attr: "x", val: 13 },
+            {
+              type: "set",
+              attr: "selrect",
+              val: { x: 13, y: 13, width: 30, height: 40, x1: 13, y1: 13, x2: 43, y2: 53 },
+            },
+            {
+              type: "set",
+              attr: "points",
+              val: [
+                { x: 13, y: 13 },
+                { x: 43, y: 13 },
+                { x: 43, y: 53 },
+                { x: 13, y: 53 },
+              ],
+            },
+            { type: "set", attr: "content", val: expect.any(PathData) },
+          ],
+        },
+      ],
+    });
+    // The packed bytes survive the ~b base64 leg byte-for-byte.
+    const change = decoded.changes[0];
+    if (change.type !== "mod-obj") throw new Error("expected a mod-obj change");
+    const contentOp = change.operations[3];
+    expect(isPathData(contentOp.val)).toBe(true);
+    expect(Array.from((contentOp.val as PathData).bytes)).toEqual(
+      Array.from(packedMoveBytes()),
+    );
+  });
+
+  it("writes a mov-objects change with uuid shapes and the zero root", () => {
+    const root = "00000000-0000-0000-0000-000000000000";
+    const params: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 6,
+      vern: 2,
+      changes: [
+        {
+          type: "mov-objects",
+          "page-id": PAGE_ID,
+          "parent-id": root,
+          shapes: [SHAPE_ID, FILE_ID],
+        },
+      ],
+    };
+    const doc = encodeUpdateFile(params);
+    expect(doc).toContain('"~:mov-objects"');
+    expect(doc).toContain('"~:parent-id"');
+    expect(doc).toContain('"~:shapes"');
+    expect(doc).toContain(`"~u${root}"`);
+    expect(doc).toContain(`"~u${SHAPE_ID}"`);
+    expect(doc).toMatch(/"~:shapes",\["~u/);
+    const decoded = decodeTransit<UpdateFileParams>(doc);
+    expect(decoded).toEqual(params);
+  });
+
+  it("tags the uuid refs of a position-data op and keeps lookalikes plain", () => {
+    const refFile = "11111111-2222-3333-4444-555555555555";
+    const refId = "66666666-7777-8888-9999-000000000000";
+    const imageId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    // A uuid-lookalike on a key outside the ref set: "font-id" names a font
+    // (text-font-attrs) and the backend schema reads it as ::sm/text, so it
+    // must stay a plain string.
+    const lookalike = "12345678-1234-1234-1234-123456789012";
+    const params: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 7,
+      vern: 2,
+      changes: [
+        {
+          type: "mod-obj",
+          "page-id": PAGE_ID,
+          id: SHAPE_ID,
+          operations: [
+            {
+              type: "set",
+              attr: "position-data",
+              val: [
+                {
+                  x: 10,
+                  y: 20,
+                  width: 30,
+                  height: 40,
+                  text: "hello",
+                  "font-id": lookalike,
+                  fills: [
+                    {
+                      "fill-color": "#ff0000",
+                      "fill-color-ref-id": refId,
+                      "fill-color-ref-file": refFile,
+                    },
+                    {
+                      "fill-image": {
+                        width: 100,
+                        height: 50,
+                        mtype: "image/png",
+                        id: imageId,
+                        name: "bg",
+                      },
+                    },
+                    { "fill-color-ref-file": null },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const doc = encodeUpdateFile(params);
+    expect(doc).toContain(`"~u${refFile}"`);
+    expect(doc).toContain(`"~u${refId}"`);
+    expect(doc).toContain(`"~u${imageId}"`);
+    // The tagged form carries the "~u" prefix, so a bare quoted uuid would be
+    // the (invalid) plain-string encoding: none of them may appear.
+    expect(doc).not.toContain(`"${refFile}"`);
+    expect(doc).not.toContain(`"${refId}"`);
+    expect(doc).not.toContain(`"${imageId}"`);
+    expect(doc).toContain(`"${lookalike}"`);
+    // The reader normalizes the tags back into the strings the model holds.
+    const decoded = decodeTransit<UpdateFileParams>(doc);
+    expect(decoded).toEqual(params);
   });
 });

@@ -8,14 +8,23 @@
 // route components.
 //
 // Only the read-only slice F9.1 needs lives here; F9.2 adds the
-// selection/hover/area slice; page switching, history and the rest of
+// selection/hover/area slice; F9.3 adds the JS model reference and the
+// live drag translation; page switching, history and the rest of
 // workspace-local arrive with the next slices.
 
-import type { WorkspaceFile } from "@/lib/workspace";
+import type { WorkspaceFile, WorkspaceObjects } from "@/lib/workspace";
 import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";
 import type { ViewportRect, ViewportState } from "@/lib/workspace-viewport";
 
 export type WorkspaceStatus = "idle" | "loading" | "ready" | "error";
+
+// The live translation of a move drag, in world units (F9.3): the canvas
+// writes it on every preview frame and the overlay shifts the selection
+// visuals by it while the wasm modifiers move the shapes themselves.
+export interface DragDelta {
+  dx: number;
+  dy: number;
+}
 
 export interface WorkspaceState {
   status: WorkspaceStatus;
@@ -49,6 +58,12 @@ export interface WorkspaceState {
   hoverShapeId: string | null;
   // The live marquee rectangle in world coordinates while area-selecting.
   areaSelect: ViewportRect | null;
+  // The current JS-side page objects (the interaction model): filled by
+  // the canvas load effect and replaced after every committed change;
+  // null until the first load (the overlay falls back to the file prop).
+  objects: WorkspaceObjects | null;
+  // The translation of a running move drag; null when no drag runs.
+  dragDelta: DragDelta | null;
 }
 
 const initialState: WorkspaceState = {
@@ -65,6 +80,8 @@ const initialState: WorkspaceState = {
   hoverTopFrameId: null,
   hoverShapeId: null,
   areaSelect: null,
+  objects: null,
+  dragDelta: null,
 };
 
 let state: WorkspaceState = initialState;
@@ -155,4 +172,18 @@ export function setHoverShapeId(id: string | null): void {
 // area selection is running.
 export function setAreaSelect(rect: ViewportRect | null): void {
   setWorkspaceState({ areaSelect: rect });
+}
+
+// --- Move model and drag preview (F9.3) --------------------------------------
+
+// The JS-side model slice: the canvas fills it on load and replaces it
+// after a successful commit; the overlay draws from it.
+export function setWorkspaceObjects(objects: WorkspaceObjects | null): void {
+  setWorkspaceState({ objects });
+}
+
+// The live drag translation the overlay offsets the selection visuals by;
+// null between drags.
+export function setDragDelta(delta: DragDelta | null): void {
+  setWorkspaceState({ dragDelta: delta });
 }

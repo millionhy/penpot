@@ -9,8 +9,10 @@
 // in world coordinates and the zoom scale comes from the viewport itself;
 // the layer never takes pointer events (every gesture stays on the canvas
 // below). The component re-renders from the store slice (selection /
-// hoverShapeId / areaSelect / zoom / vbox); the shape geometry is read from
-// the JS-side page objects, the same model that answers the hit-testing.
+// hoverShapeId / areaSelect / zoom / vbox / dragDelta / objects); the
+// shape geometry comes from the JS-side page objects — the store's current
+// model when loaded, the file prop as the pre-load fallback — the same
+// model that answers the hit-testing.
 //
 // Ported pieces:
 // - the shape outlines (viewport/outline.cljs outline*): the rect of the
@@ -19,6 +21,10 @@
 //   (viewport/selection.cljs calculate-handlers; draw-only for now);
 // - the hover outline of the single hover shape (the CLJS :id @hover);
 // - the marquee of the running area selection (widgets selection-rect*).
+// - the live drag offset (F9.3): while a move drag runs the selection
+//   outlines, the bounds box and the handles shift by the store's
+//   dragDelta — the wasm modifier preview moves the shapes themselves, so
+//   the overlay keeps their outlines in step; the hover outline stays put.
 //
 // Deviations from the compiled original, documented:
 // - Selection and hover outlines share the accent-tertiary color: the CLJS
@@ -29,7 +35,8 @@
 //   (circle -> ellipse, path -> path data); exact path outlines are a
 //   later slice.
 // - The handles render as squares of 8 / zoom (draw-only; the CLJS draws
-//   circles and wires their drag handlers, which arrive with F9.3).
+//   circles and later slices wire their drag handlers, which F9.3 does
+//   not port: the resize gesture is outside this slice).
 // - The marquee draws dashed (the CLJS draws it solid) and fills with the
 //   existing --color-accent-select token, the port of the CLJS
 //   accent-tertiary-muted fill.
@@ -43,6 +50,7 @@ import {
   getInitialWorkspaceState,
   getWorkspaceState,
   subscribeWorkspace,
+  type DragDelta,
 } from "@/lib/workspace-store";
 import type { ViewportRect } from "@/lib/workspace-viewport";
 
@@ -71,29 +79,34 @@ function selrectOf(shape: WorkspaceShape): ViewportRect | null {
 }
 
 // The rotated corner points as an SVG polygon, or null when the shape is
-// unrotated or the points are not usable.
-function polygonOf(shape: WorkspaceShape): string | null {
+// unrotated or the points are not usable; the drag offset shifts every
+// vertex.
+function polygonOf(shape: WorkspaceShape, dx: number, dy: number): string | null {
   if (typeof shape.rotation !== "number" || shape.rotation === 0) return null;
   const points = shape.points;
   if (!Array.isArray(points) || points.length < 4) return null;
-  return points.map((point) => `${point.x},${point.y}`).join(" ");
+  return points.map((point) => `${point.x + dx},${point.y + dy}`).join(" ");
 }
 
 // outline*: the polygon of a rotated shape, the rect of the selrect
 // otherwise; stroke 1 / zoom (the viewBox scale is the zoom, so the stroke
-// stays one screen pixel).
+// stays one screen pixel). The offset is the live drag delta.
 function ShapeOutline({
   shape,
   zoom,
   className,
   testId,
+  offset,
 }: {
   shape: WorkspaceShape;
   zoom: number;
   className: string;
   testId?: string;
+  offset?: DragDelta | null;
 }) {
-  const polygon = polygonOf(shape);
+  const dx = offset?.dx ?? 0;
+  const dy = offset?.dy ?? 0;
+  const polygon = polygonOf(shape, dx, dy);
   if (polygon !== null) {
     return (
       <polygon
@@ -110,8 +123,8 @@ function ShapeOutline({
     <rect
       className={className}
       data-testid={testId}
-      x={rect.x}
-      y={rect.y}
+      x={rect.x + dx}
+      y={rect.y + dy}
       width={rect.width}
       height={rect.height}
       strokeWidth={1 / zoom}
@@ -169,8 +182,12 @@ export function WorkspaceViewportOverlay({ file, pageId }: WorkspaceViewportOver
     getInitialWorkspaceState,
   );
 
-  const objects = useMemo(() => pageObjects(file, pageId), [file, pageId]);
-  const { selection, hoverShapeId, areaSelect, zoom, vbox } = state;
+  const { selection, hoverShapeId, areaSelect, zoom, vbox, dragDelta } = state;
+  const storeObjects = state.objects;
+  const objects = useMemo(
+    () => storeObjects ?? pageObjects(file, pageId),
+    [storeObjects, file, pageId],
+  );
 
   if (zoom === null || vbox === null) return null;
 
@@ -181,6 +198,16 @@ export function WorkspaceViewportOverlay({ file, pageId }: WorkspaceViewportOver
   }
   const hoverShape = hoverShapeId === null ? null : (objects[hoverShapeId] ?? null);
   const bounds = selectionBounds(selectedShapes);
+  // The selection visuals follow a running drag; the hover outline does not.
+  const drawnBounds =
+    bounds !== null && dragDelta !== null
+      ? {
+          x: bounds.x + dragDelta.dx,
+          y: bounds.y + dragDelta.dy,
+          width: bounds.width,
+          height: bounds.height,
+        }
+      : bounds;
   const handleSize = HANDLE_SIZE / zoom;
 
   return (
@@ -199,20 +226,21 @@ export function WorkspaceViewportOverlay({ file, pageId }: WorkspaceViewportOver
             zoom={zoom}
             className="pp-overlay-outline"
             testId="selection-outline"
+            offset={dragDelta}
           />
         ))}
       </g>
-      {bounds !== null ? (
+      {drawnBounds !== null ? (
         <g className="pp-overlay-bounds">
           <rect
             className="pp-overlay-bounds-box"
-            x={bounds.x}
-            y={bounds.y}
-            width={bounds.width}
-            height={bounds.height}
+            x={drawnBounds.x}
+            y={drawnBounds.y}
+            width={drawnBounds.width}
+            height={drawnBounds.height}
             strokeWidth={1 / zoom}
           />
-          {handlePositions(bounds).map((point, index) => (
+          {handlePositions(drawnBounds).map((point, index) => (
             <rect
               key={index}
               className="pp-overlay-handle"

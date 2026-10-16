@@ -31,13 +31,18 @@
 // starts the marquee (a press on the empty canvas or with mod held;
 // handle-area-selection semantics — shift appends, shift+mod removes, a
 // plain press clears first) or records a pending click over the hover
-// shape; pointermove pans, grows the marquee (10 / zoom minimum on width
-// or height) or runs the rAF-merged hover query (setup-hover-shapes) plus
-// the 50ms-debounced top-nested-frame; pointerup finalizes the gesture
-// (a pending click released inside the move threshold selects). Escape
-// clears the selection and cancels the in-flight gesture; window
-// keydown/keyup/blur feed space/shift/mod and the cursor
-// (default/pointer/grab/grabbing).
+// shape; a left press over a shape that crosses the 10px move threshold
+// becomes the move drag (F9.3): the selection updates per the press branch
+// (AD3), the wasm modifier preview follows the pointer on one rAF flush
+// and the hover visuals step aside. pointermove pans, grows the marquee
+// (10 / zoom minimum on width or height), flushes the drag preview or runs
+// the rAF-merged hover query (setup-hover-shapes) plus the 50ms-debounced
+// top-nested-frame; pointerup finalizes the gesture (a pending click
+// released inside the move threshold selects; a drag releases into one
+// update-file commit, F9.3 T3/T5). Escape clears the
+// selection and cancels the in-flight gesture (a running drag resets its
+// preview first); window keydown/keyup/blur feed space/shift/mod and the
+// cursor (default/pointer/grab/grabbing).
 //
 // The selection/hover/marquee visuals are drawn by a sibling overlay
 // (components/workspace-viewport-overlay, T5): an SVG in world coordinates
@@ -60,10 +65,29 @@
 // - The JS-side file (lib/workspace, for the fit math) and the wasm-side
 //   file (workspace-data, for the render model) are two independent
 //   get-file reads of the same revision.
-// - The click selection runs on pointerup behind a 5px move threshold
-//   instead of the DOM click event of on-click; a press that crosses the
-//   threshold cancels it (the CLJS turns it into the move-selected drag,
-//   which arrives with F9.3).
+// - The click selection runs on pointerup behind a 10px move threshold
+//   instead of the DOM click event of on-click (F9.3 widened the F9.2
+//   5px); a press that crosses the threshold starts the move drag. The
+//   CLJS DOM layering is approximated with the selection-membership
+//   branches of AD3: a press on a selected shape moves the whole
+//   selection, a press outside it replaces the selection and shift
+//   toggles. The drag preview drives the internal modifier ABI; the
+//   release persists one update-file (AD5/AD6) gated by
+//   file.permissions["can-edit"]. A successful commit swaps the JS model
+//   (objectsRef/indexRef/store.objects, T5) and hands the preview over to
+//   the committed geometry through the same-task wasm push (AD7); a
+//   failed commit resets the preview and leaves the model untouched. A
+//   commit in flight rejects new presses, and a failed commit only
+//   reports through the console and the store error channel (no visible
+//   banner yet, T6).
+// - The drag needs the internal modifier ABI (lib/render-wasm/modifiers):
+//   when a wasm rebuild drops an entry point the threshold crossing keeps
+//   the F9.2 behavior (the release selects nothing) and warns once per
+//   load.
+// - Escape during a drag resets the preview and then clears the selection
+//   (the CLJS :escape shortcut emits interrupt + deselect-all); a
+//   pointercancel instead restores the selection the threshold crossing
+//   replaced.
 // - mod+space pans instead of the CLJS start-zooming drag.
 // - clientToWorld is the alias of the F9.1 pointToViewport (same formula;
 //   see lib/workspace-viewport).
@@ -80,6 +104,18 @@ import { WorkspaceViewportOverlay } from "@/components/workspace-viewport-overla
 import { ensureWasmModule, loadRenderer } from "@/lib/render-wasm/bridge";
 import { KEY, call, sleep, type RendererApp } from "@/lib/render-wasm/interop";
 import {
+  DRAG_PREVIEW_INTERNALS,
+  GEOMETRY_PUSH_INTERNALS,
+  commitShapeGeometry,
+  configureModifiers,
+  missingInternals,
+  resetModifierPreview,
+  startModifiers,
+  type GeometryShape,
+  type Matrix6,
+  type ShapeGeometry,
+} from "@/lib/render-wasm/modifiers";
+import {
   clearWorkspaceCanvas,
   initializeWorkspaceViewport,
   initWorkspaceCanvas,
@@ -91,13 +127,25 @@ import {
   workspacePageObjects,
 } from "@/lib/render-wasm/workspace-data";
 import { isMacos } from "@/lib/shortcuts";
+import { cmdEncoded } from "@/lib/rpc";
+import { encodeUpdateFile, type UpdateFileChange } from "@/lib/transit";
 import { pageObjects, type WorkspaceFile, type WorkspaceObjects } from "@/lib/workspace";
 import { createWorkspaceIndex, type WorkspaceIndex } from "@/lib/workspace-index";
+import {
+  applyMove,
+  applyReparent,
+  buildMoveChanges,
+  buildReparentChange,
+  movedGeometry,
+  resolveMoveSet,
+  topNestedFrameAt,
+} from "@/lib/workspace-move";
 import {
   areaInitialSelection,
   createHoverIdsCache,
   hoverShapeId,
   hoverStackAt,
+  isFrameShape,
   makeAppIntersectPosition,
   makeAppSortIds,
   makeAppTopNestedFrame,
@@ -108,10 +156,13 @@ import {
   clearSelection,
   getWorkspaceState,
   setAreaSelect,
+  setDragDelta,
   setHover,
   setHoverShapeId,
   setHoverTopFrameId,
   setSelection,
+  setWorkspaceObjects,
+  setWorkspaceState,
   setWorkspaceViewport,
   toggleSelection,
 } from "@/lib/workspace-store";
@@ -132,6 +183,15 @@ import {
 // clr/canvas, the background of a page without one.
 const DEFAULT_BACKGROUND = "#E8E9EA";
 
+// file.permissions["can-edit"] of the get-file response (the hyphenated
+// key arrives as a string, T1): only an explicit false gates the move
+// drag (AD5); a missing permissions map is left to the backend 403.
+function readCanEdit(file: WorkspaceFile): boolean {
+  const permissions = file.permissions;
+  if (permissions === null || typeof permissions !== "object") return true;
+  return (permissions as Record<string, unknown>)["can-edit"] !== false;
+}
+
 // The wheel accumulator of actions.cljs (one mutable ref): the scroll
 // deltas and the compound zoom scale, each with its own rAF id.
 interface WheelAccumulator {
@@ -143,9 +203,10 @@ interface WheelAccumulator {
   zoomRafId: number;
 }
 
-// The pending-click threshold (client pixels): a release inside it selects
-// the shape, a press that crosses it is treated as a drag.
-const CLICK_MOVE_THRESHOLD = 5;
+// The pending-click threshold (client pixels, 10 screen px since F9.3
+// AD3): a release inside it selects the shape, a press that crosses it
+// starts the move drag.
+const CLICK_MOVE_THRESHOLD = 10;
 
 // The hover-top-frame debounce of setup-hover-shapes (rx/debounce 50).
 const TOP_FRAME_DEBOUNCE_MS = 50;
@@ -157,7 +218,7 @@ const AREA_MIN_SIZE = 10;
 // The pointer gesture the handlers mutate (the CLJS keeps this spread
 // across the stream pipeline).
 interface PointerInteraction {
-  mode: "idle" | "pan" | "area" | "click";
+  mode: "idle" | "pan" | "area" | "click" | "drag";
   pointerId: number | null;
   // The client position of the press (the click-threshold anchor).
   downClient: ViewportPoint | null;
@@ -176,6 +237,17 @@ interface PointerInteraction {
   areaRemove: boolean;
   areaIgnoreGroups: boolean;
   areaActive: boolean;
+  // The pending-drag branch decided at pointerdown (AD3): "group" (the hit
+  // shape is selected: the drag moves the whole selection), "single" (the
+  // drag replaces the selection with the hit shape) or "toggle" (shift:
+  // the drag toggles it); null outside a pending or running drag.
+  dragBranch: "group" | "single" | "toggle" | null;
+  // The resolved move set while a drag runs (the selection plus the
+  // subtrees of its containers, lib/workspace-move).
+  dragIds: string[];
+  // The selection as it was when the threshold was crossed: the restore
+  // source of a pointercancel.
+  selectionBeforeDrag: string[] | null;
 }
 
 // The $APP-backed pieces of the selection library (they need the wasm
@@ -216,6 +288,22 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
   const indexRef = useRef<WorkspaceIndex | null>(null);
   const adaptersRef = useRef<InteractionAdapters | null>(null);
   const hoverCacheRef = useRef<HoverIdsCache | null>(null);
+  // The move drag needs the internal modifier ABI; the load effect gates
+  // it once per load (see the load sequence below).
+  const dragEnabledRef = useRef(false);
+  // The commit bookkeeping of the write path (F9.3 T3, AD5/AD11): the
+  // interaction effect outlives prop changes, so the ids it commits with
+  // and the guards all live in refs the load effect refreshes — the edit
+  // gate, the revn counter and the vern guard (revn + vern of the current
+  // file) and the session id minted once per mount.
+  const fileIdRef = useRef(fileId);
+  const pageIdRef = useRef(pageId);
+  const canEditRef = useRef(true);
+  const revnRef = useRef(0);
+  const vernRef = useRef(0);
+  const sessionIdRef = useRef<string | null>(null);
+  // A commit in flight rejects new presses (AD9).
+  const commitPendingRef = useRef(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -255,6 +343,18 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
     canvas.dataset.rendered = "false";
     delete canvas.dataset.shapes;
     stateRef.current = null;
+    dragEnabledRef.current = false;
+    // The write-path bookkeeping of this file (AD5/AD11): the ids the
+    // interaction effect commits with, the edit gate, the revn/vern
+    // guards and the session id minted once per mount.
+    fileIdRef.current = fileId;
+    pageIdRef.current = pageId;
+    canEditRef.current = readCanEdit(file);
+    revnRef.current = typeof file.revn === "number" ? file.revn : 0;
+    vernRef.current = typeof file.vern === "number" ? file.vern : 0;
+    if (sessionIdRef.current === null) {
+      sessionIdRef.current = crypto.randomUUID();
+    }
 
     void (async () => {
       try {
@@ -262,6 +362,22 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
         if (!alive()) return;
         await ensureWasmModule(app);
         if (!alive()) return;
+
+        // F9.3: the move drag drives the internal modifier ABI directly;
+        // gate it once per load so a wasm rebuild missing an entry point
+        // degrades to the F9.2 click behavior instead of trapping. Both
+        // sets gate the drag: the preview needs set-modifiers, and a
+        // commit must be able to hand the geometry over to the pool (a
+        // missing push entry would leave the wasm side stale after a
+        // commit).
+        const missing = missingInternals(app, [
+          ...DRAG_PREVIEW_INTERNALS,
+          ...GEOMETRY_PUSH_INTERNALS,
+        ]);
+        dragEnabledRef.current = missing.length === 0;
+        if (missing.length > 0) {
+          console.warn(`[render-wasm] drag disabled, missing internals: ${missing.join(", ")}`);
+        }
 
         // try-init of viewport-wasm.cljs: one attempt plus three retries
         // 200 ms apart; a persistent failure surfaces as the error state.
@@ -297,6 +413,9 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
         const objects = pageObjects(file, pageId);
         objectsRef.current = objects;
         indexRef.current = createWorkspaceIndex(objects);
+        // AD10: the store carries the same reference the overlay draws from
+        // (a commit replaces it together with the ref).
+        setWorkspaceObjects(objects);
         // A (re)load invalidates the previous model's derived state: the
         // $APP adapters, the sort cache and the transient interaction
         // slices (the selection ids belong to the old page).
@@ -470,6 +589,9 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
       areaRemove: false,
       areaIgnoreGroups: false,
       areaActive: false,
+      dragBranch: null,
+      dragIds: [],
+      selectionBeforeDrag: null,
     };
 
     // The tracked modifiers: space switches the pan mode, shift the toggle
@@ -483,6 +605,14 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
     let pendingHoverWorld: ViewportPoint | null = null;
     let topFrameTimer = 0;
     const panAcc = { dx: 0, dy: 0, rafId: 0 };
+
+    // The move drag (F9.3): the rAF-merged preview flush, the latest world
+    // position of the pointer and whether the modifier overrides are live.
+    const drag = {
+      active: false,
+      rafId: 0,
+      currentWorld: null as ViewportPoint | null,
+    };
 
     const canvasOrigin = (): ViewportPoint => {
       const bbox = canvas.getBoundingClientRect();
@@ -591,6 +721,197 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
       setWorkspaceViewport(next);
     };
 
+    // One preview configuration per frame: the world delta against the
+    // press anchor, splat as one translation matrix over the move set (the
+    // CLJS apply-wasm-modifiers translation branch — no snap-pixel, no
+    // ignore-geometry; AD2).
+    const flushDrag = (): void => {
+      drag.rafId = 0;
+      const app = appRef.current;
+      const current = drag.currentWorld;
+      const down = interaction.downWorld;
+      if (app === null || current === null || down === null) return;
+      if (interaction.mode !== "drag" || interaction.cancelled) return;
+      const dx = current.x - down.x;
+      const dy = current.y - down.y;
+      const matrix: Matrix6 = [1, 0, 0, 1, dx, dy];
+      configureModifiers(
+        app,
+        interaction.dragIds.map((id) => [id, matrix] as const),
+      );
+      // The overlay offsets the selection visuals by the same delta.
+      setDragDelta({ dx, dy });
+    };
+
+    // The threshold crossing of a pending press (AD3): commit the branch
+    // the press decided — a single/toggle press updates the selection
+    // first — then resolve the move set over the JS model and enter the
+    // wasm preview.
+    const startDrag = (world: ViewportPoint): void => {
+      const app = appRef.current;
+      const objects = objectsRef.current;
+      const id = interaction.clickId;
+      if (id === null) return;
+      if (app === null || objects === null || !dragEnabledRef.current || !canEditRef.current) {
+        // The preview ABI is unavailable — or the file is read-only: keep
+        // the F9.2 semantics (the release selects nothing).
+        interaction.moved = true;
+        return;
+      }
+      interaction.selectionBeforeDrag = getWorkspaceState().selection;
+      if (interaction.dragBranch === "single") setSelection([id]);
+      else if (interaction.dragBranch === "toggle") toggleSelection(id, true);
+      const moveSet = resolveMoveSet(getWorkspaceState().selection, objects);
+      if (moveSet.length === 0) {
+        // A shift press over the only selected shape toggles it out.
+        interaction.moved = true;
+        return;
+      }
+      interaction.mode = "drag";
+      interaction.dragIds = moveSet;
+      // The hover visuals belong to the idle state.
+      hoverActive = false;
+      setHover(null);
+      setHoverShapeId(null);
+      drag.active = true;
+      drag.currentWorld = world;
+      startModifiers(app);
+      drag.rafId = window.requestAnimationFrame(flushDrag);
+      updateCursor();
+    };
+
+    // Undo the drag bookkeeping without touching the wasm side: stop the
+    // pending flush and drop the gesture references.
+    const stopDragState = (): void => {
+      drag.active = false;
+      if (drag.rafId !== 0) {
+        window.cancelAnimationFrame(drag.rafId);
+        drag.rafId = 0;
+      }
+      drag.currentWorld = null;
+    };
+
+    // Leave the preview without a commit: drop the modifier overrides,
+    // show the base geometry again and clear the overlay offset. Idempotent
+    // per gesture. The commit success path instead hands the geometry over
+    // through commitShapeGeometry (T5, AD7) and stops the state directly.
+    const cancelDragPreview = (): void => {
+      if (!drag.active) return;
+      stopDragState();
+      const app = appRef.current;
+      if (app !== null) resetModifierPreview(app);
+      setDragDelta(null);
+    };
+
+    // AD5/AD9: the release of a live drag persists one pessimistic
+    // update-file — a cancelled gesture or a collapsed delta sends
+    // nothing; commitMove settles the preview on every path. T5 adds the
+    // post-commit handover on success:
+    // - the JS model is replaced in place (the move application, then the
+    //   mov-objects mirror over the ids the change carried) and the
+    //   store/overlay follow the same reference (AD9/AD10);
+    // - the preview hands over through commitShapeGeometry: end modifiers,
+    //   clean the overrides, push every moved shape's new selrect (path
+    //   content included) and request one full render, all in the task
+    //   that handled the response — no intermediate frame shows the base
+    //   geometry (AD7);
+    // - a failure resets the preview over the untouched base geometry and
+    //   leaves the model, the selection and the revn alone, reporting
+    //   through the console and the store error channel (AD9).
+    //
+    // T4/AD8: the drop target resolves over the JS model — the wasm-side
+    // cljs snapshot freezes at load and goes stale after the first commit
+    // (the F9.2 KEY.topNestedFrame would misjudge the moved frames). The
+    // frames of the live move are excluded (a frame never reparents into
+    // itself), and the mov-objects change follows the mod-obj list in the
+    // same request (AD5).
+    const commitMove = async (
+      ids: string[],
+      dx: number,
+      dy: number,
+      releaseWorld: { x: number; y: number },
+    ): Promise<void> => {
+      const objects = objectsRef.current;
+      const sessionId = sessionIdRef.current;
+      if (objects === null || sessionId === null || commitPendingRef.current) {
+        cancelDragPreview();
+        return;
+      }
+      const excluded = new Set<string>();
+      for (const id of ids) {
+        if (isFrameShape(objects[id] ?? null)) excluded.add(id);
+      }
+      const targetFrameId = topNestedFrameAt(objects, releaseWorld, excluded);
+      const changes: UpdateFileChange[] = buildMoveChanges(objects, ids, dx, dy, pageIdRef.current);
+      const reparent = buildReparentChange(
+        objects,
+        getWorkspaceState().selection,
+        targetFrameId,
+        pageIdRef.current,
+      );
+      if (reparent !== null) changes.push(reparent);
+      if (changes.length === 0) {
+        cancelDragPreview();
+        return;
+      }
+      commitPendingRef.current = true;
+      try {
+        const body = encodeUpdateFile({
+          id: fileIdRef.current,
+          "session-id": sessionId,
+          revn: revnRef.current,
+          vern: vernRef.current,
+          changes,
+        });
+        const response = await cmdEncoded<{ revn?: unknown }>("update-file", body);
+        const revn =
+          response !== null && typeof response === "object" ? response.revn : undefined;
+        if (typeof revn !== "number") {
+          throw new Error("update-file: the response carried no revn");
+        }
+        // The response revn is the file revn BEFORE this commit, and
+        // process-changes-and-validate raised the stored one to at least
+        // revn + 1 (the T3 E2E saw it: only the lagged rows carry the
+        // post-commit revn). The local guard tracks that bound: the CLJS
+        // persistence advances optimistically, and the backend only
+        // rejects a revn ABOVE the stored one (files_update.clj), so a
+        // lagging submit stays accepted.
+        revnRef.current = Math.max(revnRef.current, revn + 1);
+        // T5: the model swap. The move applies over the whole drag set,
+        // the reparent over the ids the change carried; the store takes
+        // the same reference the refs hold (AD10).
+        const moved = applyMove(objects, ids, dx, dy);
+        const next = reparent === null ? moved : applyReparent(moved, reparent.shapes, targetFrameId);
+        objectsRef.current = next;
+        indexRef.current = createWorkspaceIndex(next);
+        setWorkspaceObjects(next);
+        // The geometry handover (AD7): the same task as the model swap, so
+        // the canvas never renders between the preview and the committed
+        // state.
+        stopDragState();
+        setDragDelta(null);
+        const pushApp = appRef.current;
+        if (pushApp !== null) {
+          const entries: Array<readonly [GeometryShape, ShapeGeometry]> = [];
+          for (const id of ids) {
+            const shape = objects[id];
+            if (shape === undefined || shape === null) continue;
+            const geometry = movedGeometry(shape, dx, dy);
+            if (geometry !== null) entries.push([shape, geometry]);
+          }
+          commitShapeGeometry(pushApp, entries);
+        }
+      } catch (cause: unknown) {
+        console.error("[workspace] move commit failed:", cause);
+        setWorkspaceState({ error: cause });
+        // AD9: nothing was applied — the base geometry is still in the
+        // pool; the preview resets over it and the model stays untouched.
+        cancelDragPreview();
+      } finally {
+        commitPendingRef.current = false;
+      }
+    };
+
     const startArea = (
       pointerId: number,
       client: ViewportPoint,
@@ -651,6 +972,9 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
       const objects = objectsRef.current;
       if (state === null || index === null || objects === null) return;
       if (interaction.mode !== "idle") return;
+      // AD9: a commit in flight rejects new presses (simplified
+      // concurrency; a queue may follow in a later slice).
+      if (commitPendingRef.current) return;
 
       // Capture the pointer so the gesture survives leaving the canvas
       // (setPointerCapture in on-pointer-down).
@@ -676,8 +1000,8 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
       const hoverId = updateHoverAt(world);
 
       // (or (not id) mod?): the empty canvas and mod both start the
-      // marquee; a hit shape records the pending click (the CLJS starts
-      // move-selected here; the drag arrives with F9.3).
+      // marquee; a hit shape records the pending click and its drag
+      // branch (the CLJS starts move-selected here).
       if (hoverId === null || keys.mod) {
         startArea(event.pointerId, client, world);
         return;
@@ -685,9 +1009,18 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
       interaction.mode = "click";
       interaction.pointerId = event.pointerId;
       interaction.downClient = client;
+      interaction.downWorld = world;
       interaction.clickId = hoverId;
       interaction.moved = false;
       interaction.cancelled = false;
+      // AD3: the press over the shape decides the drag branch; the
+      // threshold crossing commits it.
+      const selection = getWorkspaceState().selection;
+      interaction.dragBranch = keys.shift
+        ? "toggle"
+        : selection.includes(hoverId)
+          ? "group"
+          : "single";
     };
 
     const onPointerMove = (event: PointerEvent): void => {
@@ -718,15 +1051,23 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
         return;
       }
 
-      // The pending click: a drag past the threshold cancels the release
-      // selection.
+      if (interaction.mode === "drag") {
+        // One flush per frame; the flush reads the latest world point.
+        if (interaction.cancelled) return;
+        drag.currentWorld = toWorld(client, state);
+        if (drag.rafId === 0) drag.rafId = window.requestAnimationFrame(flushDrag);
+        return;
+      }
+
+      // The pending click: a drag past the threshold becomes the move
+      // gesture (F9.3 AD3); inside the threshold the release selects.
       const down = interaction.downClient;
       if (down === null || interaction.moved) return;
       if (
         Math.abs(client.x - down.x) > CLICK_MOVE_THRESHOLD ||
         Math.abs(client.y - down.y) > CLICK_MOVE_THRESHOLD
       ) {
-        interaction.moved = true;
+        startDrag(toWorld(client, state));
       }
     };
 
@@ -740,6 +1081,9 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
       interaction.moved = false;
       interaction.cancelled = false;
       interaction.areaActive = false;
+      interaction.dragBranch = null;
+      interaction.dragIds = [];
+      interaction.selectionBeforeDrag = null;
       updateCursor();
     };
 
@@ -777,12 +1121,49 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
         return;
       }
 
+      if (mode === "drag") {
+        // The release commits (AD5): the world delta against the press
+        // anchor becomes one update-file request. A cancelled gesture
+        // (Escape) or one that collapsed to zero sends nothing. The
+        // selection update made at the threshold crossing stays. The
+        // release point also anchors the T4 drop-target resolution.
+        // commitMove settles the preview on every path (T5): the success
+        // path hands the geometry over, every other exit resets it.
+        const state = stateRef.current;
+        const down = interaction.downWorld;
+        let dx = 0;
+        let dy = 0;
+        let releaseWorld: { x: number; y: number } | null = null;
+        if (!cancelled && down !== null && state !== null) {
+          const world = toWorld({ x: event.clientX, y: event.clientY }, state);
+          dx = world.x - down.x;
+          dy = world.y - down.y;
+          releaseWorld = world;
+        }
+        const ids = interaction.dragIds;
+        endGesture();
+        if (!cancelled && ids.length > 0 && releaseWorld !== null && (dx !== 0 || dy !== 0)) {
+          void commitMove(ids, dx, dy, releaseWorld);
+        } else {
+          cancelDragPreview();
+        }
+        return;
+      }
+
       endGesture();
     };
 
     const onPointerCancel = (event: PointerEvent): void => {
       if (interaction.pointerId !== event.pointerId) return;
       if (interaction.mode === "area") setAreaSelect(null);
+      if (interaction.mode === "drag") {
+        // A physical cancellation leaves the state as if the press never
+        // mutated it: the preview resets and the selection the threshold
+        // crossing replaced comes back (Escape instead clears it, F9.2).
+        cancelDragPreview();
+        const before = interaction.selectionBeforeDrag;
+        if (before !== null) setSelection(before);
+      }
       endGesture();
     };
 
@@ -803,7 +1184,9 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
     };
 
     // Escape (the CLJS clear-selection): the marquee aborts without the
-    // release side effects and a pending click is swallowed.
+    // release side effects and a pending click is swallowed; a running
+    // drag resets its preview first (the CLJS :escape emits interrupt +
+    // deselect-all, so the keydown handler still clears the selection).
     const cancelGesture = (): void => {
       if (interaction.mode === "area") {
         setAreaSelect(null);
@@ -811,6 +1194,10 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
         return;
       }
       if (interaction.mode === "click") interaction.cancelled = true;
+      if (interaction.mode === "drag") {
+        cancelDragPreview();
+        interaction.cancelled = true;
+      }
     };
 
     // The keys are ignored while a form control has the focus (the CLJS
@@ -898,8 +1285,11 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
       if (panAcc.rafId !== 0) window.cancelAnimationFrame(panAcc.rafId);
       if (topFrameTimer !== 0) window.clearTimeout(topFrameTimer);
       canvas.style.cursor = "default";
-      // The hover/marquee visuals are canvas-local: drop them on unmount
-      // (a StrictMode replay immediately rebuilds the same closure).
+      // A drag interrupted by the unmount hands the wasm shapes back and
+      // drops the overlay offset; the hover/marquee visuals are
+      // canvas-local and go too (a StrictMode replay immediately rebuilds
+      // the same closure).
+      if (drag.active) cancelDragPreview();
       setHover(null);
       setHoverShapeId(null);
       setHoverTopFrameId(null);
