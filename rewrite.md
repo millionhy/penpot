@@ -1,18 +1,18 @@
 # Penpot 技术改造计划（渐进式路线）
 
 > 本次修订（2026-10-02）依据 `archify` 生成的架构图与当前仓库真实结构（Penpot v2.17.0）重排：
-> 新前端落到 `frontend-nextjs/`，新后端落到 `backend-rust/`；**前端优先**，在对应前端功能迁移
-> 完成前**不改造后台**。
+> 新前端落到 `frontend-nextjs/`，新后端落到 `backend-rust/`；**前端优先**。2026-10-16 阶段 B
+> 改口径为「**实现但不接入部署**」（可写 `backend-rust` 实现与测试，仍不改 `backend/`、不接 nginx）。
 
 | 项目 | 值 |
 | --- | --- |
 | 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1 数据层、F7.2 安装与管理 UI 完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）受门禁未开始 |
+| 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
-| 硬性门禁 | `frontend-nextjs` 完成对应功能迁移前，不改 `backend/`、不实现 `backend-rust` |
-| 最后更新 | 2026-10-13 |
+| 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
+| 最后更新 | 2026-10-16 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -23,7 +23,7 @@
 
 ## 0. 任务追踪总表
 
-图例：✅ 完成　🔧 进行中　⬜ 未开始　⛔ 阻塞（附解锁条件）　🔒 受门禁（前端未完成前不启动）
+图例：✅ 完成　🔧 进行中　⬜ 未开始　⛔ 阻塞（附解锁条件）
 
 ### 阶段 F：frontend-nextjs（前端优先）
 
@@ -44,16 +44,25 @@
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
 | F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）与 F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）完成；Web Worker + 协作光标等留 F8 后 |
 
-### 阶段 B：backend-rust（Rust + axum，受门禁）
+### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
-| 编号 | 任务 | 状态 | 说明 |
-| --- | --- | --- | --- |
-| B0 | `backend-rust/` 目录 + 规划 README | ✅ | 仅占位与 crate 规划，无实现代码 |
-| B1 | `render-native` 渲染/导出服务 | 🔒 | 复用 `render-wasm` 平台无关核心；axum HTTP |
-| B2 | `storage` 对象存储服务 | 🔒 | S3/本地/MinIO，对齐 `backend/src/app/storage` |
-| B3 | `worker` 异步任务 runner | 🔒 | Postgres `task` 表 + Redis 交接（见架构图异步视图） |
-| B4 | `ws-gateway` 协作网关 | 🔒 | tokio-tungstenite；会话仍需查 `http_session` |
-| B5 | `rpc` 命令承接 | 🔒 | 最后、风险最高；需先有契约与响应类型 |
+门禁口径：实现但不接入部署。执行计划（里程碑 M0–M8、已核对契约事实、风险、红线）在
+`backend-rust/PLAN.md`。
+
+| 编号 | M | 任务 | 状态 | 说明 |
+| --- | --- | --- | --- | --- |
+| B0 | — | `backend-rust/` 目录 + 规划 README | ✅ | 占位、crate 规划、门禁说明 |
+| B0.1 | — | 阶段 B 执行计划 | ✅ | `PLAN.md` + `HANDOFF.md`；决策：axum、crate 名无前缀、`transit` 自建 enum、实现但不接入部署 |
+| B0.2 | M0 | Cargo workspace + Makefile | ⬜ | `crates/{transit,errors,config,session,db,storage,worker,ws,rpc}`；不接 `scripts/ci` |
+| B1 | M1 | `transit` crate | ⬜ | Transit+JSON reader/writer + Penpot 标签 + `^ `/`^N` 缓存；预言机 = `transit-js`（不需后端） |
+| B2 | M2 | `errors` + `config` crate | ⬜ | `ex-data` → HTTP status/body；`PENPOT_*` env + flags |
+| B3 | M3 | `rpc` crate（axum 骨架） | ⬜ | 三组路由 + 中间件同序 + Registry；本地 `cargo run`，不接 nginx |
+| B4 | M4 | `session` crate | ⬜ | JWE `a256kw`+`a256gcm` + HKDF-BLAKE2b-512；会话查 **`http_session_v2`**（旧表已由 `0155` 删除）；兼容性待 C1 向量 |
+| B5 | M5 | `storage` crate | ⬜ | `storage_object`/bucket/去重/GC；`:fs`/`:s3`；对齐 `backend/src/app/storage` |
+| B6 | M6 | `worker` crate | ⬜ | Quartz 6 段 cron、task 状态机、`FOR UPDATE SKIP LOCKED` 认领、Redis `tenant:queue`；`task.props` = **jsonb transit**（不是 Fressian） |
+| B7 | M7 | `ws` crate | ⬜ | axum WebSocket + msgbus topic；RedisBus trait + InMemoryBus（离线测试） |
+| B8 | M8 | `rpc` 只读命令承接 | ⛔ | 前置：C3 DDL + C4 OpenAPI + 补齐 `::sm/result` + 可用 devenv。永久排除：`add-file-transient-changes`/binfile/files 写路径/thumbnails/nitrate（`file.data` blob = Fressian v4/v5，JVM 专有） |
+| — | — | `render-native` | ⬜ 暂缓 | `render-wasm` 无 headless-native API（24 处 `cfg(target_arch="wasm32")` + GL `gpu_state`），需先抽 core 且要 file-data 解码 |
 
 ### 支撑任务（契约，只读后端，可与阶段 F 并行）
 
@@ -61,7 +70,9 @@
 | --- | --- | --- | --- |
 | S1 | RPC 命令清单提取 | ✅ | `packages/api-types/scripts/scan-rpc-inventory.mjs` 静态扫描 `backend/src`（只读）→ `rpc-inventory.json`：189 条命令（29 公开、183 有 params schema、50 有 result schema），含 ns/文件/行号/auth/added |
 | S2 | OpenAPI 快照 | ⛔ | 需 JVM + Clojure 依赖或运行中的后端；解锁见 §8 |
-| S3 | DB Schema 快照 | ⬜ | 从迁移重放 DDL；B2/B3 的 sqlx 类型输入 |
+| S3 | DB Schema 快照 | ⬜ | 从迁移重放 DDL（`scripts/db-schema`）；B5/B6 的 sqlx 类型输入。需活 PG |
+| S4 | Transit 金样本语料 | ⬜ | 用 `frontend-nextjs/node_modules/transit-js` 作预言机离线生成（**不需后端**）；解锁 B1 |
+| S5 | JWE 兼容性向量 | ⛔ | 仓库内无样本（grep `eyJ` 无命中）；需 devenv 登录后取 cookie `auth-token` + `PENPOT_SECRET_KEY`；解锁 B4 |
 
 ---
 
@@ -156,8 +167,8 @@
 
 ### 3.2 核心原则
 
-1. **前端优先，后端受门禁**：先把 `frontend-nextjs` 的路由组逐个迁移到功能对等；在此之前不改
-   `backend/`、不实现 `backend-rust`。
+1. **前端优先，后端「实现但不接入部署」**：`frontend-nextjs` 的路由组继续逐个迁移到功能对等；
+   `backend-rust` 可写实现与测试，但不接 nginx/反代、不加灰度开关、不改 `backend/` 与 `docker/`。
 2. **复用而非重写**：render-wasm、plugins(SES)、`@penpot/ui`、既有会话与 RPC 协议全部复用。
 3. **Next.js 做外壳**：替换路由/SSR/首屏与外层页面（auth/settings/dashboard/view），改善 SEO 与首屏。
 4. **契约先行**：任何跨栈调用都落在可校验产物（S1/S2/S3 → api-types）上，不靠读源码手抄。
@@ -175,9 +186,9 @@ penpot/
 │   ├── components/    外壳共享组件
 │   ├── packages/api-types/  生成的 RPC 类型(占位)
 │   └── next.config.mjs      /api、/assets 反代到 backend:6060
-├── backend/           (Clojure, 保留；前端完成前不动)
-├── backend-rust/      (新 Rust+axum 后端) —— 本轮仅占位 README ✅，实现受门禁 🔒
-│   └── crates/        render-native / storage / worker / ws-gateway / rpc
+├── backend/           (Clojure, 保留；阶段 B 全程只读参照，不改一行)
+├── backend-rust/      (新 Rust+axum 后端) —— 计划已批准（PLAN.md/HANDOFF.md），实现但不接入部署
+│   └── crates/        transit / errors / config / session / db / storage / worker / ws / rpc
 ├── common/            (CLJC 共享, 保留)
 ├── render-wasm/       (Rust→WASM, 保留, 前后端共用)
 ├── exporter/  media-processor/  mcp/  plugins/  library/  docs/   (保留)
@@ -310,19 +321,34 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 4. Playwright 覆盖新路径；
 5. 不改动 `backend/`（如需新服务端行为，登记到阶段 B，不在 F 内做）。
 
-### 阶段 B：backend-rust（Rust + axum，🔒 受门禁）
+### 阶段 B：backend-rust（Rust + axum，计划已批准，不接入部署）
 
-**门禁**：仅当对应能力的前端消费方已落在 `frontend-nextjs` 且需要新服务端行为时启动；在此之前
-`backend-rust/` 只有规划 README。顺序（性能关键路径优先，核心业务最后）：
+**门禁（2026-10-16 改口径）**：可以写实现与测试、可以本地 `cargo run`；**不**接 nginx/反代、**不**加命令级
+灰度开关、**不**改 `docker/`、**不**改 `scripts/ci` 现有 target。`backend/` 保持只读参照。执行计划
+（M0–M8、已核对契约事实、风险、红线）在 `backend-rust/PLAN.md`，换机器上下文快照在
+`backend-rust/HANDOFF.md`。
 
-- B1 `render-native`：从 `render-wasm` 复用平台无关核心，axum 提供渲染/导出（PNG/SVG/PDF），替代
-  Puppeteer 路径。
-- B2 `storage`：`rust-s3` + `tokio::fs`，Trait 抽象 S3/本地/MinIO，兼容既有存储 API；输入为 S3 的
-  `storage_object` / `file_media_object` schema。
-- B3 `worker`：异步任务 runner，Postgres `task` 表认领 + Redis 交接；迁移导入/批量/邮件（`lettre`）/webhook。
-- B4 `ws-gateway`：长连接保持/心跳/重连/路由，桥接 Clojure 端；会话校验仍查 `http_session`
-  （Access+Refresh 双令牌如需，随此评估）。
-- B5 `rpc`：逐步承接 `/api/main/methods` 命令，最后且风险最高，需先有 S2 OpenAPI 与响应类型。
+顺序：`M0 workspace → M1 transit（关键路径）→ M2 errors+config ∥ M3 rpc(axum) → M4 session →
+M5 storage → M6 worker → M7 ws`。`transit` 先做的理由：RPC 请求体、应答体、`task.props`、session payload
+**全是 transit**，它不对后面全错。
+
+- M1 `transit`：自建 enum 值模型；`^ ` map 头与 `^N` 缓存；`~u/~m/~n/~:`/`~b`；`~#list` 与裸数组不对称；
+  `~#penpot/objects-map/v2` 嵌套 reader 隔离缓存；`~#penpot/path-data` 二进制。
+- M3 `rpc`：三组路由（`/api/main/methods/:name`、别名 `/api/rpc/command/:name`、
+  `/api/management/methods/:name` + shared-key）；GET 只允许 `get-` 前缀；`nil` → 204；
+  10 层中间件同序复刻。
+- M4 `session`：JWE `a256kw`+`a256gcm`，payload = transit，key =
+  `HKDF(HMAC-BLAKE2b-512, salt="tokens", 32B)`；会话状态在 **`http_session_v2`**（旧 `http_session` 已由
+  迁移 `0155` 删除）。兼容性验证需真 token 向量（`PLAN.md` §10 C1）。
+- M5 `storage`：对齐 `backend/src/app/storage`（`storage_object` 闭包 metadata、11 canonical bucket、
+  hash 去重、`status/deletion_attempts`、`:fs`/`:s3` + 遗留别名）。
+- M6 `worker`：`task.props` = jsonb transit；`FOR UPDATE SKIP LOCKED` + `tenant:queue` + Quartz 6 段 cron；
+  17 任务 / 10 条 cron。
+- M7 `ws`：axum WebSocket + msgbus（`profile-id`/`file-id`/team topics/`uuid/zero` 系统 topic）。
+
+永久排除（`file.data` blob = Fressian v4/v5，JVM 专有，Rust 无实现）：`add-file-transient-changes`、
+binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nitrate` 31 + `nitrate` 13 命令）。
+这些永久留在 Clojure 侧。
 
 ---
 
@@ -332,10 +358,10 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.2 完成：只读画布 + 画布交互与选择)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
-阶段 B  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  🔒 门禁：F 对应收口后逐服务启动
-        B1 render-native | B2 storage | B3 worker | B4 ws-gateway | B5 rpc
-支撑    ▒▒▒▒▒▒▒▒  S1 RPC 清单 → F1.2 ; S2 OpenAPI ⛔ ; S3 DB schema → B2/B3
-图例： █ 进行中/完成　▒ 可并行　░ 受门禁未开始
+阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
+        M0 workspace | M1 transit | M2 errors+config | M3 rpc(axum) | M4 session | M5 storage | M6 worker | M7 ws
+支撑    ▒▒▒▒▒▒▒▒  S1 RPC 清单 → F1.2 ; S2 OpenAPI ⛔ ; S3 DB schema → B5/B6 ; S4 transit 金样本 → B1 ; S5 JWE 向量 ⛔
+图例： █ 进行中/完成　▒ 可并行　░ 未开始
 ```
 
 ---
@@ -347,10 +373,13 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 | 两套前端体验割裂 | 中 | 中 | 复用 `@penpot/ui` + 移植 ds 令牌，统一设计系统（F2） |
 | Transit 复杂值往返不一致 | 中 | 严重 | F1.1 完整移植 handler；对 file/change 做往返测试 |
 | 响应类型覆盖不足 | 高 | 中 | S1/F1.2 生成 api-types；缺 `::sm/result` 的命令先标手写类型 |
-| 会话吊销在两栈不一致 | 中 | 严重 | 前端只复用 cookie 会话；后端侧统一由网关代查 `http_session`（B4） |
+| 会话吊销在两栈不一致 | 中 | 严重 | 前端只复用 cookie 会话；后端侧统一由网关代查 `http_session_v2`（B4） |
 | workspace 迁移复杂度 | 高 | 严重 | 放到 F9 最后，前置 F3–F8 验证；必要时长期保留 CLJS workspace |
-| Rust 与 WASM 渲染差异 | 中 | 中 | B1 像素级对比 + CI 金丝雀 |
-| 契约工具需 JVM/GitHub | 中 | 中 | S2 解锁条件见 §8；S1/S3 走静态扫描不依赖运行时 |
+| Rust 与 WASM 渲染差异 | 中 | 中 | render-native 已暂缓；将来开工时像素级对比 + CI 金丝雀 |
+| 契约工具需 JVM/GitHub | 中 | 中 | S2/S3/S5 解锁条件见 §8；S1/S4 走静态扫描/离线预言机不依赖运行时 |
+| file data blob = **Fressian v4/v5**（JVM 专有，无 Rust 实现） | 高 | 严重 | 阶段 B 不读写 `file.data`/`file_data.data`；写路径与领域核心永久留在 Clojure（见 B8 排除清单） |
+| Transit 缓存（`^N`）语义移植不全 → 大应答解码错位 | 中 | 严重 | B1 金样本必含缓存用例（照搬 `lib/transit.test.ts` 两条针对性断言） |
+| 只写代码、无流量验证 → 缺陷延后暴露 | 高 | 中 | 每里程碑 DoD 必须是可执行测试；需活依赖的测试标 `#[ignore]` + 写清解锁条件 |
 
 ---
 
@@ -542,7 +571,8 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 
 ### 7.7 阶段 B
 
-未开始（🔒 受门禁）。
+计划已批准（见 §7.26），实现尚未开始。执行计划：`backend-rust/PLAN.md`；上下文快照：
+`backend-rust/HANDOFF.md`。门禁口径从「不实现」改为「**实现但不接入部署**」。
 
 ### 7.8 本轮（2026-10-03，第七批：F5.1 dashboard 外壳与数据基座）
 
@@ -1409,6 +1439,43 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - 下一步：手柄 resize/rotate、撤销栈、按 z 序插入、伴随变更补齐；Web
   Worker、协作光标留 F8 后。
 
+### 7.26 本轮（2026-10-16，第二十五批：阶段 B 计划批准，无代码）
+
+- 本轮**只出计划，零实现代码**：`backend-rust/PLAN.md`（执行计划）、`backend-rust/HANDOFF.md`
+  （换机器上下文快照）、`backend-rust/README.md`（crate 划分与门禁口径重写）。
+- 门禁改口径：从「`frontend-nextjs` 对应功能完成前不实现 `backend-rust`」改为
+  「**实现但不接入部署**」：可写实现与测试、可本地 `cargo run`；不接 nginx/反代、不加灰度
+  开关、不改 `docker/`、不改根 `package.json`/`pnpm-workspace.yaml`、不改 `scripts/ci` 现有
+  target；`backend/` 仍不改一行。已同步 §0 表、§3.2 原则 1、§4 阶段 B、§5 里程碑、§7.7。
+- 四项决策：web 框架 = **axum**；crate 名**不加任何前缀**（`transit/errors/config/session/db/
+  storage/worker/ws/rpc`）；`transit` 值模型 = **自建 enum**；JWE 向量由用户在新机器开 devenv
+  后采集（未采前 `session` 按「结构自洽、兼容性待验」交付）。
+- 开工顺序定为一个关键路径：`M0 workspace → M1 transit → M2 errors+config ∥ M3 rpc(axum) →
+  M4 session → M5 storage → M6 worker → M7 ws`；M8（rpc 只读命令承接）本阶段不交付。
+  `transit` 排第一的理由：RPC 请求体、应答体、`task.props`、session payload 全是 transit。
+- 代码实测核对出的新事实（已写入 `PLAN.md` §2）：
+  - Transit+JSON 的 map 是**紧凑数组带 `^ ` 头 + `^N` 缓存**：`["^ ","~:a",1]`；vector 应答带
+    `~#list`，与裸 JSON array 不同，读者两者都要接（旧机器用 `transit-js` 本地实测得到）。
+  - `task.props` 是 **jsonb + transit**（`db/tjson`）而**不是 Fressian** → worker 不需要 blob 解码。
+  - `file.data`/`file_data.data` blob 是 **Fressian v4/v5**（`app.common.fressian`，JVM 专有）→ 列为
+    红线；连带把 `add-file-transient-changes`、binfile、files 写路径、thumbnails、nitrate 定为永久排除。
+  - 会话表已是 **`http_session_v2`**（迁移 `0155-drop-http-session-table.sql` 已删旧表），而本文
+    与旧 README 写的是 `http_session` → 已订正。密钥 = `HKDF(HMAC-BLAKE2b-512, salt="tokens", 32B)`。
+  - RPC 实际有**三组路由**（`/api/main/methods/:name`、别名 `/api/rpc/command/:name`、
+    `/api/management/methods/:name` + shared-key），本文旧版只提第一组；OpenAPI 真实路径是
+    `/api/main/doc/openapi.json`（`/api/openapi` 仅重定向）。
+  - `render-wasm` **没有 headless-native API**（24 处 `cfg(target_arch="wasm32")` + GL `gpu_state`），
+    所以 `render-native`（原规划 B1）推迟；先抽 core 才谈得上复用。
+  - 体量：`backend/src` 171 文件 / 46,151 行；`common/src` 156 CLJC / 55,433 行；RPC 189 命令
+    （160 鉴权 / 29 公开；183 有 params schema，**仅 50 有 result schema**）；168 个 SQL 迁移。
+- 新增支撑任务：S4（transit 金样本，用 `transit-js` **离线**生成，不需后端）、S5（JWE 兼容性
+  向量，需 devenv）。仓库内无现成 JWE 样本（grep `eyJ` 无命中）。
+- 旧机器环境实测（已标为分机器事实）：rustc/cargo 1.98.0；registry 走 `rsproxy.cn` 镜像（crates.io
+  直连被 TLS 拦）；axum 0.8.9、tokio 1.53.1、sqlx 0.9.0、aes-kw、aes-gcm、hkdf、blake2、redis、
+  proptest 等均已在本地缓存，M0–M7 可离线构建；docker/JVM/PG 不可用，所以 C1–C4 采集改到新机器做。
+- 下一步：新机器跑 `HANDOFF.md` §4 自检，执行 M0 + M1（T1.1–T1.5）；devenv 起来后一次性采集
+  C1–C4。本轮未动 `backend/`、`common/`、`frontend/`、`frontend-nextjs/`、`docker/`。
+
 ---
 
 ## 8. 开发环境备注（本机）
@@ -1419,6 +1486,8 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 | pnpm | 12.6.0 | 可用；`frontend-nextjs` 用独立工作区，`storeDir: ../.pnpm-store` |
 | 网络 | 可达 | 本轮 `pnpm install` 正常下载 `next@15.5.27` 等（早期修订的 40kB/s 限制不再适用） |
 | Clojure CLI / JVM | 未确认 | S2（OpenAPI 快照）需要；解锁见下 |
+| Rust | rustc/cargo 1.98.0；registry 走 `sparse+https://rsproxy.cn/index/`（crates.io 直连被 TLS 拦，`static.crates.io` 通） | axum 0.8.9 等关键依赖已在本地缓存；换机器先跑 `backend-rust/HANDOFF.md` §4 自检 |
+| docker | 旧机器 **没有** `docker` 命令（`command not found`）；新机器由用户开启 devenv | C1–C4 采集依赖 devenv |
 | PowerShell | 5.1 | 5.1 直接调 `apply_patch` 会吞掉参数里的换行与引号（报 "last line must be '*** End Patch'"）。可用做法：把补丁写进临时文件（`WriteAllText` + 单引号 here-string，LF、无 BOM），再用一个 node 小脚本 `spawnSync(codex.exe, ["--codex-run-as-apply-patch", patch])` 传参 |
 
 - 行尾/编码：`.editorconfig` 要求 LF + UTF-8 + 末尾换行；本轮所有新文件遵循。
@@ -1427,8 +1496,9 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - 本机 docker 端口：backend `:6060`、frontend nginx `:9001`、postgres `:5433`、mailcatch `:1080`；
   外壳 dev server 默认跑在 `:3450`（早期几轮因端口被占自动落到 `:3451`）。
 - `rewrite.md` 已入库（`git ls-files rewrite.md` 可见），随每轮的 `:books:` 文档提交更新。
-- S2 解锁：装好 Clojure CLI 后用 `enable-backend-openapi-doc` flag 起后端抓 `GET /api/rpc/openapi.json`，
-  或用 devenv 容器；S1/S3 走静态扫描，不依赖运行时。
+- S2 解锁：装好 Clojure CLI 后用 `enable-backend-openapi-doc` flag 起后端抓
+  `GET /api/main/doc/openapi.json`（`/api/openapi` 与 `/api/_doc` 只是重定向），或用 devenv 容器；
+  S1/S4 不依赖运行时，S3/S5 需要活的 PG / 已登录会话。
 
 ---
 
