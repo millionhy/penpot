@@ -1339,7 +1339,75 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   fetch/XHR 钩子核对全程零写请求（仅 get-profile/get-teams/get-file 等只读）。
   环境备注：窗口被遮挡致合成器停帧（rAF 停摆、截图超时），子代理以 rAF 垫片 +
   合成 Pointer 事件（setPointerCapture 打补丁）驱动，断言以 DOM/SVG 属性为准。
-- 下一步：F9.3 移动/拖拽与手柄交互；Web Worker、协作光标留 F8 后。
+- 下一步：F9.3 移动/拖拽与保存（resize/rotate 手柄归 F9.5+）；Web Worker、协作光标留 F8 后。
+
+### 7.25 本轮（2026-10-16，第二十四批：F9.3 拖动移动与保存）
+
+- 动机：F9.1 装载链、F9.2 只读交互之后，F9.3 打开**首个写路径**——拖动形状
+  实时预览、释放后持久化到后端、拖入帧自动重父级；T1–T6 完成（ABI 探测与
+  封装、拖动预览、提交构建与编码、重父级、提交后同步与失败处理、冒烟与
+  登记）。
+- 交付（均含代码注释登记偏差）：
+  - `lib/render-wasm/modifiers.ts`（244 行，新）：internal-module modifiers
+    协议封装——`configureModifiers`（40B/条：4×u32 uuid + 6×f32 矩阵；alloc
+    后重取 HEAPU32/HEAPF32）、`startModifiers/endModifiers/cleanModifiers`、
+    `pushShapeGeometry`（_use_shape + _set_shape_selrect + path 分块
+    _start/_set_shape_path_chunk_buffer/_set_shape_path_buffer）、`hasInternal`
+    守卫（缺函数禁拖 + console.warn）。
+  - `lib/workspace-move.ts`（744 行，新）：纯函数族——`resolveMoveSet`（子树
+    展开）、`translateShape`（path/bool content 28B/段字节级平移、text
+    position-data、通用 x/y/selrect/points）、`buildMoveChanges`（只发变化
+    属性）、`topNestedFrameAt`（JS 模型目标帧判定，排除移动集）、
+    `buildReparentChange`（mov-objects 反序 + clean-loops + 已属目标裁剪）。
+  - `lib/transit.ts`（517 行）：path-data 写侧标签（读侧 "~#penpot/
+    path-data" ↔ 写侧 "~b" base64）+ `encodeUpdateFile`；uuid 键修复——
+    position-data 内 *-ref-id/*-ref-file/fill-image id 以键模式 + uuid 形态
+    双保险重打标签（后端 malli ::sm/uuid 校验；拖动 E2E 暴露的 500 根因）。
+  - `lib/rpc.ts`（468 行）：`cmdEncoded`（预编码 transit body 变体）。
+  - `lib/workspace-store.ts`（189 行）：`objects`（提交后整引用替换）+
+    `dragDelta`（拖动中轮廓偏移）。
+  - `components/workspace-wasm-canvas.tsx`（1367 行）：拖动激活（10/zoom 世界
+    阈值）、选择语义（单选/toggle/整组）、rAF 预览、pointerup 提交分派、
+    Escape/pointercancel 取消、in-flight 提交门、can-edit 只读门、提交后
+    wasm 几何灌入（同任务内清预览→灌入→request-render，无中间帧）。
+  - `components/workspace-viewport-overlay.tsx`（277 行）：选择外形/bounds/
+    手柄统一叠加 dragDelta（hover 外框不偏移）。
+  - 测试：`workspace-move.test.ts`（806 行）、`render-wasm/modifiers.test.ts`
+    （381 行）、`transit.test.ts`/`rpc.test.ts`/`workspace-store.test.ts`
+    追加（+235/+55/+27）。
+- 关键语义（对齐 CLJS 原文）：down 命中 ∈ 选择集 → 整组拖动、∉ → 单选后
+  拖动、shift → toggle 后拖动；提交 = 单次 update-file（mod-obj×N +
+  mov-objects? 同请求，revn=max(本地,响应)）；mov-objects 只改归属不重算
+  坐标（Penpot 绝对坐标）；拖帧入自身被拒（excluded 断链回退父帧 + 已属
+  目标裁剪 = no-op）。
+- 与 CLJS 的有意偏差（代码注释均登记）：1）撤销（Ctrl+Z）缺失——无 undo
+  栈的第一步，留后续切片；2）点击阈值 5px→10px（对齐 CLJS 10/zoom；跨阈值
+  从"取消点击"变"进入拖动"）；3）DOM 分层近似——CLJS 选择框 DOM=整组、
+  形状本体=单选，外壳以选择集包含关系等价复刻；4）mov-objects 省略
+  `index`（尾插；按 z 序插入留后续）；5）伴随变更裁剪——hide-in-viewer/
+  layout-item/组件同步未发（只发 mov-objects + mod-obj）；6）optimistic→
+  pessimistic——先持久化成功后才应用（JS 模型替换 + wasm 灌入；失败天然
+  还原）；7）无 websocket revn 通知——last-write-wins，无冲突合并；8）目标
+  帧高亮缺失——拖动中无 ghost outline；9）drop 判定近似——release 点判定
+  （CLJS 用拖动盒/形状位置），多选混合归属按简化规则。另登记：组件实例按
+  普通形状处理（无 ignore-geometry）；text/组/bool 不可单独悬停点击（F9.2
+  hover 层限制延伸，拖动需先命中）；跨帧重父后形状在目标帧界外时不可见
+  （CLJS 同语义）。
+- 验证：vitest 45 文件 1078 例全过（较 F9.2 998 增 80）；`pnpm typecheck`、
+  `pnpm lint`、`pnpm translations`（en 828/828）干净；`pnpm build` 通过
+  （/workspace 15.5 kB，First Load 207 kB）。
+- 浏览器冒烟（:3450 + 真实后端 + Plants-app 文件）：E2E 主验证 A'/B/R1/F/R2
+  + get-file 解码断言（revn 26）全过；单/多选拖动→刷新位置保持；shift
+  toggle 拖动、Escape 中途取消（无提交、选择清空、revn 不动）；path 拖动
+  提交→刷新 position-data 持久；拖入帧/拖出帧/拖帧入自身被拒；多选跨帧
+  混合重父（非帧成员改归属 + 帧成员裁剪，文档化）；断网注入→回位 + 错误
+  可见 + revn 不动，恢复后重拖成功；只读文件（DB can_edit=false）拖动被拒
+  （无提交/选择空/revn 不动），恢复权限后正常拖动；F9.2 回归集复跑。多轮
+  拖动-恢复轨迹 DB revn 30→40、changes 11→21，全程 revn 单调。
+- 修正 §7.24 措辞：原"下一步：F9.3 移动/拖拽与手柄交互"把 resize/rotate
+  手柄误归 F9.3（F9.2 计划路线图归 F9.5+，本切片不含手柄），上一句已修正。
+- 下一步：手柄 resize/rotate、撤销栈、按 z 序插入、伴随变更补齐；Web
+  Worker、协作光标留 F8 后。
 
 ---
 
