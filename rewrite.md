@@ -6,13 +6,13 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1 数据层、F7.2 安装与管理 UI 完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.3 完成；F9 workspace：F9.1–F9.4 完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
-| 最后更新 | 2026-10-16 |
+| 最后更新 | 2026-10-20 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -42,7 +42,7 @@
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | 🔧 | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；切成 F7.1–F7.4 四片（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入完成；F7.4 完整 API 上下文依赖 F9），见下与第 4 节 |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）与 F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）完成；Web Worker + 协作光标等留 F8 后 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）与 F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）完成；Web Worker + 协作光标等留 F8 后 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
@@ -310,7 +310,9 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 - **F9 workspace**：最后迁移、最高风险。切成 F9.1–F9.x 多片：F9.1 数据基础与只读画布
   已启动（受 F7.4 阻塞所迫提前，不依赖 F8；数据层 + 视口数学 + WASM 直绘 + /workspace
   路由，见 7.23）；F9.2 画布交互与选择完成（悬停/点选/框选/平移 + SVG 覆盖层，零
-  写入，见 7.24）；Web Worker（缩略图/索引/导入）+ 协作光标 + 全部绘制/布尔/编辑/
+  写入，见 7.24）；F9.3 拖动移动与保存完成（首个写路径：预览、update-file、重父级，
+  见 7.25）；F9.4 外壳与菜单完成（三栏、左头重命名、主菜单、缩放、Layers、工具栏、
+  帧标题，见 7.27）；Web Worker（缩略图/索引/导入）+ 协作光标 + 全部绘制/布尔/编辑/
   token 子流程仍在 F3–F8 验证后推进。
 
 每个路由组的完成标准（DoD）：
@@ -355,7 +357,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.2 完成：只读画布 + 画布交互与选择)
+阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.4 完成：只读画布、交互选择、拖动保存、外壳与菜单)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
@@ -1475,6 +1477,82 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   proptest 等均已在本地缓存，M0–M7 可离线构建；docker/JVM/PG 不可用，所以 C1–C4 采集改到新机器做。
 - 下一步：新机器跑 `HANDOFF.md` §4 自检，执行 M0 + M1（T1.1–T1.5）；devenv 起来后一次性采集
   C1–C4。本轮未动 `backend/`、`common/`、`frontend/`、`frontend-nextjs/`、`docker/`。
+
+### 7.27 本轮（2026-10-20，第二十六批：F9.4 workspace 外壳与菜单）
+
+- 动机：F9.3 打开首个写路径后，F9.4 把 /workspace 从「画布铺满页面」推进到可用的
+  编辑器外壳——三栏布局、左头重命名、主菜单、缩放控件、Layers 面板、顶部工具栏与
+  帧标题。所有外壳动作经既有 store 与画布 handle，不复制视口数学；UI 状态留在组件
+  本地（review 对 AD5 的修正），store 仍只保存文件、页面对象、选择、视口与 dragDelta。
+- 交付（均含代码注释登记偏差）：
+  - `lib/workspace.ts`（+24 行）：`canEditFile`（从 canvas 提升，供左头与菜单共用）、
+    `renameWorkspaceFile`（rename-file RPC）；测试追加 3 例。
+  - `lib/workspace-layers.ts`（114 行，新）：`buildLayerTree`（按 root.shapes 原序，
+    AD9）、`filterLayerTree`（名字大小写不敏感）、`visibleLayerRows`（展开/过滤后的
+    行序）；12 例测试。
+  - `lib/workspace-frame-titles.ts`（186 行，新）：`titleTransformUseWidth`、
+    `titleTransform`（left/top/right 顶点、rotate + scale(1/zoom) + translate；零缩放或
+    缺点返回 null）、`topLevelFrames`（只取根层 frame）；9 例测试。
+  - `lib/workspace-viewport.ts`（+53 行）：`fitViewport(vport, srect, padding)` =
+    adjustToViewport + clampZoom，零尺寸返回 null；测试追加 4 例。
+  - `components/workspace-shell.tsx`（196 行，新）：318px / 1fr / 318px 三栏 grid、
+    52px 头、hidden-ui 单列、单一菜单判别联合、restore 按钮与焦点迁移。
+  - `components/workspace-left-header.tsx`（187 行，新）：logo、文件名双击/Enter/F2
+    重命名（左头持有编辑状态，`startRename()` 暴露给主菜单）、保存勾、菜单触发按钮。
+  - `components/workspace-main-menu.tsx`（265 行，新）：File/Edit/View/Help 四组
+    drilldown；Rename、回 dashboard、Select all（根子节点）、Deselect all、五条缩放
+    命令、Hide UI、帧标题开关、帮助链接可用；Export、版本历史、Undo/Redo、快捷键、
+    About 禁用；快捷键仅展示。
+  - `components/workspace-zoom-widget.tsx`（153 行，新）：百分比 + −/+；百分比菜单与
+    主菜单共享 shell 的 anchor，保证同时只开一个。
+  - `components/workspace-layers-panel.tsx`（238 行，新）：Layers/Assets/Tokens 三 tab、
+    搜索、树行（aria treeitem/level/selected/expanded）、Shift 多选、Enter/Space、空白
+    清除、no-match/empty。
+  - `components/workspace-top-toolbar.tsx`（93 行，新）：move 激活；frame/rect/ellipse/
+    line/arrow/text/image/path/curve 全部 disabled；只读文件整体返回 null。
+  - `components/workspace-frame-titles.tsx`（101 行，新）+ overlay 接线：每个可见顶层
+    frame 一个 `<g>`，foreignObject y=-11/height 20，选中 accent tertiary、未选
+    #8f9da3，visibility 由 showFrameTitles 控制；标签 pointer-events none。
+  - `components/workspace-right-sidebar.tsx`（25 行，新）：右栏空骨架；
+    `components/workspace-icons.tsx`（175 行，新）：菜单/缩放/图层等图标。
+  - `components/workspace-wasm-canvas.tsx`：`WorkspaceCanvasHandle`（zoomIn/zoomOut/
+    resetZoom/zoomToFitAll/zoomToSelection，全部走 applyViewport）、
+    `showFrameTitles` prop 与 memo 比较器；F9.2/F9.3 指针与提交路径未改。
+  - `components/workspace-viewport-overlay.tsx`：接收 showFrameTitles 并渲染帧标题层；
+    `components/dashboard-menu.tsx` + `styles/dashboard.css`：`MenuEntryItem.shortcut`
+    的只读展示。
+  - `styles/workspace.css`（+494 行）：三栏 grid、左头、菜单触发、Layers、工具栏、
+    缩放控件、帧标题、restore 按钮。
+  - 词条：`pnpm translations` 从 en.po 补齐生成文件——en +32、zh_cn +28、zh_hant +31
+    条（F9.4 首次使用的既有键，无新键）。
+- 关键语义：
+  - 缩放命令统一走画布 handle → `applyViewport`（stateRef + set-view-box + store），
+    滚轮/拖动路径不变；fit-all padding 160、fit-selected padding 40、reset 绕当前
+    中心落到 zoom 1。
+  - rename 由左头提交：Enter 保存、Esc/失焦取消（CLJS 失焦提交，此处按计划改为
+    取消，避免误改）；失败恢复旧名并显示 errors.generic。
+  - 只读：canEditFile=false 时工具栏隐藏、Rename/写类菜单禁用，选择、缩放、Layers、
+    hide UI 仍可用。
+  - 帧标题保持屏幕恒定字号；隐藏 frame 不渲染；无网格偏移/图标/内联编辑。
+- 与 CLJS 的有意偏差（AD10 + review 修正）：
+  1. 右栏是空骨架，无 options toolbox；
+  2. 工具栏平铺，无 flyout、MCP/plugins、调试工具；
+  3. 主菜单用 drilldown，快捷键仅展示、不安装全局处理；
+  4. Select all 只选根子节点；
+  5. Layers 无 hover 高亮/隐藏/锁定/重命名/排序；
+  6. 帧标题无文本编辑、类型图标与网格偏移；
+  7. 无侧栏 resizer 与响应式折叠；
+  8. rename 失焦取消（见上）；
+  9. UI 状态不入 store——review 修正 AD5，hideUI/showFrameTitles/menu 归 shell，
+     layers* 归面板，viewport 归 canvas。
+- 验证：`pnpm typecheck`、`pnpm lint` 干净；`pnpm test` 46 文件 1104 例全过（新增
+  layers 12、frame titles 9，workspace/workspace-viewport 追加 7）；`pnpm translations`
+  成功（en 860/860、zh_cn 728/860、zh_hant 844/860）；`pnpm build` 通过
+  （/workspace 22.5 kB，First Load JS 215 kB）。
+- 浏览器冒烟：本轮**未执行**（浏览器子代理被取消，且需要登录会话与可写/只读文件）。
+  三栏、rename、菜单、缩放、Layers、帧标题、hide UI、F9.2/F9.3 回归与只读拦截均待
+  补做；未测 DB revn，不据此宣称通过。
+- 下一步：F9.5 绘制工具与样式面板；补浏览器冒烟（含只读文件）。
 
 ---
 
