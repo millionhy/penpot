@@ -98,7 +98,15 @@
 //   and no text/comment interactions: F9.2 selects and navigates only
 //   (Escape clears the selection).
 
-import { useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 
 import { WorkspaceViewportOverlay } from "@/components/workspace-viewport-overlay";
 import { ensureWasmModule, loadRenderer } from "@/lib/render-wasm/bridge";
@@ -129,7 +137,14 @@ import {
 import { isMacos } from "@/lib/shortcuts";
 import { cmdEncoded } from "@/lib/rpc";
 import { encodeUpdateFile, type UpdateFileChange } from "@/lib/transit";
-import { pageObjects, type WorkspaceFile, type WorkspaceObjects } from "@/lib/workspace";
+import {
+  canEditFile,
+  immediateChildren,
+  pageObjects,
+  type WorkspaceFile,
+  type WorkspaceObjects,
+  type WorkspaceShape,
+} from "@/lib/workspace";
 import { createWorkspaceIndex, type WorkspaceIndex } from "@/lib/workspace-index";
 import {
   applyMove,
@@ -168,11 +183,14 @@ import {
 } from "@/lib/workspace-store";
 import {
   clientToWorld,
+  fitViewport,
   initialViewport,
   normalizeWheel,
   pointToViewport,
+  rectCenter,
   resizeViewport,
   scrollBy,
+  shapesRect,
   wheelScrollDeltas,
   wheelZoomFactor,
   zoomBy,
@@ -182,15 +200,6 @@ import {
 
 // clr/canvas, the background of a page without one.
 const DEFAULT_BACKGROUND = "#E8E9EA";
-
-// file.permissions["can-edit"] of the get-file response (the hyphenated
-// key arrives as a string, T1): only an explicit false gates the move
-// drag (AD5); a missing permissions map is left to the backend 403.
-function readCanEdit(file: WorkspaceFile): boolean {
-  const permissions = file.permissions;
-  if (permissions === null || typeof permissions !== "object") return true;
-  return (permissions as Record<string, unknown>)["can-edit"] !== false;
-}
 
 // The wheel accumulator of actions.cljs (one mutable ref): the scroll
 // deltas and the compound zoom scale, each with its own rAF id.
@@ -258,15 +267,37 @@ interface InteractionAdapters {
   topFrame: (point: ViewportPoint) => string | null;
 }
 
+// The imperative zoom commands of the shell (F9.4): the right-header widget
+// and the main menu drive the canvas through these, so the viewport math
+// stays in this component and the store write path stays one.
+export interface WorkspaceCanvasHandle {
+  zoomIn(): void;
+  zoomOut(): void;
+  resetZoom(): void;
+  zoomToFitAll(): void;
+  zoomToSelection(): void;
+}
+
 export interface WorkspaceWasmCanvasProps {
   fileId: string;
   pageId: string;
   // The resolved file of lib/workspace (the store's file): the initial fit
   // reads its page objects, the background its pages-index.
   file: WorkspaceFile;
+  // The artboard-name toggle of the shell (View menu): the overlay labels
+  // follow it, so the UI state stays out of the store.
+  showFrameTitles: boolean;
+  // React 19 passes ref as a normal prop; the shell owns the handle.
+  ref?: Ref<WorkspaceCanvasHandle>;
 }
 
-export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanvasProps) {
+function WorkspaceWasmCanvasImpl({
+  fileId,
+  pageId,
+  file,
+  showFrameTitles,
+  ref,
+}: WorkspaceWasmCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Monotonic run id: each load takes one, and only the current run may
@@ -306,6 +337,66 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
   const commitPendingRef = useRef(false);
 
   const [error, setError] = useState<string | null>(null);
+
+  // One write path for the imperative commands: the same stateRef plus
+  // set-view-box plus store slice the wheel flush uses, so the overlay and
+  // the wasm viewport cannot diverge.
+  const applyViewport = useCallback((next: ViewportState): void => {
+    const app = appRef.current;
+    if (app === null) return;
+    stateRef.current = next;
+    setWorkspaceViewBox(app, next.zoom, next.vbox);
+    setWorkspaceViewport(next);
+  }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      // increase-zoom / decrease-zoom around the box center.
+      zoomIn: () => {
+        const state = stateRef.current;
+        if (state !== null) applyViewport(zoomBy(state, rectCenter(state.vbox), 1.3));
+      },
+      zoomOut: () => {
+        const state = stateRef.current;
+        if (state !== null) applyViewport(zoomBy(state, rectCenter(state.vbox), 1 / 1.3));
+      },
+      // reset-zoom: land on zoom 1 around the current center.
+      resetZoom: () => {
+        const state = stateRef.current;
+        if (state !== null) {
+          applyViewport(zoomBy(state, rectCenter(state.vbox), 1 / state.zoom));
+        }
+      },
+      // zoom-to-fit-all over the root children (padding 160).
+      zoomToFitAll: () => {
+        const state = stateRef.current;
+        const objects = objectsRef.current;
+        if (state === null || objects === null) return;
+        const srect = shapesRect(immediateChildren(objects));
+        if (srect === null) return;
+        const next = fitViewport(state.vport, srect, 160);
+        if (next !== null) applyViewport(next);
+      },
+      // zoom-to-selected-shape over the current selection (padding 40); an
+      // empty selection is a no-op (the menu disables the item).
+      zoomToSelection: () => {
+        const state = stateRef.current;
+        const objects = objectsRef.current;
+        if (state === null || objects === null) return;
+        const shapes: WorkspaceShape[] = [];
+        for (const id of getWorkspaceState().selection) {
+          const shape = objects[id];
+          if (shape !== undefined && shape !== null) shapes.push(shape);
+        }
+        const srect = shapesRect(shapes);
+        if (srect === null) return;
+        const next = fitViewport(state.vport, srect, 40);
+        if (next !== null) applyViewport(next);
+      },
+    }),
+    [applyViewport],
+  );
 
   // Completion signals for tests and diagnosis: data-rendered flips on the
   // wasm tiles event (the progressive render finished a pass), data-shapes
@@ -349,7 +440,7 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
     // guards and the session id minted once per mount.
     fileIdRef.current = fileId;
     pageIdRef.current = pageId;
-    canEditRef.current = readCanEdit(file);
+    canEditRef.current = canEditFile(file);
     revnRef.current = typeof file.revn === "number" ? file.revn : 0;
     vernRef.current = typeof file.vern === "number" ? file.vern : 0;
     if (sessionIdRef.current === null) {
@@ -1356,7 +1447,11 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
         data-rendered="false"
         style={{ display: "block", width: "100%", height: "100%", touchAction: "none" }}
       />
-      <WorkspaceViewportOverlay file={file} pageId={pageId} />
+      <WorkspaceViewportOverlay
+        file={file}
+        pageId={pageId}
+        showFrameTitles={showFrameTitles}
+      />
       {error !== null ? (
         <div className="pp-viewport-placeholder" title={error}>
           <span>{error}</span>
@@ -1365,3 +1460,22 @@ export function WorkspaceWasmCanvas({ fileId, pageId, file }: WorkspaceWasmCanva
     </>
   );
 }
+
+// The page subscribes to the whole store, so a rename (which replaces
+// state.file with a new object) re-renders the shell. The canvas must only
+// reload when the resolved content changes: compare the fields the load
+// effect reads and ignore the name, or a rename would tear down and
+// reinitialize the wasm viewport.
+export const WorkspaceWasmCanvas = memo(
+  WorkspaceWasmCanvasImpl,
+  (prev, next) =>
+    prev.fileId === next.fileId &&
+    prev.pageId === next.pageId &&
+    prev.ref === next.ref &&
+    prev.file.id === next.file.id &&
+    prev.file.revn === next.file.revn &&
+    prev.file.vern === next.file.vern &&
+    prev.file.permissions === next.file.permissions &&
+    prev.file.data === next.file.data &&
+    prev.showFrameTitles === next.showFrameTitles,
+);

@@ -13,10 +13,12 @@ vi.mock("@/lib/rpc", () => ({ cmd: mocks.cmd }));
 import { ZERO_UUID } from "@/lib/file-data";
 import { Pointer } from "@/lib/transit";
 import {
+  canEditFile,
   fetchWorkspaceFile,
   immediateChildren,
   pageObjects,
   parseWorkspaceQuery,
+  renameWorkspaceFile,
   resolvePageId,
   resolveWorkspaceFileData,
   type WorkspaceFile,
@@ -138,6 +140,40 @@ describe("resolveWorkspaceFileData", () => {
     expect(resolved).not.toHaveProperty("double-ref");
     expect(resolved.plain).toBe(42);
     expect(resolved.pages).toEqual(["p1"]);
+  });
+});
+
+describe("canEditFile", () => {
+  it("only rejects an explicit can-edit false", () => {
+    expect(canEditFile({ ...makeFile(), permissions: { "can-edit": false } })).toBe(false);
+    expect(canEditFile({ ...makeFile(), permissions: { "can-edit": true } })).toBe(true);
+    expect(canEditFile({ ...makeFile(), permissions: {} })).toBe(true);
+    expect(canEditFile({ ...makeFile(), permissions: null })).toBe(true);
+    expect(canEditFile(makeFile())).toBe(true);
+  });
+});
+
+describe("renameWorkspaceFile", () => {
+  it("posts rename-file and echoes the stored name", async () => {
+    mocks.cmd.mockResolvedValue({ id: FILE_ID, name: "Renamed" });
+
+    await expect(renameWorkspaceFile(FILE_ID, "Renamed")).resolves.toEqual({
+      id: FILE_ID,
+      name: "Renamed",
+    });
+    expect(mocks.cmd).toHaveBeenCalledWith("rename-file", {
+      id: FILE_ID,
+      name: "Renamed",
+    });
+  });
+
+  it("falls back to the arguments when the response omits the fields", async () => {
+    mocks.cmd.mockResolvedValue({});
+
+    await expect(renameWorkspaceFile(FILE_ID, "Fallback")).resolves.toEqual({
+      id: FILE_ID,
+      name: "Fallback",
+    });
   });
 });
 

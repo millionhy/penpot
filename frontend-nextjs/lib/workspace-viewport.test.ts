@@ -13,6 +13,7 @@ import {
   adjustToViewport,
   clampZoom,
   clientToWorld,
+  fitViewport,
   initialViewport,
   joinRects,
   normalizeWheel,
@@ -185,6 +186,44 @@ describe("initialViewport", () => {
       vport: { width: 800, height: 600 },
       vbox: { x: -300, y: -250, width: 800, height: 600 },
     });
+  });
+});
+
+describe("fitViewport", () => {
+  const vport = { width: 800, height: 600 };
+
+  it("fits a large srect with the requested padding", () => {
+    const fitted = fitViewport(vport, { x: 0, y: 0, width: 2000, height: 1200 }, 160);
+
+    expect(fitted).not.toBeNull();
+    expect(fitted!.zoom).toBeCloseTo(800 / 2320, 12);
+    expect(fitted!.vbox).toEqual({ x: -160, y: -270, width: 2320, height: 1740 });
+    expect(fitted!.vport).toEqual({ width: 800, height: 600 });
+  });
+
+  it("fits a small srect with the selected-shape padding", () => {
+    const fitted = fitViewport(vport, { x: 100, y: 100, width: 100, height: 100 }, 40);
+
+    expect(fitted).not.toBeNull();
+    expect(fitted!.zoom).toBeCloseTo(800 / 240, 12);
+    expect(fitted!.vbox).toEqual({ x: 30, y: 60, width: 240, height: 180 });
+  });
+
+  it("recenters the box when a tiny srect hits MAX_ZOOM", () => {
+    const fitted = fitViewport(vport, { x: 100, y: 100, width: 0.01, height: 0.01 }, 0);
+
+    expect(fitted).not.toBeNull();
+    expect(fitted!.zoom).toBe(MAX_ZOOM);
+    expect(fitted!.vbox.width).toBeCloseTo(4, 12);
+    expect(fitted!.vbox.height).toBeCloseTo(3, 12);
+    expect(fitted!.vbox.x + fitted!.vbox.width / 2).toBeCloseTo(100.005, 9);
+    expect(fitted!.vbox.y + fitted!.vbox.height / 2).toBeCloseTo(100.005, 9);
+  });
+
+  it("returns null for a zero-sized viewport or srect", () => {
+    expect(fitViewport({ width: 0, height: 600 }, { x: 0, y: 0, width: 10, height: 10 }, 40)).toBeNull();
+    expect(fitViewport(vport, { x: 0, y: 0, width: 0, height: 10 }, 40)).toBeNull();
+    expect(fitViewport(vport, { x: 0, y: 0, width: 10, height: 0 }, 40)).toBeNull();
   });
 });
 

@@ -230,6 +230,59 @@ export function initialViewport(vport: ViewportRect, objects: WorkspaceObjects):
   };
 }
 
+// zoom-to-fit-all / zoom-to-selected-shape: adjust the padded srect to the
+// viewport aspect and scale it into the viewport. A zero or non-finite
+// viewport/srect is a no-op (null), so callers keep the current state.
+// When the raw fit exceeds MAX_ZOOM, the box is rebuilt around the adjusted
+// center at the clamped scale so the world and the zoom stay consistent.
+export function fitViewport(
+  vport: { width: number; height: number },
+  srect: ViewportRect,
+  padding: number,
+): ViewportState | null {
+  if (
+    !Number.isFinite(vport.width) ||
+    !Number.isFinite(vport.height) ||
+    vport.width <= 0 ||
+    vport.height <= 0 ||
+    !Number.isFinite(srect.width) ||
+    !Number.isFinite(srect.height) ||
+    srect.width <= 0 ||
+    srect.height <= 0
+  ) {
+    return null;
+  }
+
+  const adjusted = adjustToViewport(
+    { x: 0, y: 0, width: vport.width, height: vport.height },
+    srect,
+    { padding, minZoom: MIN_ZOOM },
+  );
+  const rawZoom = vport.width / adjusted.width;
+  const zoom = clampZoom(rawZoom);
+  const size = { width: vport.width, height: vport.height };
+
+  if (zoom === rawZoom) {
+    return { zoom, vport: size, vbox: adjusted };
+  }
+
+  // The MIN_ZOOM branch of adjustToViewport already returns a matching box,
+  // so only the MAX_ZOOM clamp lands here.
+  const center = rectCenter(adjusted);
+  const width = vport.width / zoom;
+  const height = vport.height / zoom;
+  return {
+    zoom,
+    vport: size,
+    vbox: {
+      x: center.x - width / 2,
+      y: center.y - height / 2,
+      width,
+      height,
+    },
+  };
+}
+
 // --- Zoom and scroll (data/workspace/zoom + viewport) ----------------------
 
 // The clamp set-zoom applies to the zoom factor.

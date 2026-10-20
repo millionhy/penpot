@@ -28,6 +28,9 @@ export interface MenuEntryItem {
   type: "item";
   id: string;
   label: string;
+  // An optional display-only shortcut label (F9.4). The workspace menu
+  // passes a platform label; no handler is bound from here.
+  shortcut?: string;
   testId?: string;
   danger?: boolean;
   disabled?: boolean;
@@ -209,6 +212,9 @@ export function DashboardMenu({ anchor, entries, onClose, ariaLabel }: Dashboard
               }}
             >
               <span className="pp-menu-item-label">{entry.label}</span>
+              {entry.shortcut !== undefined ? (
+                <span className="pp-menu-item-shortcut">{entry.shortcut}</span>
+              ) : null}
             </button>
           </li>
         );

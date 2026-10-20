@@ -137,6 +137,30 @@ export function immediateChildren(objects: WorkspaceObjects): WorkspaceShape[] {
   return out;
 }
 
+// --- Permissions and file actions ------------------------------------------
+
+// file.permissions["can-edit"] of the get-file response (the hyphenated
+// key arrives as a string): only an explicit false gates the write paths
+// (F9.3 AD5); a missing permissions map is left to the backend 403.
+export function canEditFile(file: WorkspaceFile): boolean {
+  const permissions = file.permissions;
+  if (permissions === null || typeof permissions !== "object") return true;
+  return (permissions as Record<string, unknown>)["can-edit"] !== false;
+}
+
+// dw/rename-file: the header and the main menu rename through the same
+// command the dashboard uses; the response echoes the stored name.
+export async function renameWorkspaceFile(
+  id: string,
+  name: string,
+): Promise<{ id: string; name: string }> {
+  const response = await cmd<{ id: string; name: string }>("rename-file", {
+    id,
+    name,
+  });
+  return { id: response.id ?? id, name: response.name ?? name };
+}
+
 // --- URL parameters --------------------------------------------------------
 
 export interface WorkspaceQueryParams {

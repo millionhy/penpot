@@ -1,15 +1,471 @@
-/* Workspace route styles (F9.1). The CLJS workspace paints a grid of
-   sidebars and a viewport section (workspace.scss); the shell keeps a
-   single full-viewport canvas until those slices land, so only the route
-   shell and the page-level states live here. Tokens: styles/tokens.css. */
+/* Workspace route styles (F9.1, F9.4). The CLJS workspace paints a grid of
+   sidebars and a viewport section (workspace.scss); the shell ports that
+   grid: left sidebar (318px), viewport (1fr), right sidebar (318px), with a
+   52px header row inside each sidebar. Tokens: styles/tokens.css. */
 
-/* The route shell of the read-only slice: the canvas fills the viewport.
-   position: relative anchors the render-wasm error overlay
-   (.pp-viewport-placeholder, absolute inset 0, in viewer.css). */
+/* The route shell: the CLJS grid-template
+   ("left-sidebar viewport right-sidebar" 1fr / auto 1fr auto). The fixed
+   columns mirror $left-sidebar-width / $right-sidebar-width (318px,
+   sidebar/common/sidebar.scss). position: relative anchors the render-wasm
+   error overlay (.pp-viewport-placeholder, absolute inset 0, in viewer.css). */
 .pp-workspace-shell {
+  display: grid;
+  grid-template-areas: "left-sidebar viewport right-sidebar";
+  grid-template-columns: 318px minmax(0, 1fr) 318px;
+  grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
   position: relative;
+  user-select: none;
+}
+
+/* Hidden UI (hideUI): the sidebars unmount, so the viewport takes the whole
+   width. The restore button floats over it. */
+.pp-workspace-shell--hidden-ui {
+  grid-template-areas: "viewport";
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pp-workspace-left {
+  background-color: var(--color-background-primary);
+  border-right: var(--b-1) solid var(--color-background-quaternary);
+  display: flex;
+  flex-direction: column;
+  grid-area: left-sidebar;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The canvas cell. position: relative keeps the F9.2 overlay and the
+   render-wasm error placeholder anchored to the viewport, not the shell. */
+.pp-workspace-viewport {
+  background-color: var(--color-canvas);
+  grid-area: viewport;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* The top toolbar (top_toolbar.scss .toolbar.no-rulers): floating at the
+   top center of the viewport, 8px from the top, above the canvas and below
+   the menus (z-index panels < dropdown). It sizes to its content, so it
+   never captures pointer events outside its own box. */
+.pp-workspace-toolbar {
+  align-items: center;
+  background-color: var(--color-background-primary);
+  border: var(--b-2) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  cursor: default;
+  display: flex;
+  gap: var(--sp-xs);
+  left: 50%;
+  padding: var(--sp-m);
+  position: absolute;
+  top: var(--sp-s);
+  transform: translateX(-50%);
+  z-index: var(--z-index-panels);
+}
+
+.pp-workspace-tool {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--br-4);
+  color: var(--color-icon-default);
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-28);
+  justify-content: center;
+  padding: 0;
+  width: var(--sz-28);
+}
+
+.pp-workspace-tool:hover:not(:disabled) {
+  background-color: var(--color-background-tertiary);
+  color: var(--color-foreground-primary);
+}
+
+.pp-workspace-tool--active {
+  background-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+}
+
+.pp-workspace-tool:disabled {
+  color: var(--color-foreground-secondary);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.pp-workspace-tool:focus-visible {
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: var(--sp-xxs);
+}
+
+.pp-workspace-right {
+  background-color: var(--color-background-primary);
+  border-left: var(--b-1) solid var(--color-background-quaternary);
+  display: flex;
+  flex-direction: column;
+  grid-area: right-sidebar;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The left header (left_header.scss): a 52px row with the logo, the file
+   name and the menu trigger. */
+.pp-workspace-left-header {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+  min-height: 52px;
+  padding: var(--sp-s) var(--sp-m);
+}
+
+.pp-workspace-logo {
+  color: var(--color-icon-default);
+  display: grid;
+  flex-shrink: 0;
+  height: var(--sz-32);
+  place-items: center;
+  width: var(--sz-32);
+}
+
+.pp-workspace-logo svg {
+  fill: currentColor;
+  height: var(--sz-32);
+  width: var(--sz-32);
+}
+
+.pp-workspace-file {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: var(--sp-xs);
+  min-width: 0;
+}
+
+.pp-workspace-file-name {
+  background: none;
+  border: 0;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  flex: 1;
+  font-family: inherit;
+  font-size: var(--fs-14);
+  font-weight: var(--fw-medium);
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-workspace-file-name[aria-disabled="true"] {
+  cursor: default;
+}
+
+.pp-workspace-file-input {
+  background-color: var(--color-background-tertiary);
+  border: var(--b-1) solid var(--color-accent-primary);
+  border-radius: var(--br-4);
+  color: var(--color-foreground-primary);
+  flex: 1;
+  font-family: inherit;
+  font-size: var(--fs-14);
+  min-width: 0;
+  padding: var(--sp-xxs) var(--sp-xs);
+  user-select: text;
+}
+
+.pp-workspace-saved {
+  color: var(--color-accent-success);
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+}
+
+.pp-workspace-menu-button {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--br-4);
+  color: var(--color-icon-default);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  height: var(--sz-28);
+  justify-content: center;
+  padding: 0;
+  width: var(--sz-28);
+}
+
+.pp-workspace-menu-button:hover,
+.pp-workspace-menu-button[aria-expanded="true"] {
+  background-color: var(--color-background-tertiary);
+  color: var(--color-foreground-primary);
+}
+
+.pp-workspace-rename-error {
+  background-color: var(--color-background-error);
+  color: var(--color-foreground-error);
+  font-size: var(--fs-12);
+  margin: 0;
+  padding: var(--sp-xs) var(--sp-m);
+}
+
+/* The layers panel (layers.scss + left-sidebar tabs): tab switcher, search
+   and the tree. The tree scrolls on its own, under the fixed tabs and
+   search row. */
+.pp-workspace-layers {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pp-workspace-layers-tabs {
+  border-bottom: var(--b-1) solid var(--color-background-quaternary);
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--sp-m);
+  padding: var(--sp-xs) var(--sp-m) 0;
+}
+
+.pp-workspace-layers-tab {
+  background: none;
+  border: 0;
+  border-bottom: var(--b-2) solid transparent;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  padding: 0 0 var(--sp-xs);
+}
+
+.pp-workspace-layers-tab:hover {
+  color: var(--color-foreground-primary);
+}
+
+.pp-workspace-layers-tab--active {
+  border-bottom-color: var(--color-accent-primary);
+  color: var(--color-foreground-primary);
+}
+
+.pp-workspace-layers-search {
+  flex-shrink: 0;
+  padding: var(--sp-xs) var(--sp-m);
+}
+
+.pp-workspace-layers-search-input {
+  background-color: var(--color-background-tertiary);
+  border: var(--b-1) solid transparent;
+  border-radius: var(--br-4);
+  color: var(--color-foreground-primary);
+  font-family: inherit;
+  font-size: var(--fs-12);
+  height: var(--sz-28);
+  padding: 0 var(--sp-s);
+  user-select: text;
+  width: 100%;
+}
+
+.pp-workspace-layers-search-input:focus {
+  border-color: var(--color-accent-primary);
+  outline: none;
+}
+
+.pp-workspace-layers-tree {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-xs) var(--sp-xs) var(--sp-m);
+}
+
+.pp-workspace-layers-empty {
+  flex: 1;
+  padding: var(--sp-m);
+}
+
+/* A layer row: indentation by depth, a chevron slot (leaf rows keep an
+   empty slot so names align) and the ellipsized name. */
+.pp-workspace-layer-row {
+  align-items: center;
+  border-left: var(--b-2) solid transparent;
+  border-radius: var(--br-4);
+  cursor: pointer;
+  display: flex;
+  gap: var(--sp-xxs);
+  height: var(--sz-28);
+  min-width: 0;
+  padding-left: calc(var(--sp-xs) + var(--pp-layer-depth) * 16px);
+  padding-right: var(--sp-xs);
+}
+
+.pp-workspace-layer-row:hover {
+  background-color: var(--color-background-tertiary);
+}
+
+.pp-workspace-layer-row[aria-selected="true"] {
+  background-color: var(--color-background-quaternary);
+  border-left-color: var(--color-accent-primary);
+  font-weight: var(--fw-medium);
+}
+
+.pp-workspace-layer-row:focus-visible {
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: calc(-1 * var(--b-2));
+}
+
+.pp-workspace-layer-chevron {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  height: var(--sz-16);
+  justify-content: center;
+  padding: 0;
+  width: var(--sz-16);
+}
+
+.pp-workspace-layer-chevron--expanded .pp-workspace-icon {
+  transform: rotate(90deg);
+}
+
+.pp-workspace-layer-chevron--leaf {
+  cursor: default;
+}
+
+.pp-workspace-layer-name {
+  flex: 1;
+  font-size: var(--fs-12);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The right header (right_header.scss): 52px with the zoom widget at the
+   end; the options area below stays empty in this slice. */
+.pp-workspace-right-header {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+  justify-content: flex-end;
+  min-height: 52px;
+  padding: var(--sp-s) var(--sp-m);
+}
+
+/* The zoom widget (.zoom-widget + .basic-zoom-bar): a compact - / percent /
+   + group; the percentage opens the drilldown menu. */
+.pp-workspace-zoom-widget {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xxs);
+}
+
+.pp-workspace-zoom-button,
+.pp-workspace-zoom-value {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--br-4);
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  height: var(--sz-28);
+  justify-content: center;
+  padding: 0;
+}
+
+.pp-workspace-zoom-button {
+  width: var(--sz-28);
+}
+
+.pp-workspace-zoom-value {
+  font-size: var(--fs-12);
+  font-variant-numeric: tabular-nums;
+  min-width: var(--sz-48);
+  padding: 0 var(--sp-xs);
+}
+
+.pp-workspace-zoom-button:hover,
+.pp-workspace-zoom-value:hover,
+.pp-workspace-zoom-value[aria-expanded="true"] {
+  background-color: var(--color-background-tertiary);
+  color: var(--color-foreground-primary);
+}
+
+.pp-workspace-zoom-button:focus-visible,
+.pp-workspace-zoom-value:focus-visible {
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: var(--sp-xxs);
+}
+
+.pp-workspace-right-options {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-m);
+}
+
+.pp-workspace-empty {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  margin: 0;
+  text-align: center;
+}
+
+/* The icon wrapper of components/workspace-icons follows the ds .icon rule:
+   outline only, painted by currentColor; the stylesheet sizes it. */
+.pp-workspace-icon {
+  fill: none;
+  height: var(--sz-16);
+  stroke: currentColor;
+  width: var(--sz-16);
+}
+
+.pp-workspace-saved .pp-workspace-icon {
+  height: var(--sz-12);
+  width: var(--sz-12);
+}
+
+/* The fixed restore control of the hidden UI: click or Escape restores the
+   chrome. */
+.pp-workspace-show-ui {
+  align-items: center;
+  background-color: var(--color-overlay-default);
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  color: var(--color-icon-default);
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-32);
+  justify-content: center;
+  left: var(--sp-s);
+  padding: 0;
+  position: fixed;
+  top: var(--sp-s);
+  width: var(--sz-32);
+  z-index: var(--z-index-panels);
+}
+
+.pp-workspace-show-ui:hover {
+  color: var(--color-accent-primary);
+}
+
+.pp-workspace-show-ui:focus-visible,
+.pp-workspace-menu-button:focus-visible,
+.pp-workspace-file-name:focus-visible,
+.pp-workspace-logo:focus-visible {
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: var(--sp-xxs);
 }
 
 /* The full-height centering frame of the page-level messages (no file-id,
@@ -51,4 +507,26 @@
 .pp-overlay-area {
   fill: var(--color-accent-select);
   stroke: var(--color-accent-tertiary);
+}
+
+/* The frame titles of the overlay (F9.4): one read-only label above each
+   visible top-level frame, the role of .frame-title / .frame-title-label of
+   viewport/widgets.scss. The group transform keeps the text at a constant
+   screen size, and the foreignObject width follows the frame side, so a
+   long name truncates with an ellipsis. Both the wrapper and the label
+   ignore pointer events, so a click falls through to the canvas (this
+   slice has no inline rename). */
+.pp-workspace-frame-title-wrapper {
+  pointer-events: none;
+}
+
+.pp-workspace-frame-title-label {
+  font-size: var(--fs-12);
+  font-weight: 400;
+  line-height: 1.4;
+  max-width: fit-content;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
 }

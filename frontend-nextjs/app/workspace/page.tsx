@@ -2,14 +2,13 @@
 
 // Workspace route (F9.1): takes over /workspace from the RouteStub. The
 // page loads the file through lib/workspace into the module store
-// (lib/workspace-store) and, once the file resolves, renders the read-only
-// WASM canvas (components/workspace-wasm-canvas). The sidebars, the palette
-// and every editing interaction arrive with the next slices.
+// (lib/workspace-store) and, once the file resolves, renders the workspace
+// shell (components/workspace-shell) around the read-only WASM canvas.
 //
 // Deviations from the CLJS original (app.main.ui.workspace), documented:
-// - Read-only slice: no sidebar, palette, context menu, plugin UI, page
-//   switching, layout presets, history or persistence; the canvas fills the
-//   viewport.
+// - Shell slice (F9.4): the sidebars are the left header, the Layers panel
+//   and an empty right skeleton; no palette, context menu, plugin UI, page
+//   switching, layout presets or history yet.
 // - initialize-workspace loads once per file-id; a page-id change on the
 //   loaded file only re-resolves the open page. An unknown page-id falls
 //   back to the first page (lib/workspace records the CLJS redirect).
@@ -29,7 +28,7 @@ import { AuthGuard } from "@/components/auth-guard";
 import { ExceptionPage } from "@/components/exception-page";
 import { PenpotLoader } from "@/components/penpot-loader";
 import { QueryParams } from "@/components/query-params";
-import { WorkspaceWasmCanvas } from "@/components/workspace-wasm-canvas";
+import { WorkspaceShell } from "@/components/workspace-shell";
 import { useDocumentTitle } from "@/lib/dom";
 import { isExceptionCause } from "@/lib/exception-page";
 import { tr } from "@/lib/i18n";
@@ -137,11 +136,7 @@ function WorkspaceRoute({ params }: { params: URLSearchParams }) {
     return <PenpotLoader />;
   }
 
-  return (
-    <div className="pp-workspace-shell">
-      <WorkspaceWasmCanvas fileId={fileId} pageId={pageId} file={file} />
-    </div>
-  );
+  return <WorkspaceShell fileId={fileId} pageId={pageId} file={file} />;
 }
 
 export default function Page() {

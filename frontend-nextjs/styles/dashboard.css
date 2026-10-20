@@ -1587,6 +1587,15 @@
   white-space: nowrap;
 }
 
+/* Display-only shortcut label of the workspace main menu (F9.4); the
+   dashboard menus never pass one. */
+.pp-menu-item-shortcut {
+  color: var(--color-foreground-secondary);
+  flex-shrink: 0;
+  font-size: var(--fs-12);
+  letter-spacing: 0.02em;
+}
+
 .pp-menu-separator {
   border-block-start: var(--b-1) solid var(--color-background-quaternary);
   margin: var(--sp-xs) 0;

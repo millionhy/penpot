@@ -45,6 +45,7 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 
+import { WorkspaceFrameTitles } from "@/components/workspace-frame-titles";
 import { pageObjects, type WorkspaceFile, type WorkspaceShape } from "@/lib/workspace";
 import {
   getInitialWorkspaceState,
@@ -173,9 +174,16 @@ export interface WorkspaceViewportOverlayProps {
   // reads the page objects for the outline geometry.
   file: WorkspaceFile;
   pageId: string;
+  // The artboard-name toggle of the shell (View menu), passed down as a
+  // prop so UI state stays out of the store.
+  showFrameTitles: boolean;
 }
 
-export function WorkspaceViewportOverlay({ file, pageId }: WorkspaceViewportOverlayProps) {
+export function WorkspaceViewportOverlay({
+  file,
+  pageId,
+  showFrameTitles,
+}: WorkspaceViewportOverlayProps) {
   const state = useSyncExternalStore(
     subscribeWorkspace,
     getWorkspaceState,
@@ -218,6 +226,13 @@ export function WorkspaceViewportOverlay({ file, pageId }: WorkspaceViewportOver
       preserveAspectRatio="xMidYMid meet"
       aria-hidden="true"
     >
+      <WorkspaceFrameTitles
+        objects={objects}
+        selection={selection}
+        zoom={zoom}
+        showFrameTitles={showFrameTitles}
+      />
+
       <g className="pp-overlay-outlines">
         {selectedShapes.map((shape) => (
           <ShapeOutline

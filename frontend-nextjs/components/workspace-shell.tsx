@@ -1,0 +1,196 @@
+"use client";
+
+// The workspace shell (F9.4): the three-column grid of the CLJS workspace
+// ("left-sidebar viewport right-sidebar", 318px / 1fr / 318px), the left
+// header, the right sidebar skeleton and the WASM canvas in the viewport
+// cell.
+//
+// UI state stays local (review correction to AD5): hideUI, the menu anchor
+// and the artboard-name toggle live here, not in the module store, which
+// keeps only the file, page, viewport, objects and selection slice. The
+// Layers panel owns its own query/expanded state; the canvas owns its
+// viewport.
+//
+// The main menu and the zoom widget are mounted here so the menu actions
+// cross the canvas handle boundary instead of reaching into the store's
+// viewport slice. The View menu toggles hideUI and the artboard names
+// through this component, and the toolbar of Task 7 sits inside the
+// viewport cell.
+//
+// Deviations from the CLJS original, documented (AD10):
+// - No sidebar resizer, no responsive collapse and no palette bar.
+// - The right sidebar is an empty skeleton; its options toolbox arrives in a
+//   later slice.
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import {
+  menuAnchorFromElement,
+  type MenuAnchor,
+} from "@/components/dashboard-menu";
+import {
+  WorkspaceLeftHeader,
+  type WorkspaceLeftHeaderHandle,
+} from "@/components/workspace-left-header";
+import { WorkspaceLayersPanel } from "@/components/workspace-layers-panel";
+import { WorkspaceMainMenu } from "@/components/workspace-main-menu";
+import { WorkspaceRightSidebar } from "@/components/workspace-right-sidebar";
+import { WorkspaceTopToolbar } from "@/components/workspace-top-toolbar";
+import { WorkspaceZoomWidget } from "@/components/workspace-zoom-widget";
+import {
+  WorkspaceWasmCanvas,
+  type WorkspaceCanvasHandle,
+} from "@/components/workspace-wasm-canvas";
+import { ExpandIcon } from "@/components/workspace-icons";
+import { tr } from "@/lib/i18n";
+import { canEditFile, type WorkspaceFile } from "@/lib/workspace";
+
+export interface WorkspaceShellProps {
+  fileId: string;
+  pageId: string;
+  file: WorkspaceFile;
+}
+
+// Only one workspace menu is open at a time: the main menu and the zoom
+// dropdown share this state, so opening one closes the other.
+type WorkspaceMenu =
+  | { kind: "main"; anchor: MenuAnchor }
+  | { kind: "zoom"; anchor: MenuAnchor };
+
+export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
+  const canEdit = canEditFile(file);
+
+  const canvasRef = useRef<WorkspaceCanvasHandle | null>(null);
+  const leftHeaderRef = useRef<WorkspaceLeftHeaderHandle | null>(null);
+  const restoreRef = useRef<HTMLButtonElement | null>(null);
+  // The focus effect runs on every hideUI change; this flag skips the
+  // initial render so mounting the shell never steals focus.
+  const wasHiddenRef = useRef(false);
+
+  const [hideUI, setHideUI] = useState(false);
+  const [menu, setMenu] = useState<WorkspaceMenu | null>(null);
+  // Artboard names show by default, like the CLJS show-artboard-names flag.
+  const [showFrameTitles, setShowFrameTitles] = useState(true);
+
+  const closeMenu = useCallback((): void => setMenu(null), []);
+
+  const toggleUI = useCallback((): void => {
+    setMenu(null);
+    setHideUI((current) => !current);
+  }, []);
+
+  // Stable callbacks: the main menu memoizes its entries on their identity,
+  // so a new callback per render would rebuild the menu root on every shell
+  // update and reset the drilldown.
+  const startRename = useCallback((): void => {
+    leftHeaderRef.current?.startRename();
+  }, []);
+
+  const toggleFrameTitles = useCallback((): void => {
+    setShowFrameTitles((current) => !current);
+  }, []);
+
+  const openMenu = useCallback((element: HTMLElement): void => {
+    const anchor = menuAnchorFromElement(element);
+    setMenu((current) =>
+      current?.kind === "main" ? null : { kind: "main", anchor },
+    );
+  }, []);
+
+  const toggleZoomMenu = useCallback((anchor: MenuAnchor | null): void => {
+    setMenu((current) => {
+      if (current?.kind === "zoom") return null;
+      return anchor === null ? null : { kind: "zoom", anchor };
+    });
+  }, []);
+
+  // Move focus with the chrome: the restore button while hidden, the menu
+  // trigger when the chrome comes back.
+  useEffect(() => {
+    if (hideUI) {
+      wasHiddenRef.current = true;
+      restoreRef.current?.focus();
+    } else if (wasHiddenRef.current) {
+      wasHiddenRef.current = false;
+      leftHeaderRef.current?.focusMenuButton();
+    }
+  }, [hideUI]);
+
+  return (
+    <div
+      className={
+        hideUI
+          ? "pp-workspace-shell pp-workspace-shell--hidden-ui"
+          : "pp-workspace-shell"
+      }
+    >
+      {hideUI ? null : (
+        <aside className="pp-workspace-left">
+          <WorkspaceLeftHeader
+            ref={leftHeaderRef}
+            file={file}
+            canEdit={canEdit}
+            menuOpen={menu?.kind === "main"}
+            onMenuClick={openMenu}
+          />
+          <WorkspaceLayersPanel />
+        </aside>
+      )}
+
+      <main className="pp-workspace-viewport">
+        <WorkspaceWasmCanvas
+          ref={canvasRef}
+          fileId={fileId}
+          pageId={pageId}
+          file={file}
+          showFrameTitles={showFrameTitles}
+        />
+        {hideUI ? null : <WorkspaceTopToolbar canEdit={canEdit} />}
+      </main>
+
+      {hideUI ? null : (
+        <WorkspaceRightSidebar
+          header={
+            <WorkspaceZoomWidget
+              canvas={canvasRef}
+              menuAnchor={menu?.kind === "zoom" ? menu.anchor : null}
+              onMenuToggle={toggleZoomMenu}
+            />
+          }
+        />
+      )}
+
+      {menu?.kind === "main" ? (
+        <WorkspaceMainMenu
+          anchor={menu.anchor}
+          canEdit={canEdit}
+          showFrameTitles={showFrameTitles}
+          onClose={closeMenu}
+          onRename={startRename}
+          onToggleHideUI={toggleUI}
+          onToggleFrameTitles={toggleFrameTitles}
+          canvas={canvasRef}
+        />
+      ) : null}
+
+      {hideUI ? (
+        <button
+          ref={restoreRef}
+          type="button"
+          className="pp-workspace-show-ui"
+          title={tr("shortcuts.hide-ui")}
+          aria-label={tr("shortcuts.hide-ui")}
+          onClick={toggleUI}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              toggleUI();
+            }
+          }}
+        >
+          <ExpandIcon />
+        </button>
+      ) : null}
+    </div>
+  );
+}
