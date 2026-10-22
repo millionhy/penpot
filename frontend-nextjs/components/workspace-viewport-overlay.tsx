@@ -25,6 +25,8 @@
 //   outlines, the bounds box and the handles shift by the store's
 //   dragDelta — the wasm modifier preview moves the shapes themselves, so
 //   the overlay keeps their outlines in step; the hover outline stays put.
+// - the draw preview (F9.5): a dashed rect of the live box of the
+//   frame/rect/ellipse gesture, in world coordinates like the marquee.
 //
 // Deviations from the compiled original, documented:
 // - Selection and hover outlines share the accent-tertiary color: the CLJS
@@ -190,7 +192,7 @@ export function WorkspaceViewportOverlay({
     getInitialWorkspaceState,
   );
 
-  const { selection, hoverShapeId, areaSelect, zoom, vbox, dragDelta } = state;
+  const { selection, hoverShapeId, areaSelect, zoom, vbox, dragDelta, drawPreview } = state;
   const storeObjects = state.objects;
   const objects = useMemo(
     () => storeObjects ?? pageObjects(file, pageId),
@@ -266,6 +268,18 @@ export function WorkspaceViewportOverlay({
             />
           ))}
         </g>
+      ) : null}
+      {drawPreview !== null ? (
+        <rect
+          className="pp-overlay-draw"
+          data-testid="draw-preview"
+          x={drawPreview.x}
+          y={drawPreview.y}
+          width={drawPreview.width}
+          height={drawPreview.height}
+          strokeWidth={1 / zoom}
+          strokeDasharray={`${DASH_SIZE / zoom} ${DASH_SIZE / zoom}`}
+        />
       ) : null}
       {hoverShape !== null ? (
         <ShapeOutline

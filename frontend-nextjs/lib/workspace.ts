@@ -45,6 +45,36 @@ export interface WorkspaceShape {
 
 export type WorkspaceObjects = Record<string, WorkspaceShape>;
 
+// The workspace toolbar tools (F9.5). Only frame, rect and ellipse draw; the
+// rest stay disabled until their slices land. The type lives here so the
+// toolbar, the shell and the canvas share one union (F9.5 AD2).
+export type WorkspaceTool =
+  | "move"
+  | "frame"
+  | "rect"
+  | "ellipse"
+  | "line"
+  | "arrow"
+  | "text"
+  | "image"
+  | "path"
+  | "curve";
+
+export type WorkspaceDrawTool = "frame" | "rect" | "ellipse";
+
+// The box tools of drawing/box.cljs: the only ones with a drawing handler in
+// this slice.
+export function isDrawTool(tool: WorkspaceTool): tool is WorkspaceDrawTool {
+  return tool === "frame" || tool === "rect" || tool === "ellipse";
+}
+
+// gmt/matrix: the wire and wasm representation is a {a..f} map, never an
+// array (lib/transit tags it as #matrix). One frozen instance is shared by
+// every drawn shape; createDrawShape copies it.
+export const IDENTITY_TRANSFORM: Readonly<
+  Record<"a" | "b" | "c" | "d" | "e" | "f", number>
+> = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+
 export interface WorkspacePageData {
   id: string;
   name?: string;

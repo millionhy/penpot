@@ -6,13 +6,13 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.3 完成；F9 workspace：F9.1–F9.4 完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.3 完成；F9 workspace：F9.1–F9.5 完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
-| 最后更新 | 2026-10-20 |
+| 最后更新 | 2026-10-22 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -42,7 +42,7 @@
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | 🔧 | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；切成 F7.1–F7.4 四片（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入完成；F7.4 完整 API 上下文依赖 F9），见下与第 4 节 |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）与 F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）完成；Web Worker + 协作光标等留 F8 后 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）与 F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）完成；F9 暂无排期的下一片——先补浏览器冒烟，再做 resize/rotate 手柄、撤销栈与 z-order 插入（7.25 路线），最后是 F7.4 workspace 插件代理；Web Worker + 协作光标等留 F8 后 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
@@ -312,8 +312,10 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   路由，见 7.23）；F9.2 画布交互与选择完成（悬停/点选/框选/平移 + SVG 覆盖层，零
   写入，见 7.24）；F9.3 拖动移动与保存完成（首个写路径：预览、update-file、重父级，
   见 7.25）；F9.4 外壳与菜单完成（三栏、左头重命名、主菜单、缩放、Layers、工具栏、
-  帧标题，见 7.27）；Web Worker（缩略图/索引/导入）+ 协作光标 + 全部绘制/布尔/编辑/
-  token 子流程仍在 F3–F8 验证后推进。
+  帧标题，见 7.27）；F9.5 绘制工具与样式面板完成（frame/rect/ellipse 绘制、右栏基础
+  样式段，见 7.29）；F9 暂无排期的下一片——先补浏览器冒烟，再做 resize/rotate 手柄、
+  撤销栈与 z-order 插入（7.25 路线），最后是 F7.4 workspace 插件代理；Web Worker
+  （缩略图/索引/导入）+ 协作光标 + 其余绘制/布尔/编辑/token 子流程仍在 F3–F8 验证后推进。
 
 每个路由组的完成标准（DoD）：
 
@@ -357,7 +359,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.4 完成：只读画布、交互选择、拖动保存、外壳与菜单)
+阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.5 完成：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
@@ -1553,6 +1555,95 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   三栏、rename、菜单、缩放、Layers、帧标题、hide UI、F9.2/F9.3 回归与只读拦截均待
   补做；未测 DB revn，不据此宣称通过。
 - 下一步：F9.5 绘制工具与样式面板；补浏览器冒烟（含只读文件）。
+
+### 7.28 本轮（2026-10-22，第二十七批：F9.5 计划，无代码）
+
+- 本轮**只出计划，零实现代码**：`.agents/plans/2026-10-22-f9-5-drawing-tools-and-style-panel.md`
+  （953 行，`Status: draft`，`Review Log` 为空）。`frontend-nextjs/` 无改动，工作区只剩
+  `backend-rust/` 的未跟踪文件。
+- 范围（用户拍板）：绘制只做 frame/rect/ellipse 三种框类工具；右栏只做基础样式段——
+  隐藏/锁定、不透明度、纯色填充（颜色/不透明度/增删）、纯色描边（颜色/宽度/不透明度/
+  增删）与矩形/画板四角圆角。单选可编辑，多选显示 `inspect.multiple-selected`。
+  line/arrow/text/image/path/curve 继续禁用，登记为偏差。
+- 计划结构：10 个任务 + 3 个检查点——修 `PersistentArrayMap` 计数 → 绘制数学纯模型 →
+  `add-obj` transit 编码 → wasm 形状上传桥 → 绘制手势端到端 → 工具栏与外壳工具状态 →
+  样式模型 → `updateShapeAttrs` → 样式面板 + CSS + 词条 → 文档与全量验证。
+- 只读核对得到的关键结论：
+  - `add-obj` 的 `:obj` 必须通过 `schema:shape`：`selrect`/`points`/`transform`/
+    `transform-inverse` 与 uuid 字段都要带 transit tag（`#rect`/`#point`/`#matrix`/
+    `#shape`），frame 的 `shapes` 是 uuid vector；否则后端只报 "invalid shape found"。
+  - wasm 上传不手搭 PAM：复用 transit 编码 + 既有 `decode_str`，得到 keyword 键、UUID 与
+    Shape record；新增形状走 `set_object → use_shape(new) → fills/strokes →
+    use_shape(parent) → set_shape_children → request_render`，不重建视口。
+  - `interop.ts` 的 `PersistentArrayMap` 把条目数传成数组长度（两倍），`values.test.ts`
+    与 `sizes.test.ts` 的 mock 固化了同一误解，列为任务 1。
+- 有意不做：另外六种绘制工具、frame 吸收既有形状、吸附/像素网格、撤销、插入索引、
+  渐变与图片填充编辑、多选批量编辑、绘制快捷键。
+- 下一步：`/review-plan` 审计划后 `/implement-plan` 实施；实现完成后再补 7.29 与 F9 状态行
+  的完成标记。浏览器冒烟仍未执行，F9.4 的冒烟也待补。
+
+### 7.29 本轮（2026-10-22，第二十八批：F9.5 绘制工具与样式面板）
+
+- 动机：F9.4 的外壳只能浏览与拖动；F9.5 打开创建与改样式的路径——在 /workspace 选
+  frame/rect/ellipse 拖拽（或单击）即得真实写入文件的新形状，选中单个形状时右栏给出
+  隐藏/锁定、不透明度、纯色填充、纯色描边与圆角编辑，全部经同一条 update-file 写路径
+  持久化并由 wasm 立即重绘。
+- 交付（均含代码注释登记偏差）：
+  - `lib/render-wasm/interop.ts`（+25/-6）：`PersistentArrayMap` 的 `cnt` 改为条目数
+    （数组长度 / 2），`_count`、小 map 的 assoc 分支、迭代器与 `equiv` 随之正确；
+    `values.test.ts`/`sizes.test.ts` 的 `MockPAM` 同步修正；新增 `interop.test.ts`（3 例）。
+  - `lib/workspace.ts`（+30）：`WorkspaceTool`、`WorkspaceDrawTool`、`isDrawTool`、
+    `IDENTITY_TRANSFORM`；测试 +3 例。
+  - `lib/workspace-draw.ts`（246 行，新）：`rectFromPoints`（10 屏幕像素阈值、Shift
+    adjust-ratio、Alt 以起点镜像、反向拖拽归一化）、`clickRect`（100×100 居中）、
+    `createDrawShape`（frame/rect/ellipse 的 schema:shape 工厂：selrect/points/transform/
+    transform-inverse/parent-id/frame-id/fills，frame 另有 shapes 与 hide-in-viewer）；
+    20 例测试。
+  - `lib/transit.ts`（+100/-17）：`add-obj` 写路径与 tag 收口——`#shape`、`#rect`、`#point`、
+    `#matrix`、uuid 字段、keyword 枚举（type、stroke-style/alignment、stroke-cap-*、
+    gradient type）；`encodeShapeValue` 供 wasm 上传复用；测试 +7 例（共 20）。
+  - `lib/render-wasm/shape-upload.ts`（98 行，新）：`uploadNewShape`（set_object →
+    use_shape(new) → set_shape_children → request_render）与 `applyShapeStyle`
+    （hidden/opacity/fills/strokes/r1..r4 入 wasm，blocked 只留编辑器）；8 例测试。
+  - `components/workspace-wasm-canvas.tsx`（+347/-32）：`tool`/`onToolChange` props、
+    `sendUpdateFile`（从 commitMove 抽出，revn 守卫 + 单飞）、`commitDraw`、draw 指针
+    分支（阈值/Shift/Alt/单击）、`updateShapeAttrs`、绘制光标与 memo 收口。
+  - `lib/workspace-store.ts`（+23/-1）：`DrawPreview` 与 `drawPreview` slice；
+    `components/workspace-viewport-overlay.tsx`：虚线预览框；`styles/workspace.css`：
+    预览与样式面板样式（合计 +172 行）。
+  - `components/workspace-top-toolbar.tsx`（+46/-23）：move/frame/rect/ellipse 可用，
+    其余六个仍 disabled；`components/workspace-shell.tsx`（+34/-12）：`activeTool` 与
+    `onToolChange`，只读时回落 move；`components/workspace-right-sidebar.tsx`（+10/-6）：
+    `children` 槽替换空占位。
+  - `lib/workspace-style.ts`（245 行，新）：填充/描边的不可变增删改、默认值
+    （#B1B2B5 / 黑 1px inner solid）、solid 判定、opacity/width/radius clamp、
+    `buildStyleChange`（一次 mod-obj，每个属性一个 set）；19 例测试。
+  - `components/workspace-style-panel.tsx`（650 行，新）：右栏样式面板——层开关、
+    不透明度、填充、描边、圆角五段；单选可编辑，多选 `inspect.multiple-selected`，
+    只读全禁用；draft + blur/Enter 提交 + Escape 恢复 + 失败回退；样式见上。
+  - 词条：`pnpm translations` 补 17 个既有键（en 877/877、zh_cn 745/877、
+    zh_hant 861/877；无新 en.po 键）。
+- 关键语义：
+  - 绘制：屏幕距离 × zoom > 10 才算拖拽，否则按单击处理；Shift 出正方形/等比，Alt
+    以按下点为镜像中心；父级用 `topNestedFrameAt` + `firstValidParent`，新 frame 的
+    `hide-in-viewer` 取 `parent-id !== ZERO_UUID`；add-obj 由后端追加到 parent，本地
+    `applyAddShape` 完全镜像。绘制结束后工具回落 move（CLJS clear-drawing）。
+  - 写路径：样式与绘制共用 `sendUpdateFile` 的 revn 守卫与 `commitPending` 单飞；失败
+    `setWorkspaceState({ error })` 且不改模型；wasm 推送在成功之后，wasm 失败只 warn。
+  - 样式：fill/stroke 新增一律前插；按 index 删除；非 solid 行只读但可删；圆角四值
+    一次性提交；opacity 0..1、width/radius >= 0；circle 不发 radius。
+- 与 CLJS 的有意偏差（AD12）：三种框类工具；frame 不吸收既有形状；无吸附/像素网格/
+  grow-type；无撤销事务；新形状追加到尾部（无插入索引）；不自动编号（Rectangle/
+  Ellipse/Board 重复）；样式面板只做基础段，渐变/图片只读可删；圆角无单角切换；绘制后
+  工具回 move、无快捷键；无尺寸/位置、布局、约束、阴影、模糊、导出；多选不批量编辑。
+- 验证：`pnpm test` 50 文件 1165 例全过（新增 4 个测试文件 50 例，既有文件 +11 例）；
+  `pnpm typecheck`、`pnpm lint` 干净；`pnpm translations` 成功（en 877/877）；`pnpm build`
+  通过（/workspace 26.5 kB，First Load JS 221 kB）。
+- 浏览器冒烟：本轮**未执行**（无可用登录会话）。待补清单：三种工具拖拽/单击/Shift/
+  Alt/取消；绘制后工具回落；重载后形状仍在；填充/描边增删改与圆角重载后一致；隐藏/
+  锁定生效；只读文件全禁用；F9.2/F9.3 回归。
+- 下一步：先补浏览器冒烟；再做 resize/rotate 手柄、撤销栈与 z-order 插入（7.25 路线），
+  然后是 F7.4 workspace 插件代理。F9 已无排期中的下一片。
 
 ---
 

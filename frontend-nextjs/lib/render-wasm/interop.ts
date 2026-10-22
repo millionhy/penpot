@@ -41,13 +41,30 @@ export const KEY = {
   wasmLive: "$app$render_wasm$wasm$live_QMARK_$$",
   wasmReady: "$app$render_wasm$wasm$ready_QMARK_$$",
   // The fixed-scroll layer mask (viewer-apply-layer-mask!) has no entry
-  // point on $APP: runtime-verified, clear/set-render-include-filter! and
-  // clear/set-shape-fills are all undefined (the optimizer inlined them).
-  // The empty-mask reset is replicated through the internal module in
-  // pass-common.ts; the id paths land with the fixed-layer slice.
+  // point on $APP: runtime-verified, clear/set-render-include-filter! are
+  // both undefined (the optimizer inlined them). The empty-mask reset is
+  // replicated through the internal module in pass-common.ts; the id paths
+  // land with the fixed-layer slice. set_shape_fills / set_shape_strokes DO
+  // land on $APP (registered below); an earlier probe note that listed them
+  // as inlined was wrong.
   // The rAF handle of a scheduled render (set! to null cancels the handle
   // bookkeeping, mirrors the compiled set! wasm/internal-frame-id nil).
   internalFrameId: "$app$render_wasm$wasm$internal_frame_id$$",
+
+  // --- F9.5 shape writes (app.render-wasm.api) ---
+  // set-object writes one shape record and its fills/strokes, leaving it
+  // current; use-shape switches the current shape; set-shape-children
+  // rewrites the current shape's children. The fill/stroke setters write the
+  // current shape too: their shape-id only drives image fetches. All eight
+  // are present in public/js/shared.js.
+  setObject: "$app$render_wasm$api$set_object$$",
+  useShape: "$app$render_wasm$api$use_shape$$",
+  setShapeChildren: "$app$render_wasm$api$set_shape_children$$",
+  setShapeFills: "$app$render_wasm$api$set_shape_fills$$",
+  setShapeStrokes: "$app$render_wasm$api$set_shape_strokes$$",
+  setShapeOpacity: "$app$render_wasm$api$set_shape_opacity$$",
+  setShapeHidden: "$app$render_wasm$api$set_shape_hidden$$",
+  setShapeCorners: "$app$render_wasm$api$set_shape_corners$$",
 
   // cljs.core
   deref: "$cljs$core$_deref$$",
@@ -178,7 +195,9 @@ export function uuid(app: RendererApp, id: string): unknown {
 }
 
 // A CLJS PersistentArrayMap built from key/value pairs: the shape the
-// compiled code passes around as option maps.
+// compiled code passes around as option maps. PersistentArrayMap counts
+// entries, not array slots (fromArray uses arr.length / 2, _iterator uses
+// cnt * 2), so the constructor gets the pair count.
 export function arrayMap(
   app: RendererApp,
   entries: ReadonlyArray<readonly [unknown, unknown]>,
@@ -186,7 +205,7 @@ export function arrayMap(
   const arr: unknown[] = [];
   for (const [k, v] of entries) arr.push(k, v);
   const Ctor = app[KEY.persistentArrayMap] as PAMConstructor;
-  return new Ctor(null, arr.length, arr, null);
+  return new Ctor(null, entries.length, arr, null);
 }
 
 // A CLJS vector from a JS array (cljs.core/vec), for $APP functions whose

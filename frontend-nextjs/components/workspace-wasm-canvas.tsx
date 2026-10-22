@@ -44,6 +44,15 @@
 // preview first); window keydown/keyup/blur feed space/shift/mod and the
 // cursor (default/pointer/grab/grabbing).
 //
+// The draw gesture (F9.5): a left press with a box tool (frame/rect/
+// ellipse) resolves its parent through topNestedFrameAt + firstValidParent
+// at press time, previews the box in the store once the pointer passes 10
+// screen pixels (the overlay draws the dashed rect), and commits one
+// add-obj on release; a release under the threshold creates a 100 x 100
+// box centered on the press. Shift squares and Alt centers the box. Escape
+// or pointercancel aborts and returns the tool to move; a completed draw
+// returns it the same way.
+//
 // The selection/hover/marquee visuals are drawn by a sibling overlay
 // (components/workspace-viewport-overlay, T5): an SVG in world coordinates
 // fed from the store slice this file writes; the hover outline follows the
@@ -94,9 +103,9 @@
 // - The hover queries run synchronously against the JS-side index on an
 //   rAF merge instead of the worker ask-buffered stream; the debounced
 //   top-nested-frame behavior is preserved (50ms).
-// - No double-click (enter group/frame), no focus mode, no drawing tools
-//   and no text/comment interactions: F9.2 selects and navigates only
-//   (Escape clears the selection).
+// - No double-click (enter group/frame), no focus mode and no text/comment
+//   interactions: F9.2 selects and navigates; F9.5 adds the three box draw
+//   tools (frame/rect/ellipse) and nothing else.
 
 import {
   memo,
@@ -134,18 +143,30 @@ import {
   loadDecodedWorkspaceFile,
   workspacePageObjects,
 } from "@/lib/render-wasm/workspace-data";
+import { uploadNewShape, applyShapeStyle } from "@/lib/render-wasm/shape-upload";
 import { isMacos } from "@/lib/shortcuts";
 import { cmdEncoded } from "@/lib/rpc";
 import { encodeUpdateFile, type UpdateFileChange } from "@/lib/transit";
 import {
   canEditFile,
   immediateChildren,
+  isDrawTool,
   pageObjects,
+  type WorkspaceDrawTool,
   type WorkspaceFile,
   type WorkspaceObjects,
   type WorkspaceShape,
+  type WorkspaceTool,
 } from "@/lib/workspace";
 import { createWorkspaceIndex, type WorkspaceIndex } from "@/lib/workspace-index";
+import {
+  applyAddShape,
+  clickDrawRect,
+  createDrawShape,
+  drawRectFromPoints,
+  firstValidParent,
+  type DrawRect,
+} from "@/lib/workspace-draw";
 import {
   applyMove,
   applyReparent,
@@ -155,6 +176,7 @@ import {
   resolveMoveSet,
   topNestedFrameAt,
 } from "@/lib/workspace-move";
+import { buildStyleChange } from "@/lib/workspace-style";
 import {
   areaInitialSelection,
   createHoverIdsCache,
@@ -172,6 +194,7 @@ import {
   getWorkspaceState,
   setAreaSelect,
   setDragDelta,
+  setDrawPreview,
   setHover,
   setHoverShapeId,
   setHoverTopFrameId,
@@ -224,10 +247,13 @@ const TOP_FRAME_DEBOUNCE_MS = 50;
 // width or the height passes 10 / zoom (world units).
 const AREA_MIN_SIZE = 10;
 
+// The onToolChange fallback until the shell wires the toolbar (F9.5 T6).
+const NOOP_TOOL_CHANGE = (): void => {};
+
 // The pointer gesture the handlers mutate (the CLJS keeps this spread
 // across the stream pipeline).
 interface PointerInteraction {
-  mode: "idle" | "pan" | "area" | "click" | "drag";
+  mode: "idle" | "pan" | "area" | "click" | "drag" | "draw";
   pointerId: number | null;
   // The client position of the press (the click-threshold anchor).
   downClient: ViewportPoint | null;
@@ -257,6 +283,13 @@ interface PointerInteraction {
   // The selection as it was when the threshold was crossed: the restore
   // source of a pointercancel.
   selectionBeforeDrag: string[] | null;
+  // The draw gesture (F9.5): the world press point, the parent resolved at
+  // press time, whether the 10-screen-pixel threshold was crossed and the
+  // last box (null under the threshold).
+  drawStart: ViewportPoint | null;
+  drawParentId: string | null;
+  drawActive: boolean;
+  drawRect: DrawRect | null;
 }
 
 // The $APP-backed pieces of the selection library (they need the wasm
@@ -276,6 +309,9 @@ export interface WorkspaceCanvasHandle {
   resetZoom(): void;
   zoomToFitAll(): void;
   zoomToSelection(): void;
+  // F9.5 AD7: one mod-obj for the style panel; resolves false when the
+  // file is read-only, the shape is gone or the commit could not run.
+  updateShapeAttrs(id: string, attrs: Record<string, unknown>): Promise<boolean>;
 }
 
 export interface WorkspaceWasmCanvasProps {
@@ -287,6 +323,13 @@ export interface WorkspaceWasmCanvasProps {
   // The artboard-name toggle of the shell (View menu): the overlay labels
   // follow it, so the UI state stays out of the store.
   showFrameTitles: boolean;
+  // The active toolbar tool (F9.5). Only frame/rect/ellipse draw; the shell
+  // owns the state and the canvas mirrors it into a ref. Optional so the
+  // component keeps working before the shell wires it (Task 6).
+  tool?: WorkspaceTool;
+  // The canvas asks the shell to switch tools (a completed draw returns to
+  // move, like clear-drawing in the CLJS).
+  onToolChange?: (tool: WorkspaceTool) => void;
   // React 19 passes ref as a normal prop; the shell owns the handle.
   ref?: Ref<WorkspaceCanvasHandle>;
 }
@@ -296,6 +339,8 @@ function WorkspaceWasmCanvasImpl({
   pageId,
   file,
   showFrameTitles,
+  tool = "move",
+  onToolChange,
   ref,
 }: WorkspaceWasmCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -335,8 +380,68 @@ function WorkspaceWasmCanvasImpl({
   const sessionIdRef = useRef<string | null>(null);
   // A commit in flight rejects new presses (AD9).
   const commitPendingRef = useRef(false);
+  // The tool prop mirrored for the long-lived interaction effect, the
+  // onToolChange prop mirrored the same way, and the cursor repaint the
+  // tool effect triggers without re-running the gesture effect.
+  const toolRef = useRef<WorkspaceTool>(tool);
+  const onToolChangeRef = useRef<(tool: WorkspaceTool) => void>(
+    onToolChange ?? NOOP_TOOL_CHANGE,
+  );
+  const cursorRef = useRef<(() => void) | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+
+  // AD9: the canvas owns no tool state; it mirrors the shell prop and asks
+  // the shell to switch back after a draw.
+  useEffect(() => {
+    toolRef.current = tool;
+    cursorRef.current?.();
+  }, [tool]);
+
+  useEffect(() => {
+    onToolChangeRef.current = onToolChange ?? NOOP_TOOL_CHANGE;
+  }, [onToolChange]);
+
+  // AD6: the single pessimistic write path of the canvas (F9.5). Every draw
+  // and every style edit funnels through here, so the in-flight guard
+  // (commitPendingRef), the revn advance and the vern guard live in one
+  // place. Returns the revn the backend reported, or null when a commit is
+  // already in flight or the session id is missing; throws when the request
+  // fails (the callers own their error reporting and local rollback).
+  const sendUpdateFile = useCallback(
+    async (changes: UpdateFileChange[]): Promise<number | null> => {
+      const sessionId = sessionIdRef.current;
+      if (sessionId === null || commitPendingRef.current) return null;
+      commitPendingRef.current = true;
+      try {
+        const body = encodeUpdateFile({
+          id: fileIdRef.current,
+          "session-id": sessionId,
+          revn: revnRef.current,
+          vern: vernRef.current,
+          changes,
+        });
+        const response = await cmdEncoded<{ revn?: unknown }>("update-file", body);
+        const revn =
+          response !== null && typeof response === "object" ? response.revn : undefined;
+        if (typeof revn !== "number") {
+          throw new Error("update-file: the response carried no revn");
+        }
+        // The response revn is the file revn BEFORE this commit, and
+        // process-changes-and-validate raised the stored one to at least
+        // revn + 1 (the T3 E2E saw it: only the lagged rows carry the
+        // post-commit revn). The local guard tracks that bound: the CLJS
+        // persistence advances optimistically, and the backend only
+        // rejects a revn ABOVE the stored one (files_update.clj), so a
+        // lagging submit stays accepted.
+        revnRef.current = Math.max(revnRef.current, revn + 1);
+        return revn;
+      } finally {
+        commitPendingRef.current = false;
+      }
+    },
+    [],
+  );
 
   // One write path for the imperative commands: the same stateRef plus
   // set-view-box plus store slice the wheel flush uses, so the overlay and
@@ -394,8 +499,48 @@ function WorkspaceWasmCanvasImpl({
         const next = fitViewport(state.vport, srect, 40);
         if (next !== null) applyViewport(next);
       },
+      // AD7 (F9.5): one mod-obj with one set per attribute; the local model
+      // applies the same attrs before the promise resolves, then the
+      // wasm-visible subset is pushed. A wasm failure never fails the
+      // commit (the file already accepted it).
+      updateShapeAttrs: async (id, attrs) => {
+        if (!canEditRef.current) return false;
+        const objects = objectsRef.current;
+        if (objects === null) return false;
+        const shape = objects[id];
+        if (shape === undefined || shape === null) return false;
+        try {
+          const revn = await sendUpdateFile([
+            buildStyleChange(id, pageIdRef.current, attrs),
+          ]);
+          if (revn === null) return false;
+          // Re-read: the model may have been replaced while the RPC ran.
+          const currentObjects = objectsRef.current;
+          const currentShape = currentObjects === null ? undefined : currentObjects[id];
+          if (currentObjects === null || currentShape === undefined || currentShape === null) {
+            return false;
+          }
+          const next = { ...currentObjects, [id]: { ...currentShape, ...attrs } };
+          objectsRef.current = next;
+          indexRef.current = createWorkspaceIndex(next);
+          setWorkspaceObjects(next);
+          const app = appRef.current;
+          if (app !== null) {
+            try {
+              applyShapeStyle(app, id, attrs);
+            } catch (cause: unknown) {
+              console.warn("[workspace] could not sync the style to wasm:", cause);
+            }
+          }
+          return true;
+        } catch (cause: unknown) {
+          console.error("[workspace] style commit failed:", cause);
+          setWorkspaceState({ error: cause });
+          return false;
+        }
+      },
     }),
-    [applyViewport],
+    [applyViewport, sendUpdateFile],
   );
 
   // Completion signals for tests and diagnosis: data-rendered flips on the
@@ -683,6 +828,10 @@ function WorkspaceWasmCanvasImpl({
       dragBranch: null,
       dragIds: [],
       selectionBeforeDrag: null,
+      drawStart: null,
+      drawParentId: null,
+      drawActive: false,
+      drawRect: null,
     };
 
     // The tracked modifiers: space switches the pan mode, shift the toggle
@@ -716,9 +865,14 @@ function WorkspaceWasmCanvasImpl({
     const updateCursor = (): void => {
       if (interaction.mode === "pan") canvas.style.cursor = "grabbing";
       else if (keys.space) canvas.style.cursor = "grab";
+      else if (isDrawTool(toolRef.current)) canvas.style.cursor = "crosshair";
       else if (hoverActive) canvas.style.cursor = "pointer";
       else canvas.style.cursor = "default";
     };
+
+    // The tool mirror effect repaints the cursor through this hook without
+    // re-running the gesture effect.
+    cursorRef.current = updateCursor;
 
     // The $APP adapters need the loaded runtime: created on first use and
     // invalidated by the load effect on every (re)load.
@@ -923,8 +1077,7 @@ function WorkspaceWasmCanvasImpl({
       releaseWorld: { x: number; y: number },
     ): Promise<void> => {
       const objects = objectsRef.current;
-      const sessionId = sessionIdRef.current;
-      if (objects === null || sessionId === null || commitPendingRef.current) {
+      if (objects === null || commitPendingRef.current) {
         cancelDragPreview();
         return;
       }
@@ -945,29 +1098,14 @@ function WorkspaceWasmCanvasImpl({
         cancelDragPreview();
         return;
       }
-      commitPendingRef.current = true;
       try {
-        const body = encodeUpdateFile({
-          id: fileIdRef.current,
-          "session-id": sessionId,
-          revn: revnRef.current,
-          vern: vernRef.current,
-          changes,
-        });
-        const response = await cmdEncoded<{ revn?: unknown }>("update-file", body);
-        const revn =
-          response !== null && typeof response === "object" ? response.revn : undefined;
-        if (typeof revn !== "number") {
-          throw new Error("update-file: the response carried no revn");
+        // AD6: the shared write path owns the in-flight guard and the revn
+        // advance; a null result means another commit slipped in first.
+        const revn = await sendUpdateFile(changes);
+        if (revn === null) {
+          cancelDragPreview();
+          return;
         }
-        // The response revn is the file revn BEFORE this commit, and
-        // process-changes-and-validate raised the stored one to at least
-        // revn + 1 (the T3 E2E saw it: only the lagged rows carry the
-        // post-commit revn). The local guard tracks that bound: the CLJS
-        // persistence advances optimistically, and the backend only
-        // rejects a revn ABOVE the stored one (files_update.clj), so a
-        // lagging submit stays accepted.
-        revnRef.current = Math.max(revnRef.current, revn + 1);
         // T5: the model swap. The move applies over the whole drag set,
         // the reparent over the ids the change carried; the store takes
         // the same reference the refs hold (AD10).
@@ -998,9 +1136,85 @@ function WorkspaceWasmCanvasImpl({
         // AD9: nothing was applied — the base geometry is still in the
         // pool; the preview resets over it and the model stays untouched.
         cancelDragPreview();
-      } finally {
-        commitPendingRef.current = false;
       }
+    };
+
+    // The release of a draw gesture (F9.5, AD5/AD6): one add-obj through
+    // the shared write path, then the JS model swap, the selection and the
+    // incremental wasm upload. A missing parent aborts with a store error;
+    // a failed or cancelled commit leaves the file untouched. Every exit
+    // returns the tool to move (the CLJS clear-drawing), so a failed draw
+    // never traps the pointer in a tool.
+    const commitDraw = async (
+      tool: WorkspaceDrawTool,
+      rect: DrawRect,
+      parentId: string | null,
+    ): Promise<void> => {
+      if (!canEditRef.current) {
+        setDrawPreview(null);
+        onToolChangeRef.current("move");
+        return;
+      }
+      const objects = objectsRef.current;
+      if (objects === null || parentId === null) {
+        setWorkspaceState({
+          error: new Error("workspace: cannot draw without a valid parent"),
+        });
+        setDrawPreview(null);
+        onToolChangeRef.current("move");
+        return;
+      }
+      const parent = objects[parentId];
+      if (parent === undefined || parent === null) {
+        setWorkspaceState({
+          error: new Error("workspace: cannot draw without a valid parent"),
+        });
+        setDrawPreview(null);
+        onToolChangeRef.current("move");
+        return;
+      }
+      const shape = createDrawShape(tool, rect, parentId, crypto.randomUUID());
+      const change: UpdateFileChange = {
+        type: "add-obj",
+        id: shape.id,
+        obj: shape,
+        "page-id": pageIdRef.current,
+        "frame-id": parentId,
+        "parent-id": parentId,
+      };
+      try {
+        const revn = await sendUpdateFile([change]);
+        if (revn === null) {
+          setDrawPreview(null);
+          onToolChangeRef.current("move");
+          return;
+        }
+        // The local mirror of the backend add-shape (AD10): append to the
+        // parent, replace the shared model and rebuild the hit-testing
+        // index (hidden/blocked affect the next queries).
+        const next = applyAddShape(objects, shape, parentId);
+        objectsRef.current = next;
+        indexRef.current = createWorkspaceIndex(next);
+        setWorkspaceObjects(next);
+        setSelection([shape.id]);
+        setDrawPreview(null);
+        // AD5: the incremental wasm sync. A failure here never rolls back
+        // the committed file; the next reload renders the shape.
+        const app = appRef.current;
+        if (app !== null) {
+          try {
+            const parentChildren = next[parentId]?.shapes ?? [];
+            uploadNewShape(app, shape, parentChildren);
+          } catch (cause: unknown) {
+            console.warn("[workspace] could not sync the new shape to wasm:", cause);
+          }
+        }
+      } catch (cause: unknown) {
+        console.error("[workspace] draw commit failed:", cause);
+        setWorkspaceState({ error: cause });
+        setDrawPreview(null);
+      }
+      onToolChangeRef.current("move");
     };
 
     const startArea = (
@@ -1084,6 +1298,31 @@ function WorkspaceWasmCanvasImpl({
         return;
       }
 
+      // A left press with a box tool starts the draw gesture (F9.5): the
+      // parent resolves once, at press time, and no hover/selection logic
+      // runs for this press.
+      if (event.button === 0 && canEditRef.current && isDrawTool(toolRef.current)) {
+        event.preventDefault();
+        const drawWorld = toWorld(client, state);
+        const target = firstValidParent(objects, topNestedFrameAt(objects, drawWorld));
+        interaction.mode = "draw";
+        interaction.pointerId = event.pointerId;
+        interaction.downClient = client;
+        interaction.downWorld = drawWorld;
+        interaction.drawStart = drawWorld;
+        interaction.drawParentId = target === null ? null : target.id;
+        interaction.drawActive = false;
+        interaction.drawRect = null;
+        interaction.cancelled = false;
+        // The hover visuals belong to the idle selection mode.
+        hoverActive = false;
+        setHover(null);
+        setHoverShapeId(null);
+        setDrawPreview(null);
+        updateCursor();
+        return;
+      }
+
       // A left press refreshes the hover stack at the press point (the
       // CLJS reads the stack the last move left behind; recomputing keeps
       // the click correct without a preceding move).
@@ -1119,6 +1358,9 @@ function WorkspaceWasmCanvasImpl({
       if (state === null) return;
 
       if (interaction.mode === "idle") {
+        // The hover visuals belong to selection mode: a draw tool shows the
+        // crosshair and no hover outline until it returns to move.
+        if (isDrawTool(toolRef.current)) return;
         scheduleHover(toWorld({ x: event.clientX, y: event.clientY }, state));
         return;
       }
@@ -1139,6 +1381,32 @@ function WorkspaceWasmCanvasImpl({
 
       if (interaction.mode === "area") {
         applyArea(client);
+        return;
+      }
+
+      if (interaction.mode === "draw") {
+        if (interaction.cancelled) return;
+        const origin = interaction.drawStart;
+        const activeTool = toolRef.current;
+        if (origin === null || !isDrawTool(activeTool)) return;
+        const rect = drawRectFromPoints(origin, toWorld(client, state), state.zoom, {
+          square: event.shiftKey,
+          center: event.altKey,
+        });
+        const previous = interaction.drawRect;
+        interaction.drawActive = rect !== null;
+        interaction.drawRect = rect;
+        const changed =
+          rect === null
+            ? previous !== null
+            : previous === null ||
+              previous.x !== rect.x ||
+              previous.y !== rect.y ||
+              previous.width !== rect.width ||
+              previous.height !== rect.height;
+        if (changed) {
+          setDrawPreview(rect === null ? null : { tool: activeTool, ...rect });
+        }
         return;
       }
 
@@ -1175,6 +1443,10 @@ function WorkspaceWasmCanvasImpl({
       interaction.dragBranch = null;
       interaction.dragIds = [];
       interaction.selectionBeforeDrag = null;
+      interaction.drawStart = null;
+      interaction.drawParentId = null;
+      interaction.drawActive = false;
+      interaction.drawRect = null;
       updateCursor();
     };
 
@@ -1188,6 +1460,28 @@ function WorkspaceWasmCanvasImpl({
 
       const mode = interaction.mode;
       const cancelled = interaction.cancelled;
+
+      if (mode === "draw") {
+        // The release commits one add-obj (F9.5): the last previewed box,
+        // or the 100 x 100 click box when the threshold never crossed.
+        const drawTool = toolRef.current;
+        const start = interaction.downWorld;
+        const parentId = interaction.drawParentId;
+        const rect =
+          interaction.drawActive && interaction.drawRect !== null
+            ? interaction.drawRect
+            : start === null
+              ? null
+              : clickDrawRect(start);
+        endGesture();
+        setDrawPreview(null);
+        if (cancelled || rect === null || !isDrawTool(drawTool)) {
+          onToolChangeRef.current("move");
+          return;
+        }
+        void commitDraw(drawTool, rect, parentId);
+        return;
+      }
 
       if (mode === "area") {
         // The rx/last tick of handle-area-selection: the release position
@@ -1247,6 +1541,12 @@ function WorkspaceWasmCanvasImpl({
     const onPointerCancel = (event: PointerEvent): void => {
       if (interaction.pointerId !== event.pointerId) return;
       if (interaction.mode === "area") setAreaSelect(null);
+      if (interaction.mode === "draw") {
+        // A cancelled draw leaves the file untouched and returns the tool
+        // to move; the preview goes with the gesture.
+        setDrawPreview(null);
+        onToolChangeRef.current("move");
+      }
       if (interaction.mode === "drag") {
         // A physical cancellation leaves the state as if the press never
         // mutated it: the preview resets and the selection the threshold
@@ -1285,6 +1585,17 @@ function WorkspaceWasmCanvasImpl({
         return;
       }
       if (interaction.mode === "click") interaction.cancelled = true;
+      if (interaction.mode === "draw") {
+        // Escape aborts the draw now: no commit on the release, the preview
+        // goes and the tool returns to move (the CLJS interrupt).
+        setDrawPreview(null);
+        interaction.cancelled = true;
+        interaction.drawActive = false;
+        interaction.drawRect = null;
+        onToolChangeRef.current("move");
+        updateCursor();
+        return;
+      }
       if (interaction.mode === "drag") {
         cancelDragPreview();
         interaction.cancelled = true;
@@ -1381,12 +1692,14 @@ function WorkspaceWasmCanvasImpl({
       // canvas-local and go too (a StrictMode replay immediately rebuilds
       // the same closure).
       if (drag.active) cancelDragPreview();
+      cursorRef.current = null;
       setHover(null);
       setHoverShapeId(null);
       setHoverTopFrameId(null);
       setAreaSelect(null);
+      setDrawPreview(null);
     };
-  }, []);
+  }, [sendUpdateFile]);
 
   // The [vport] effect of viewport-wasm.cljs: resize-canvas! plus the
   // centered update-viewport-size plus set-view-box.
@@ -1477,5 +1790,7 @@ export const WorkspaceWasmCanvas = memo(
     prev.file.vern === next.file.vern &&
     prev.file.permissions === next.file.permissions &&
     prev.file.data === next.file.data &&
-    prev.showFrameTitles === next.showFrameTitles,
+    prev.showFrameTitles === next.showFrameTitles &&
+    prev.tool === next.tool &&
+    prev.onToolChange === next.onToolChange,
 );

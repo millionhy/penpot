@@ -2,14 +2,13 @@
 
 // The workspace shell (F9.4): the three-column grid of the CLJS workspace
 // ("left-sidebar viewport right-sidebar", 318px / 1fr / 318px), the left
-// header, the right sidebar skeleton and the WASM canvas in the viewport
-// cell.
+// header, the right sidebar and the WASM canvas in the viewport cell.
 //
-// UI state stays local (review correction to AD5): hideUI, the menu anchor
-// and the artboard-name toggle live here, not in the module store, which
-// keeps only the file, page, viewport, objects and selection slice. The
-// Layers panel owns its own query/expanded state; the canvas owns its
-// viewport.
+// UI state stays local (review correction to AD5): hideUI, the menu anchor,
+// the artboard-name toggle and the active tool live here, not in the module
+// store, which keeps only the file, page, viewport, objects, selection and
+// draw-preview slice. The Layers panel owns its own query/expanded state;
+// the canvas owns its viewport.
 //
 // The main menu and the zoom widget are mounted here so the menu actions
 // cross the canvas handle boundary instead of reaching into the store's
@@ -19,8 +18,8 @@
 //
 // Deviations from the CLJS original, documented (AD10):
 // - No sidebar resizer, no responsive collapse and no palette bar.
-// - The right sidebar is an empty skeleton; its options toolbox arrives in a
-//   later slice.
+// - The right sidebar carries the zoom widget and the F9.5 style panel; the
+//   rest of the options toolbox stays out of this slice.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -35,6 +34,7 @@ import {
 import { WorkspaceLayersPanel } from "@/components/workspace-layers-panel";
 import { WorkspaceMainMenu } from "@/components/workspace-main-menu";
 import { WorkspaceRightSidebar } from "@/components/workspace-right-sidebar";
+import { WorkspaceStylePanel } from "@/components/workspace-style-panel";
 import { WorkspaceTopToolbar } from "@/components/workspace-top-toolbar";
 import { WorkspaceZoomWidget } from "@/components/workspace-zoom-widget";
 import {
@@ -43,7 +43,7 @@ import {
 } from "@/components/workspace-wasm-canvas";
 import { ExpandIcon } from "@/components/workspace-icons";
 import { tr } from "@/lib/i18n";
-import { canEditFile, type WorkspaceFile } from "@/lib/workspace";
+import { canEditFile, type WorkspaceFile, type WorkspaceTool } from "@/lib/workspace";
 
 export interface WorkspaceShellProps {
   fileId: string;
@@ -71,6 +71,18 @@ export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
   const [menu, setMenu] = useState<WorkspaceMenu | null>(null);
   // Artboard names show by default, like the CLJS show-artboard-names flag.
   const [showFrameTitles, setShowFrameTitles] = useState(true);
+  // AD9: the shell owns the active tool; the canvas mirrors it and asks for
+  // the move tool when a draw completes or aborts.
+  const [activeTool, setActiveTool] = useState<WorkspaceTool>("move");
+
+  // A read-only file cannot draw: drop any active tool back to move.
+  useEffect(() => {
+    if (!canEdit) setActiveTool("move");
+  }, [canEdit]);
+
+  const changeTool = useCallback((next: WorkspaceTool): void => {
+    setActiveTool(next);
+  }, []);
 
   const closeMenu = useCallback((): void => setMenu(null), []);
 
@@ -144,8 +156,16 @@ export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
           pageId={pageId}
           file={file}
           showFrameTitles={showFrameTitles}
+          tool={activeTool}
+          onToolChange={changeTool}
         />
-        {hideUI ? null : <WorkspaceTopToolbar canEdit={canEdit} />}
+        {hideUI ? null : (
+          <WorkspaceTopToolbar
+            canEdit={canEdit}
+            tool={activeTool}
+            onToolChange={changeTool}
+          />
+        )}
       </main>
 
       {hideUI ? null : (
@@ -157,7 +177,9 @@ export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
               onMenuToggle={toggleZoomMenu}
             />
           }
-        />
+        >
+          <WorkspaceStylePanel canEdit={canEdit} canvas={canvasRef} />
+        </WorkspaceRightSidebar>
       )}
 
       {menu?.kind === "main" ? (

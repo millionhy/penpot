@@ -378,8 +378,10 @@ export function instant(value: Date): unknown {
 // point? in app.common.geom.{rect,point} are `instance?` tests), so a
 // plain keyword map decodes to a plain map and the file update rejects it
 // (the T3 E2E got "invalid shape found" until this was fixed; AD6 had
-// assumed the structure check). A position-data item on the other hand is
-// a plain map on both sides and stays untagged.
+// assumed the structure check). A transform rides "matrix" under the same
+// instance check, and add-obj carries the whole shape under "shape" so the
+// backend rebuilds a Shape record. A position-data item on the other hand
+// is a plain map on both sides and stays untagged.
 
 // One {:type :set :attr <kw> :val <v>} operation of a mod-obj change;
 // attr is the attribute keyword as a string and val its raw JS value.
@@ -398,6 +400,19 @@ export interface UpdateFileModObjChange {
   operations: UpdateFileSetOperation[];
 }
 
+// {:type :add-obj :id <uuid> :obj <shape> :page-id <uuid> :frame-id <uuid>
+//  :parent-id <uuid>}: inserts one new shape (F9.5). The change id follows
+// the shape id; index is omitted, so ctst/add-shape appends at the tail of
+// the parent.
+export interface UpdateFileAddObjChange {
+  type: "add-obj";
+  id: string;
+  obj: Readonly<Record<string, unknown>>;
+  "page-id": string;
+  "frame-id": string;
+  "parent-id": string;
+}
+
 // {:type :mov-objects :page-id <uuid> :parent-id <uuid> :shapes [<uuid>..]}:
 // re-parents shapes (T4). The ids ride in reverse order like change-parent,
 // no index means append at the tail, and ZERO_UUID is the root frame.
@@ -408,7 +423,10 @@ export interface UpdateFileMovObjectsChange {
   shapes: string[];
 }
 
-export type UpdateFileChange = UpdateFileModObjChange | UpdateFileMovObjectsChange;
+export type UpdateFileChange =
+  | UpdateFileAddObjChange
+  | UpdateFileModObjChange
+  | UpdateFileMovObjectsChange;
 
 export interface UpdateFileParams {
   id: string;
@@ -422,18 +440,37 @@ export interface UpdateFileParams {
 // backend schemas) but this boundary normalizes to strings (the "u" reader
 // handler above): the *-ref-id / *-ref-file pairs of the text attrs and
 // fills (app.common.types.text / fills; a span of a text position-data
-// carries them under its :fills) and the id of a fill-image
-// (app.common.types.color). A plain string fails the uuid check of the
-// backend on arrival, so the writer re-tags them; the uuid-form guard
-// keeps string lookalikes (e.g. a "font-id" naming a font, see
-// text-font-attrs) untagged.
-const UUID_VALUE_KEY = /^(id|.+-ref-id|.+-ref-file)$/;
+// carries them under its :fills), the id of a fill-image
+// (app.common.types.color) and the shape links. The shape links matter for
+// add-obj: :parent-id and :frame-id sit on the shape map itself, and the
+// old pattern skipped them, leaving plain strings the backend ::sm/uuid
+// check rejects. A plain string fails the uuid check of the backend on
+// arrival, so the writer re-tags them; the uuid-form guard keeps string
+// lookalikes (e.g. a "font-id" naming a font, see text-font-attrs)
+// untagged.
+const UUID_VALUE_KEY =
+  /^(id|parent-id|frame-id|component-id|page-id|shape-ref|.+-ref-id|.+-ref-file)$/;
+
+// Values the CLJS file-data holds as keywords (::sm/one-of in the backend
+// schemas) but this boundary normalizes to strings (the ":" reader handler
+// above): the shape and gradient :type, the stroke enums, the blend mode
+// and the shadow grow type. A plain "rect" fails ::sm/one-of on arrival
+// and the wasm stroke alignment falls to its default branch, so the writer
+// re-tags them.
+const KEYWORD_VALUE_KEY =
+  /^(type|stroke-style|stroke-alignment|stroke-cap-start|stroke-cap-end|blend-mode|grow-type)$/;
 const UUID_FORM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function encodeUpdateAttrEntry(key: string, value: unknown): unknown {
-  if (typeof value === "string" && UUID_VALUE_KEY.test(key) && UUID_FORM.test(value)) {
-    return uuid(value);
+  if (typeof value === "string") {
+    if (UUID_VALUE_KEY.test(key) && UUID_FORM.test(value)) return uuid(value);
+    if (KEYWORD_VALUE_KEY.test(key)) return keyword(value);
   }
+  // The record-valued attrs keep their instance tags through set/mod-obj
+  // as well (the resize gesture updates selrect and points through them).
+  if (key === "selrect") return encodeRecordValue("rect", value);
+  if (key === "points") return encodePointsValue(value);
+  if (key === "transform" || key === "transform-inverse") return encodeMatrixValue(value);
   return encodeUpdateAttrValue(value);
 }
 
@@ -473,18 +510,64 @@ function encodePointsValue(value: unknown): unknown {
   return value.map((point) => encodeRecordValue("point", point));
 }
 
+// A transform is a Matrix record on the CLJS side and pos->Matrix reads
+// (get m :a) ... (get m :f), so an array rep would decode into a matrix of
+// zeros: reject it instead of writing a shape that validates but renders
+// wrong.
+function encodeMatrixValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    throw new Error(
+      "transform attrs must be an {a..f} map; pos->Matrix reads :a..:f and an array decodes to zeros",
+    );
+  }
+  return encodeRecordValue("matrix", value);
+}
+
 // The val of a set operation, encoded for the attr it targets (see the
 // selrect/points note above).
 function encodeSetOperation(operation: UpdateFileSetOperation): unknown {
-  const attr = operation.attr;
-  let val: unknown;
-  if (attr === "selrect") val = encodeRecordValue("rect", operation.val);
-  else if (attr === "points") val = encodePointsValue(operation.val);
-  else val = encodeUpdateAttrValue(operation.val);
-  return keywordMap({ type: keyword("set"), attr: keyword(attr), val });
+  return keywordMap({
+    type: keyword("set"),
+    attr: keyword(operation.attr),
+    val: encodeUpdateAttrEntry(operation.attr, operation.val),
+  });
+}
+
+function encodeShapeChildren(value: unknown): unknown {
+  if (!Array.isArray(value)) return encodeUpdateAttrValue(value);
+  return value.map((id) => uuid(String(id)));
+}
+
+// One shape map as the backend's add-obj change carries it (and as the wasm
+// bridge uploads it): keyword keys, uuid links, enum values as keywords, the
+// selrect/points/matrix records tagged, children as a uuid array, and the
+// whole map wrapped in the "shape" tag so create-shape
+// (app.common.types.shape) rebuilds a Shape record on the backend.
+export function encodeShapeValue(shape: Readonly<Record<string, unknown>>): unknown {
+  const entries = Object.entries(shape).map(([key, value]) => [
+    key,
+    key === "shapes" ? encodeShapeChildren(value) : encodeUpdateAttrEntry(key, value),
+  ]);
+  return transit.tagged("shape", keywordMap(Object.fromEntries(entries)));
+}
+
+// Public wrapper over the attribute recursion for callers outside this
+// module (the wasm shape upload encodes fills/strokes props with it).
+export function encodeAttrValue(value: unknown): unknown {
+  return encodeUpdateAttrValue(value);
 }
 
 function encodeUpdateChange(change: UpdateFileChange): unknown {
+  if (change.type === "add-obj") {
+    return keywordMap({
+      type: keyword("add-obj"),
+      id: uuid(change.id),
+      obj: encodeShapeValue(change.obj),
+      "page-id": uuid(change["page-id"]),
+      "frame-id": uuid(change["frame-id"]),
+      "parent-id": uuid(change["parent-id"]),
+    });
+  }
   if (change.type === "mov-objects") {
     return keywordMap({
       type: keyword("mov-objects"),

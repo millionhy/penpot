@@ -422,6 +422,170 @@
   text-align: center;
 }
 
+/* The style panel (F9.5): the layer toggles, opacity, fills, strokes and the
+   rect/frame radius, stacked as sections inside the options area. */
+.pp-workspace-style {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-m);
+}
+
+.pp-workspace-style-layer {
+  display: flex;
+  gap: var(--sp-xs);
+}
+
+.pp-workspace-style-toggle {
+  background-color: var(--color-background-tertiary);
+  border: var(--b-1) solid transparent;
+  border-radius: var(--br-4);
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  flex: 1;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  height: var(--sz-28);
+  padding: 0 var(--sp-s);
+}
+
+.pp-workspace-style-toggle:hover:not(:disabled) {
+  background-color: var(--color-background-quaternary);
+}
+
+.pp-workspace-style-toggle:disabled,
+.pp-workspace-style-icon-button:disabled,
+.pp-workspace-style-input:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.pp-workspace-style-error {
+  background-color: var(--color-background-error);
+  color: var(--color-foreground-error);
+  font-size: var(--fs-12);
+  margin: 0;
+  padding: var(--sp-xs) var(--sp-s);
+}
+
+.pp-workspace-style-section {
+  border-top: var(--b-1) solid var(--color-background-quaternary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+  padding-top: var(--sp-s);
+}
+
+.pp-workspace-style-header {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+  justify-content: space-between;
+}
+
+.pp-workspace-style-title {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  margin: 0;
+}
+
+/* A list row (one fill or one stroke): the inputs plus the remove button. */
+.pp-workspace-style-row {
+  align-items: flex-end;
+  display: grid;
+  gap: var(--sp-xs);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.pp-workspace-style-row--stroke {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1fr) auto;
+}
+
+.pp-workspace-style-radius {
+  display: grid;
+  gap: var(--sp-xs);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.pp-workspace-style-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xxs);
+  min-width: 0;
+}
+
+.pp-workspace-style-label {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-workspace-style-input-wrap {
+  align-items: center;
+  background-color: var(--color-background-tertiary);
+  border: var(--b-1) solid transparent;
+  border-radius: var(--br-4);
+  display: flex;
+  gap: var(--sp-xxs);
+  height: var(--sz-28);
+  padding: 0 var(--sp-s);
+}
+
+.pp-workspace-style-input-wrap:focus-within {
+  border-color: var(--color-accent-primary);
+}
+
+.pp-workspace-style-input {
+  background: none;
+  border: 0;
+  color: var(--color-foreground-primary);
+  flex: 1;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  user-select: text;
+  width: 100%;
+}
+
+.pp-workspace-style-input:focus {
+  outline: none;
+}
+
+/* The color swatch fills its field: no box, no padding. */
+.pp-workspace-style-input[type="color"] {
+  border-radius: var(--br-4);
+  cursor: pointer;
+  padding: 0;
+}
+
+.pp-workspace-style-unit {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+}
+
+.pp-workspace-style-icon-button {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--br-4);
+  color: var(--color-icon-default);
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-28);
+  justify-content: center;
+  padding: 0;
+  width: var(--sz-28);
+}
+
+.pp-workspace-style-icon-button:hover:not(:disabled) {
+  background-color: var(--color-background-tertiary);
+  color: var(--color-foreground-primary);
+}
+
 /* The icon wrapper of components/workspace-icons follows the ds .icon rule:
    outline only, painted by currentColor; the stylesheet sizes it. */
 .pp-workspace-icon {
@@ -506,6 +670,14 @@
 
 .pp-overlay-area {
   fill: var(--color-accent-select);
+  stroke: var(--color-accent-tertiary);
+}
+
+/* The dashed box of a live draw gesture (F9.5): the stroke width and the
+   dash lengths ride inline, scaled by the zoom, so the preview keeps one
+   screen pixel like the marquee. */
+.pp-overlay-draw {
+  fill: none;
   stroke: var(--color-accent-tertiary);
 }
 

@@ -15,7 +15,9 @@ import { Pointer } from "@/lib/transit";
 import {
   canEditFile,
   fetchWorkspaceFile,
+  IDENTITY_TRANSFORM,
   immediateChildren,
+  isDrawTool,
   pageObjects,
   parseWorkspaceQuery,
   renameWorkspaceFile,
@@ -24,6 +26,7 @@ import {
   type WorkspaceFile,
   type WorkspaceFileData,
   type WorkspaceObjects,
+  type WorkspaceTool,
 } from "@/lib/workspace";
 
 const FILE_ID = "11111111-1111-1111-1111-111111111111";
@@ -210,5 +213,24 @@ describe("fetchWorkspaceFile", () => {
       "get-file-fragment",
       expect.objectContaining({ "file-id": FILE_ID, "fragment-id": "page-1" }),
     );
+  });
+});
+
+describe("isDrawTool", () => {
+  it("accepts the three box tools", () => {
+    expect(isDrawTool("frame")).toBe(true);
+    expect(isDrawTool("rect")).toBe(true);
+    expect(isDrawTool("ellipse")).toBe(true);
+  });
+
+  it("rejects move and the tools without a drawing handler", () => {
+    const rest: WorkspaceTool[] = ["move", "line", "arrow", "text", "image", "path", "curve"];
+    for (const tool of rest) expect(isDrawTool(tool)).toBe(false);
+  });
+});
+
+describe("IDENTITY_TRANSFORM", () => {
+  it("is the {a..f} map the transit and wasm layers expect", () => {
+    expect({ ...IDENTITY_TRANSFORM }).toEqual({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
   });
 });

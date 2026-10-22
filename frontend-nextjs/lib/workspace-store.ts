@@ -12,7 +12,7 @@
 // live drag translation; page switching, history and the rest of
 // workspace-local arrive with the next slices.
 
-import type { WorkspaceFile, WorkspaceObjects } from "@/lib/workspace";
+import type { WorkspaceDrawTool, WorkspaceFile, WorkspaceObjects } from "@/lib/workspace";
 import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";
 import type { ViewportRect, ViewportState } from "@/lib/workspace-viewport";
 
@@ -24,6 +24,17 @@ export type WorkspaceStatus = "idle" | "loading" | "ready" | "error";
 export interface DragDelta {
   dx: number;
   dy: number;
+}
+
+// The live box of a draw gesture, in world units (F9.5): the canvas writes
+// it on every passing pointer move and the overlay renders the dashed
+// preview; null between drags and under the 10-screen-pixel threshold.
+export interface DrawPreview {
+  tool: WorkspaceDrawTool;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface WorkspaceState {
@@ -64,6 +75,8 @@ export interface WorkspaceState {
   objects: WorkspaceObjects | null;
   // The translation of a running move drag; null when no drag runs.
   dragDelta: DragDelta | null;
+  // The live box of a running draw gesture (F9.5); null otherwise.
+  drawPreview: DrawPreview | null;
 }
 
 const initialState: WorkspaceState = {
@@ -82,6 +95,7 @@ const initialState: WorkspaceState = {
   areaSelect: null,
   objects: null,
   dragDelta: null,
+  drawPreview: null,
 };
 
 let state: WorkspaceState = initialState;
@@ -186,4 +200,12 @@ export function setWorkspaceObjects(objects: WorkspaceObjects | null): void {
 // null between drags.
 export function setDragDelta(delta: DragDelta | null): void {
   setWorkspaceState({ dragDelta: delta });
+}
+
+// --- Draw preview (F9.5) ----------------------------------------------------
+
+// The dashed box the overlay draws while a draw tool is dragging; null clears
+// it (under the threshold, after the release and on every abort).
+export function setDrawPreview(preview: DrawPreview | null): void {
+  setWorkspaceState({ drawPreview: preview });
 }

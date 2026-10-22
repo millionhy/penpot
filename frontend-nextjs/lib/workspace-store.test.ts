@@ -14,6 +14,7 @@ import {
   resetWorkspaceState,
   setAreaSelect,
   setDragDelta,
+  setDrawPreview,
   setHover,
   setHoverShapeId,
   setHoverTopFrameId,
@@ -44,6 +45,7 @@ describe("getInitialWorkspaceState", () => {
     expect(initial.areaSelect).toBeNull();
     expect(initial.objects).toBeNull();
     expect(initial.dragDelta).toBeNull();
+    expect(initial.drawPreview).toBeNull();
   });
 
   it("keeps its identity across writes", () => {
@@ -198,6 +200,26 @@ describe("move slice", () => {
   });
 });
 
+describe("draw preview slice", () => {
+  it("stores the live draw box and clears it", () => {
+    const listener = vi.fn();
+    const unsub = subscribeWorkspace(listener);
+    setDrawPreview({ tool: "rect", x: 1, y: 2, width: 30, height: 40 });
+    expect(getWorkspaceState().drawPreview).toEqual({
+      tool: "rect",
+      x: 1,
+      y: 2,
+      width: 30,
+      height: 40,
+    });
+    expect(listener).toHaveBeenCalledTimes(1);
+    setDrawPreview(null);
+    expect(getWorkspaceState().drawPreview).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsub();
+  });
+});
+
 describe("resetWorkspaceState", () => {
   it("restores the initial slice and notifies the listeners", () => {
     const listener = vi.fn();
@@ -210,6 +232,7 @@ describe("resetWorkspaceState", () => {
     });
     setWorkspaceObjects({ a: { id: "a", type: "rect" } });
     setDragDelta({ dx: 1, dy: 1 });
+    setDrawPreview({ tool: "frame", x: 0, y: 0, width: 10, height: 10 });
 
     resetWorkspaceState();
 
@@ -225,8 +248,9 @@ describe("resetWorkspaceState", () => {
     expect(state.areaSelect).toBeNull();
     expect(state.objects).toBeNull();
     expect(state.dragDelta).toBeNull();
+    expect(state.drawPreview).toBeNull();
     expect(getWorkspaceViewport()).toBeNull();
-    expect(listener).toHaveBeenCalledTimes(5);
+    expect(listener).toHaveBeenCalledTimes(6);
     unsub();
   });
 });

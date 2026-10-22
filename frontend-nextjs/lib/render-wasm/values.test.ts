@@ -48,12 +48,16 @@ function revive(value: unknown): unknown {
 function makeApp(): RendererApp {
   class MockPAM {
     // Same argument list as the compiled PersistentArrayMap constructor
-    // (meta, cnt, arr, hash); only cnt and arr matter here.
+    // (meta, cnt, arr, hash); cnt counts entries and the backing array
+    // holds two slots per entry, so a mismatch is a constructor bug.
     constructor(...args: unknown[]) {
       const cnt = args[1] as number;
       const arr = args[2] as unknown[];
+      if (cnt * 2 !== arr.length) {
+        throw new Error(`PersistentArrayMap: cnt ${cnt} does not match ${arr.length} slots`);
+      }
       const m = new Map<unknown, unknown>();
-      for (let i = 0; i + 1 < cnt; i += 2) m.set(arr[i], arr[i + 1]);
+      for (let i = 0; i < arr.length; i += 2) m.set(arr[i], arr[i + 1]);
       return m as unknown as MockPAM;
     }
   }

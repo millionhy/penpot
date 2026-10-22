@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import transit from "transit-js";
 import {
   decodeTransit,
+  encodeAttrValue,
+  encodeShapeValue,
   encodeTransit,
   encodeUpdateFile,
   isPathData,
@@ -439,5 +441,212 @@ describe("encodeUpdateFile", () => {
     // The reader normalizes the tags back into the strings the model holds.
     const decoded = decodeTransit<UpdateFileParams>(doc);
     expect(decoded).toEqual(params);
+  });
+});
+
+// F9.5 Task 3: the add-obj change of the drawing tools. schema:change
+// (app.common.files.changes) wants a Shape record, and its :type is an
+// ::sm/one-of keyword; the record instance checks of the rect/point/matrix
+// records reject plain maps. The encoder tags the whole shape plus every
+// record inside it, and the reader must decode the payload back into the
+// plain JS model the workspace store holds.
+describe("encodeUpdateFile add-obj", () => {
+  const FILE_ID = "00000000-0000-0000-0000-0000000000b1";
+  const SESSION_ID = "00000000-0000-0000-0000-0000000000b2";
+  const PAGE_ID = "00000000-0000-0000-0000-0000000000b3";
+  const RECT_ID = "00000000-0000-0000-0000-0000000000b4";
+  const FRAME_ID = "00000000-0000-0000-0000-0000000000b5";
+  const CHILD_ID = "00000000-0000-0000-0000-0000000000b6";
+  const ZERO = "00000000-0000-0000-0000-000000000000";
+
+  const IDENTITY = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+
+  // The minimal rect createDrawShape builds (F9.5 Task 2). The selrect is
+  // both a Rect on read and a plain map after this reader, so the round-trip
+  // compares equal.
+  function rectShape(): Record<string, unknown> {
+    return {
+      id: RECT_ID,
+      type: "rect",
+      name: "Rectangle",
+      "parent-id": FRAME_ID,
+      "frame-id": FRAME_ID,
+      x: 10,
+      y: 20,
+      width: 30,
+      height: 40,
+      selrect: { x: 10, y: 20, width: 30, height: 40, x1: 10, y1: 20, x2: 40, y2: 60 },
+      points: [
+        { x: 10, y: 20 },
+        { x: 40, y: 20 },
+        { x: 40, y: 60 },
+        { x: 10, y: 60 },
+      ],
+      transform: { a: 1, b: 0, c: 0, d: 1, e: 10, f: 20 },
+      "transform-inverse": { a: 1, b: 0, c: 0, d: 1, e: -10, f: -20 },
+      rotation: 0,
+      proportion: 1,
+      "proportion-lock": false,
+      fills: [{ "fill-color": "#B1B2B5", "fill-opacity": 1 }],
+      strokes: [],
+      r1: 0,
+      r2: 0,
+      r3: 0,
+      r4: 0,
+    };
+  }
+
+  function frameShape(children: string[]): Record<string, unknown> {
+    return {
+      id: FRAME_ID,
+      type: "frame",
+      name: "Board",
+      "parent-id": ZERO,
+      "frame-id": ZERO,
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 200,
+      selrect: { x: 0, y: 0, width: 300, height: 200, x1: 0, y1: 0, x2: 300, y2: 200 },
+      points: [
+        { x: 0, y: 0 },
+        { x: 300, y: 0 },
+        { x: 300, y: 200 },
+        { x: 0, y: 200 },
+      ],
+      transform: IDENTITY,
+      "transform-inverse": IDENTITY,
+      shapes: children,
+      "hide-fill-on-export": false,
+      "hide-in-viewer": true,
+      fills: [{ "fill-color": "#FFFFFF" }],
+      strokes: [],
+      r1: 0,
+      r2: 0,
+      r3: 0,
+      r4: 0,
+    };
+  }
+
+  function addObjParams(shape: Record<string, unknown>): UpdateFileParams {
+    return {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 8,
+      vern: 2,
+      changes: [
+        {
+          type: "add-obj",
+          id: RECT_ID,
+          obj: shape,
+          "page-id": PAGE_ID,
+          "frame-id": FRAME_ID,
+          "parent-id": FRAME_ID,
+        },
+      ],
+    };
+  }
+
+  it("tags the shape, its records and the enum values", () => {
+    const doc = encodeUpdateFile(addObjParams(rectShape()));
+    expect(doc).toContain('"~:add-obj"');
+    expect(doc).toContain('"~:obj"');
+    expect(doc).toContain('"~#shape"');
+    expect(doc).toContain('"~#rect"');
+    expect(doc).toContain('"~#point"');
+    expect(doc).toContain('"~#matrix"');
+    // The shape :type value, not the "~:type" key: ::sm/one-of needs the
+    // keyword form.
+    expect(doc).toContain('"~:rect"');
+    expect(doc).toContain(`"~u${RECT_ID}"`);
+    expect(doc).toContain(`"~u${PAGE_ID}"`);
+    // parent-id and frame-id sit on the shape map itself; the old
+    // UUID_VALUE_KEY skipped them and left bare strings.
+    expect(doc).toContain(`"~u${FRAME_ID}"`);
+    expect(doc).not.toContain(`"${FRAME_ID}"`);
+  });
+
+  it("round-trips the rect add-obj into the original JS shape", () => {
+    const params = addObjParams(rectShape());
+    const decoded = decodeTransit<UpdateFileParams>(encodeUpdateFile(params));
+    expect(decoded).toEqual(params);
+  });
+
+  it("writes frame children as UUIDs and keeps an empty vector", () => {
+    const withChildren = encodeUpdateFile(addObjParams(frameShape([CHILD_ID, RECT_ID])));
+    expect(withChildren).toMatch(/"~:shapes",\["~u/);
+    expect(withChildren).toContain(`"~u${CHILD_ID}"`);
+    expect(decodeTransit<UpdateFileParams>(withChildren)).toEqual(
+      addObjParams(frameShape([CHILD_ID, RECT_ID])),
+    );
+
+    const empty = encodeUpdateFile(addObjParams(frameShape([])));
+    expect(empty).toContain('"~:shapes",[]');
+  });
+
+  it("rejects an array transform instead of writing a zero matrix", () => {
+    const shape = { ...rectShape(), transform: [1, 0, 0, 1, 10, 20] };
+    expect(() => encodeUpdateFile(addObjParams(shape))).toThrow(/a\.\.f/);
+  });
+
+  it("writes gradient and stroke enums as keyword values", () => {
+    const shape = {
+      ...rectShape(),
+      fills: [
+        {
+          "fill-color-gradient": {
+            type: "linear",
+            "start-x": 0,
+            "start-y": 0,
+            "end-x": 30,
+            "end-y": 40,
+            width: 1,
+            stops: [
+              { color: "#000000", opacity: 1, offset: 0 },
+              { color: "#ffffff", opacity: 1, offset: 1 },
+            ],
+          },
+        },
+      ],
+      strokes: [
+        {
+          "stroke-style": "solid",
+          "stroke-alignment": "center",
+          "stroke-cap-start": "none",
+          "stroke-cap-end": "round",
+          "stroke-color": "#000000",
+          "stroke-opacity": 1,
+          "stroke-width": 1,
+        },
+      ],
+    };
+    const params = addObjParams(shape);
+    const doc = encodeUpdateFile(params);
+    expect(doc).toContain('"~:linear"');
+    expect(doc).toContain('"~:solid"');
+    expect(doc).toContain('"~:center"');
+    expect(doc).toContain('"~:none"');
+    expect(doc).toContain('"~:round"');
+    expect(decodeTransit<UpdateFileParams>(doc)).toEqual(params);
+  });
+
+  it("tags the remaining enum keys through encodeAttrValue", () => {
+    const doc = encodeTransit(
+      encodeAttrValue({
+        "blend-mode": "multiply",
+        "grow-type": "spread",
+        "stroke-style": "dashed",
+      }),
+    );
+    expect(doc).toContain('"~:multiply"');
+    expect(doc).toContain('"~:spread"');
+    expect(doc).toContain('"~:dashed"');
+  });
+
+  it("tags a whole shape for the wasm upload path", () => {
+    const doc = encodeTransit(encodeShapeValue(rectShape()));
+    expect(doc.startsWith('["~#shape",')).toBe(true);
+    expect(doc).toContain('"~#rect"');
+    expect(doc).toContain('"~:rect"');
   });
 });
