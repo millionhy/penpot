@@ -9,8 +9,9 @@
 //
 // Only the read-only slice F9.1 needs lives here; F9.2 adds the
 // selection/hover/area slice; F9.3 adds the JS model reference and the
-// live drag translation; page switching, history and the rest of
-// workspace-local arrive with the next slices.
+// live drag translation; F9.5 the draw preview; F9.6 the transform
+// preview. Page switching, history and the rest of workspace-local arrive
+// with the next slices.
 
 import type { WorkspaceDrawTool, WorkspaceFile, WorkspaceObjects } from "@/lib/workspace";
 import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";
@@ -35,6 +36,19 @@ export interface DrawPreview {
   y: number;
   width: number;
   height: number;
+}
+
+// The live world matrix of a resize/rotate gesture (F9.6), in the transit
+// {a..f} form: the canvas writes it on every preview frame and the overlay
+// maps the selection outlines, the bounds and the handles by it; null when
+// no transform gesture runs.
+export interface TransformPreview {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  e: number;
+  f: number;
 }
 
 export interface WorkspaceState {
@@ -77,6 +91,9 @@ export interface WorkspaceState {
   dragDelta: DragDelta | null;
   // The live box of a running draw gesture (F9.5); null otherwise.
   drawPreview: DrawPreview | null;
+  // The live world matrix of a running resize/rotate gesture (F9.6); null
+  // otherwise.
+  transformPreview: TransformPreview | null;
 }
 
 const initialState: WorkspaceState = {
@@ -96,6 +113,7 @@ const initialState: WorkspaceState = {
   objects: null,
   dragDelta: null,
   drawPreview: null,
+  transformPreview: null,
 };
 
 let state: WorkspaceState = initialState;
@@ -208,4 +226,12 @@ export function setDragDelta(delta: DragDelta | null): void {
 // it (under the threshold, after the release and on every abort).
 export function setDrawPreview(preview: DrawPreview | null): void {
   setWorkspaceState({ drawPreview: preview });
+}
+
+// --- Transform preview (F9.6) -----------------------------------------------
+
+// The live matrix of a running resize/rotate gesture; null clears it on
+// release, Escape and pointercancel.
+export function setTransformPreview(preview: TransformPreview | null): void {
+  setWorkspaceState({ transformPreview: preview });
 }

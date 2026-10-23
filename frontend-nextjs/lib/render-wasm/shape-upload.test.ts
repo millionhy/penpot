@@ -1,4 +1,4 @@
-// Unit tests for the incremental wasm shape upload (F9.5 Task 4).
+// Unit tests for the incremental wasm shape upload (F9.5 Task 4, F9.6 T4).
 //
 // A fake $APP stands in for the compiled renderer: decode_str runs the real
 // transit reader, so the recorded payload is the same wire form the backend
@@ -11,6 +11,7 @@ import {
   cljsShape,
   cljsValue,
   uploadNewShape,
+  uploadShapeGeometry,
 } from "@/lib/render-wasm/shape-upload";
 import { KEY, type RendererApp } from "@/lib/render-wasm/interop";
 import { decodeTransit } from "@/lib/transit";
@@ -144,6 +145,36 @@ describe("uploadNewShape", () => {
 
     expect(() => uploadNewShape(app, orphan, [])).toThrow(/parent-id/);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("uploadShapeGeometry", () => {
+  it("runs set_object per shape and one render after the loop", () => {
+    const { app, calls, rawPayloads } = makeFakeApp();
+    uploadShapeGeometry(app, [rectShape(), { ...rectShape(), id: CHILD_A }]);
+
+    expect(calls.map((call) => call.name)).toEqual([
+      "set-object",
+      "set-object",
+      "request-render",
+    ]);
+    expect(rawPayloads).toHaveLength(2);
+    expect(rawPayloads[0]).toContain('"~#shape"');
+  });
+
+  it("still requests one render for an empty list", () => {
+    const { app, calls } = makeFakeApp();
+    uploadShapeGeometry(app, []);
+
+    expect(calls.map((call) => call.name)).toEqual(["request-render"]);
+  });
+
+  it("propagates a wasm failure to the caller", () => {
+    const { app } = makeFakeApp();
+    const broken: RendererApp = { ...app };
+    delete broken[KEY.setObject];
+
+    expect(() => uploadShapeGeometry(broken, [rectShape()])).toThrow(/set_object/);
   });
 });
 

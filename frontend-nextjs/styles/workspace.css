@@ -641,8 +641,9 @@
 
 /* The viewport overlay of the canvas (F9.2): an SVG in world coordinates
    (viewBox = the store vbox) layered over the canvas, the role of the
-   svg.viewport-controls of viewport_wasm.cljs. It never takes pointer
-   events; the canvas below owns every gesture. Colors follow
+   svg.viewport-controls of viewport_wasm.cljs. The layer itself never
+   takes pointer events; only the resize handles and the rotation zones do
+   (F9.6), so every other gesture stays on the canvas below. Colors follow
    viewport/selection.cljs: accent tertiary for the outline strokes,
    static-white for the handle fill and the muted accent select for the
    marquee fill (see the component header for the deviations). */
@@ -666,6 +667,40 @@
   stroke: var(--color-accent-tertiary);
   stroke-width: 1px;
   vector-effect: non-scaling-stroke;
+  pointer-events: all;
+  touch-action: none;
+}
+
+/* resize-point cursors: the diagonal pairs of the corners, the axis pairs
+   of the edge handles. The pointers do not follow a flipped shape. */
+.pp-overlay-handle-top-left,
+.pp-overlay-handle-bottom-right {
+  cursor: nwse-resize;
+}
+
+.pp-overlay-handle-top-right,
+.pp-overlay-handle-bottom-left {
+  cursor: nesw-resize;
+}
+
+.pp-overlay-handle-top,
+.pp-overlay-handle-bottom {
+  cursor: ns-resize;
+}
+
+.pp-overlay-handle-left,
+.pp-overlay-handle-right {
+  cursor: ew-resize;
+}
+
+/* The rotation zones of selection.cljs (rotation-handler): an invisible
+   square just outside each corner that starts the rotate gesture. */
+.pp-overlay-rotate {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+  touch-action: none;
+  cursor: crosshair;
 }
 
 .pp-overlay-area {

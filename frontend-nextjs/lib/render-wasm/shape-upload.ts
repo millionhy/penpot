@@ -1,4 +1,5 @@
-// The incremental wasm upload of one new shape (F9.5 AD5).
+// The incremental wasm upload of new and transformed shapes (F9.5 AD5,
+// F9.6 T4).
 //
 // set_object writes a shape record (and its fills/strokes) and leaves that
 // shape current; use_shape switches the current shape; set_shape_children
@@ -6,6 +7,11 @@
 // set_object(new) -> use_shape(parent) -> set_shape_children(parent children)
 // -> request_render. No initialize-viewport and no render_sync_shape: the
 // renderer adds tiles for shapes missing from its tile set.
+//
+// A committed resize/rotate reuses set_object per transformed shape: the
+// record carries the new selrect, points, rotation, transform and flips,
+// while the selrect-only geometry push of the move path would drop the
+// rotation. One request_render follows the loop.
 //
 // Every value crosses the boundary through transit: encodeShapeValue /
 // encodeAttrValue produce the same wire form the update-file payload uses
@@ -56,6 +62,22 @@ export function uploadNewShape(
   call(app, KEY.setObject, cljsShape(app, shape));
   call(app, KEY.useShape, uuid(app, parentId));
   call(app, KEY.setShapeChildren, vec(app, parentChildren.map((id) => uuid(app, id))));
+  call(app, KEY.requestRender, null);
+}
+
+// Push the committed geometry of a resize/rotate (F9.6): one set_object per
+// transformed shape, so the pool sees the new rotation, transform and
+// flips, and one request_render after the loop. The caller leaves the
+// modifier preview first (end_modifiers + clean_modifiers) in the same
+// task, so no frame shows the stale base geometry. A wasm failure is the
+// caller's to warn about: the file already accepted the change.
+export function uploadShapeGeometry(
+  app: RendererApp,
+  shapes: ReadonlyArray<Readonly<Record<string, unknown>>>,
+): void {
+  for (const shape of shapes) {
+    call(app, KEY.setObject, cljsShape(app, shape));
+  }
   call(app, KEY.requestRender, null);
 }
 

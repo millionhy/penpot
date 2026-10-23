@@ -53,6 +53,21 @@
 // or pointercancel aborts and returns the tool to move; a completed draw
 // returns it the same way.
 //
+// The resize/rotate gesture (F9.6): the overlay sees the pointerdown on a
+// handle or rotation zone and hands it over through gestureRef
+// (beginResize / beginRotate); the canvas captures the pointer and runs
+// the gesture to the release. Each frame builds one world matrix from the
+// selection geometry captured at the press (lib/workspace-transform),
+// splats it over the transform set as the wasm modifier preview and writes
+// the same matrix to the store transformPreview the overlay draws with.
+// Shift locks the aspect ratio (or follows the shape proportion-lock), Alt
+// resizes around the frame center, mod snaps rotation to 45 degrees and
+// Shift to 15. The release builds one mod-obj per changed shape and reuses
+// sendUpdateFile; a zero matrix or an unchanged model sends nothing. A
+// successful commit swaps the JS model, rebuilds the index and hands the
+// new geometry to wasm in the same task; Escape, pointercancel and a
+// failed request reset the preview and leave the file alone.
+//
 // The selection/hover/marquee visuals are drawn by a sibling overlay
 // (components/workspace-viewport-overlay, T5): an SVG in world coordinates
 // fed from the store slice this file writes; the hover outline follows the
@@ -98,6 +113,10 @@
 //   pointercancel instead restores the selection the threshold crossing
 //   replaced.
 // - mod+space pans instead of the CLJS start-zooming drag.
+// - The resize/rotate gesture applies one world matrix to the selection and
+//   its subtrees (no constraint or layout propagation inside frames); text
+//   shapes stay non-interactive and the post-commit wasm handover only
+//   carries the new selrect and path bytes, like the move path.
 // - clientToWorld is the alias of the F9.1 pointToViewport (same formula;
 //   see lib/workspace-viewport).
 // - The hover queries run synchronously against the JS-side index on an
@@ -114,6 +133,7 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
   type Ref,
 } from "react";
 
@@ -123,8 +143,10 @@ import { KEY, call, sleep, type RendererApp } from "@/lib/render-wasm/interop";
 import {
   DRAG_PREVIEW_INTERNALS,
   GEOMETRY_PUSH_INTERNALS,
+  cleanModifiers,
   commitShapeGeometry,
   configureModifiers,
+  endModifiers,
   missingInternals,
   resetModifierPreview,
   startModifiers,
@@ -143,7 +165,11 @@ import {
   loadDecodedWorkspaceFile,
   workspacePageObjects,
 } from "@/lib/render-wasm/workspace-data";
-import { uploadNewShape, applyShapeStyle } from "@/lib/render-wasm/shape-upload";
+import {
+  uploadNewShape,
+  applyShapeStyle,
+  uploadShapeGeometry,
+} from "@/lib/render-wasm/shape-upload";
 import { isMacos } from "@/lib/shortcuts";
 import { cmdEncoded } from "@/lib/rpc";
 import { encodeUpdateFile, type UpdateFileChange } from "@/lib/transit";
@@ -178,6 +204,20 @@ import {
 } from "@/lib/workspace-move";
 import { buildStyleChange } from "@/lib/workspace-style";
 import {
+  applyTransformSet,
+  buildTransformChanges,
+  isIdentityMatrix,
+  matrixRecord,
+  resizeGesture,
+  rotateGesture,
+  selectionGeometry,
+  isTransformableShape,
+  IDENTITY_MATRIX,
+  type ResizeHandler,
+  type RotationCorner,
+  type SelectionGeometry,
+} from "@/lib/workspace-transform";
+import {
   areaInitialSelection,
   createHoverIdsCache,
   hoverShapeId,
@@ -199,6 +239,7 @@ import {
   setHoverShapeId,
   setHoverTopFrameId,
   setSelection,
+  setTransformPreview,
   setWorkspaceObjects,
   setWorkspaceState,
   setWorkspaceViewport,
@@ -250,10 +291,23 @@ const AREA_MIN_SIZE = 10;
 // The onToolChange fallback until the shell wires the toolbar (F9.5 T6).
 const NOOP_TOOL_CHANGE = (): void => {};
 
+// The resize/rotate gesture (F9.6): the selection geometry captured at the
+// press (the selection cannot change mid-gesture), the handle or rotation
+// corner, the id set the world matrix applies to and the last preview the
+// release commits. Null outside a running transform gesture.
+interface TransformGestureState {
+  geometry: SelectionGeometry;
+  handler: ResizeHandler | null;
+  corner: RotationCorner | null;
+  ids: string[];
+  matrix: Matrix6 | null;
+  rotation: number;
+}
+
 // The pointer gesture the handlers mutate (the CLJS keeps this spread
 // across the stream pipeline).
 interface PointerInteraction {
-  mode: "idle" | "pan" | "area" | "click" | "drag" | "draw";
+  mode: "idle" | "pan" | "area" | "click" | "drag" | "draw" | "resize" | "rotate";
   pointerId: number | null;
   // The client position of the press (the click-threshold anchor).
   downClient: ViewportPoint | null;
@@ -290,6 +344,8 @@ interface PointerInteraction {
   drawParentId: string | null;
   drawActive: boolean;
   drawRect: DrawRect | null;
+  // The transform gesture state (F9.6).
+  transformGesture: TransformGestureState | null;
 }
 
 // The $APP-backed pieces of the selection library (they need the wasm
@@ -388,6 +444,29 @@ function WorkspaceWasmCanvasImpl({
     onToolChange ?? NOOP_TOOL_CHANGE,
   );
   const cursorRef = useRef<(() => void) | null>(null);
+  // The overlay hands a handle press to the gesture effect through this
+  // ref: the effect owns the pointer capture, the preview and the commit;
+  // the overlay only knows the pointerdown.
+  const gestureRef = useRef<{
+    beginResize: (handler: ResizeHandler, event: ReactPointerEvent<SVGElement>) => void;
+    beginRotate: (corner: RotationCorner, event: ReactPointerEvent<SVGElement>) => void;
+  } | null>(null);
+
+  // Stable callbacks for the overlay: the effect re-creates the gesture
+  // closures on every load, the overlay keeps the same props.
+  const handleResizeStart = useCallback(
+    (handler: ResizeHandler, event: ReactPointerEvent<SVGElement>): void => {
+      gestureRef.current?.beginResize(handler, event);
+    },
+    [],
+  );
+
+  const handleRotateStart = useCallback(
+    (corner: RotationCorner, event: ReactPointerEvent<SVGElement>): void => {
+      gestureRef.current?.beginRotate(corner, event);
+    },
+    [],
+  );
 
   const [error, setError] = useState<string | null>(null);
 
@@ -832,6 +911,7 @@ function WorkspaceWasmCanvasImpl({
       drawParentId: null,
       drawActive: false,
       drawRect: null,
+      transformGesture: null,
     };
 
     // The tracked modifiers: space switches the pan mode, shift the toggle
@@ -852,6 +932,19 @@ function WorkspaceWasmCanvasImpl({
       active: false,
       rafId: 0,
       currentWorld: null as ViewportPoint | null,
+    };
+
+    // The resize/rotate gesture (F9.6): the same one-preview-per-frame
+    // shape as the move drag, plus the modifier keys the latest pointer
+    // event reported (Shift locks the aspect ratio, Alt centers a resize,
+    // mod snaps a rotation to 45 degrees and Shift to 15).
+    const transform = {
+      active: false,
+      rafId: 0,
+      currentWorld: null as ViewportPoint | null,
+      shift: false,
+      alt: false,
+      mod: false,
     };
 
     const canvasOrigin = (): ViewportPoint => {
@@ -986,6 +1079,223 @@ function WorkspaceWasmCanvasImpl({
       );
       // The overlay offsets the selection visuals by the same delta.
       setDragDelta({ dx, dy });
+    };
+
+    // One transform preview per frame (F9.6): the local gesture math of
+    // lib/workspace-transform against the geometry captured at the press,
+    // splat as one world matrix over the transform set. The same matrix
+    // drives the wasm overrides and the store preview, so the canvas and
+    // the overlay cannot drift.
+    const flushTransform = (): void => {
+      transform.rafId = 0;
+      const app = appRef.current;
+      const current = transform.currentWorld;
+      const gesture = interaction.transformGesture;
+      const down = interaction.downWorld;
+      if (app === null || current === null || gesture === null || down === null) return;
+      if (interaction.mode !== "resize" && interaction.mode !== "rotate") return;
+      if (interaction.cancelled) return;
+
+      let matrix: Matrix6;
+      let rotation = 0;
+      if (interaction.mode === "resize") {
+        const handler = gesture.handler;
+        if (handler === null) return;
+        const result = resizeGesture(gesture.geometry, handler, down, current, {
+          lock: transform.shift || gesture.geometry.proportionLock,
+          center: transform.alt,
+        });
+        if (result === null) return;
+        matrix = result.matrix;
+      } else {
+        const result = rotateGesture(gesture.geometry.center, down, current, {
+          // The CLJS cond gives mod priority over shift (45 before 15).
+          snap45: transform.mod,
+          snap15: transform.shift && !transform.mod,
+        });
+        matrix = result.matrix;
+        rotation = result.angle;
+      }
+
+      gesture.matrix = matrix;
+      gesture.rotation = rotation;
+      configureModifiers(
+        app,
+        gesture.ids.map((id) => [id, matrix] as const),
+      );
+      setTransformPreview(matrixRecord(matrix));
+    };
+
+    // The press of a resize handle or a rotation zone (F9.6). The overlay
+    // sees the pointerdown and hands it here — the canvas never does — and
+    // the canvas captures the pointer from that press and runs the gesture
+    // to the release. The identity preview enters the state at once, so
+    // the overlay hides the handles before the first move.
+    const beginTransform = (
+      mode: "resize" | "rotate",
+      handler: ResizeHandler | null,
+      corner: RotationCorner | null,
+      event: ReactPointerEvent<SVGElement>,
+    ): void => {
+      if (interaction.mode !== "idle") return;
+      if (commitPendingRef.current) return;
+      // A read-only file and a wasm without the modifier ABI keep the F9.2
+      // behavior: no gesture starts.
+      if (!canEditRef.current || !dragEnabledRef.current) return;
+      const app = appRef.current;
+      const state = stateRef.current;
+      const objects = objectsRef.current;
+      if (app === null || state === null || objects === null) return;
+      const selection = getWorkspaceState().selection;
+      const geometry = selectionGeometry(objects, selection);
+      if (geometry === null) return;
+      // The transform set is the selection plus its subtrees, filtered to
+      // the types the generic transform supports: a text child keeps its
+      // geometry (no position-data reflow, AD6).
+      const ids = resolveMoveSet(selection, objects).filter((id) => {
+        const shape = objects[id];
+        return shape !== undefined && shape !== null && isTransformableShape(shape);
+      });
+      if (ids.length === 0) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      canvas.setPointerCapture(event.pointerId);
+
+      const client = { x: event.clientX, y: event.clientY };
+      const world = toWorld(client, state);
+      interaction.mode = mode;
+      interaction.pointerId = event.pointerId;
+      interaction.downClient = client;
+      interaction.downWorld = world;
+      interaction.moved = false;
+      interaction.cancelled = false;
+      interaction.transformGesture = {
+        geometry,
+        handler,
+        corner,
+        ids,
+        matrix: null,
+        rotation: 0,
+      };
+      transform.active = true;
+      transform.currentWorld = world;
+      transform.shift = event.shiftKey;
+      transform.alt = event.altKey;
+      transform.mod = isMacos() ? event.metaKey : event.ctrlKey;
+      // The hover visuals belong to the idle state.
+      hoverActive = false;
+      setHover(null);
+      setHoverShapeId(null);
+      setTransformPreview(matrixRecord(IDENTITY_MATRIX));
+      startModifiers(app);
+      updateCursor();
+    };
+
+    const beginResize = (
+      handler: ResizeHandler,
+      event: ReactPointerEvent<SVGElement>,
+    ): void => {
+      beginTransform("resize", handler, null, event);
+    };
+
+    const beginRotate = (
+      corner: RotationCorner,
+      event: ReactPointerEvent<SVGElement>,
+    ): void => {
+      beginTransform("rotate", null, corner, event);
+    };
+
+    // The overlay bridge of this closure (the effect re-runs per load).
+    gestureRef.current = { beginResize, beginRotate };
+
+    // Undo the transform bookkeeping without touching the wasm side.
+    const stopTransformState = (): void => {
+      transform.active = false;
+      if (transform.rafId !== 0) {
+        window.cancelAnimationFrame(transform.rafId);
+        transform.rafId = 0;
+      }
+      transform.currentWorld = null;
+    };
+
+    // Leave the preview without a commit (Escape, pointercancel, a failed
+    // request or a zero transform): drop the overrides, show the base
+    // geometry again and clear the overlay preview. Idempotent per gesture.
+    const cancelTransformPreview = (): void => {
+      if (!transform.active) return;
+      stopTransformState();
+      const app = appRef.current;
+      if (app !== null) resetModifierPreview(app);
+      setTransformPreview(null);
+    };
+
+    // The release of a transform gesture (AD4): one pessimistic update-file
+    // through the shared write path, then the JS model swap and the wasm
+    // geometry handover. A zero matrix or an unchanged model sends nothing;
+    // a failure resets the preview over the untouched base geometry.
+    const commitTransform = async (
+      ids: string[],
+      matrix: Matrix6,
+      rotation: number,
+    ): Promise<void> => {
+      const objects = objectsRef.current;
+      if (objects === null || commitPendingRef.current) {
+        cancelTransformPreview();
+        return;
+      }
+      const changes = buildTransformChanges(
+        objects,
+        ids,
+        matrix,
+        rotation,
+        pageIdRef.current,
+      );
+      if (changes.length === 0) {
+        cancelTransformPreview();
+        return;
+      }
+      try {
+        const revn = await sendUpdateFile(changes);
+        if (revn === null) {
+          cancelTransformPreview();
+          return;
+        }
+        // The model swaps before the preview cleanup, in one task: the
+        // canvas never renders between the preview and the committed
+        // state (the same handover as the move commit).
+        const next = applyTransformSet(objects, ids, matrix, rotation);
+        objectsRef.current = next;
+        indexRef.current = createWorkspaceIndex(next);
+        setWorkspaceObjects(next);
+        stopTransformState();
+        setTransformPreview(null);
+        const pushApp = appRef.current;
+        if (pushApp !== null) {
+          // Leave the preview mode and drop the overrides, then rewrite the
+          // whole committed record: set_object carries the rotation, the
+          // transform and the flips a selrect-only push would lose. A wasm
+          // failure never fails the committed file.
+          try {
+            endModifiers(pushApp);
+            cleanModifiers(pushApp);
+            const changed = new Set(changes.map((change) => change.id));
+            const shapes: WorkspaceShape[] = [];
+            for (const id of ids) {
+              if (!changed.has(id)) continue;
+              const shape = next[id];
+              if (shape !== undefined && shape !== null) shapes.push(shape);
+            }
+            uploadShapeGeometry(pushApp, shapes);
+          } catch (cause: unknown) {
+            console.warn("[workspace] could not sync the transformed shapes to wasm:", cause);
+          }
+        }
+      } catch (cause: unknown) {
+        console.error("[workspace] transform commit failed:", cause);
+        setWorkspaceState({ error: cause });
+        cancelTransformPreview();
+      }
     };
 
     // The threshold crossing of a pending press (AD3): commit the branch
@@ -1418,6 +1728,20 @@ function WorkspaceWasmCanvasImpl({
         return;
       }
 
+      if (interaction.mode === "resize" || interaction.mode === "rotate") {
+        // One flush per frame; the flush reads the latest world point and
+        // the modifier keys this event reported.
+        if (interaction.cancelled) return;
+        transform.currentWorld = toWorld(client, state);
+        transform.shift = event.shiftKey;
+        transform.alt = event.altKey;
+        transform.mod = isMacos() ? event.metaKey : event.ctrlKey;
+        if (transform.rafId === 0) {
+          transform.rafId = window.requestAnimationFrame(flushTransform);
+        }
+        return;
+      }
+
       // The pending click: a drag past the threshold becomes the move
       // gesture (F9.3 AD3); inside the threshold the release selects.
       const down = interaction.downClient;
@@ -1447,6 +1771,7 @@ function WorkspaceWasmCanvasImpl({
       interaction.drawParentId = null;
       interaction.drawActive = false;
       interaction.drawRect = null;
+      interaction.transformGesture = null;
       updateCursor();
     };
 
@@ -1535,6 +1860,31 @@ function WorkspaceWasmCanvasImpl({
         return;
       }
 
+      if (mode === "resize" || mode === "rotate") {
+        // The release commits once (AD4). The last flush uses the release
+        // point, so a fast drag lands where the pointer is; a cancelled
+        // gesture, a zero matrix or a collapsed model sends nothing.
+        const state = stateRef.current;
+        if (!cancelled && state !== null) {
+          transform.currentWorld = toWorld({ x: event.clientX, y: event.clientY }, state);
+          transform.shift = event.shiftKey;
+          transform.alt = event.altKey;
+          transform.mod = isMacos() ? event.metaKey : event.ctrlKey;
+          flushTransform();
+        }
+        const gesture = interaction.transformGesture;
+        const matrix = gesture === null ? null : gesture.matrix;
+        const rotation = gesture === null ? 0 : gesture.rotation;
+        const ids = gesture === null ? [] : gesture.ids;
+        endGesture();
+        if (!cancelled && matrix !== null && ids.length > 0 && !isIdentityMatrix(matrix)) {
+          void commitTransform(ids, matrix, rotation);
+        } else {
+          cancelTransformPreview();
+        }
+        return;
+      }
+
       endGesture();
     };
 
@@ -1554,6 +1904,11 @@ function WorkspaceWasmCanvasImpl({
         cancelDragPreview();
         const before = interaction.selectionBeforeDrag;
         if (before !== null) setSelection(before);
+      }
+      if (interaction.mode === "resize" || interaction.mode === "rotate") {
+        // A physical cancellation resets the preview; the selection never
+        // changed during a transform gesture.
+        cancelTransformPreview();
       }
       endGesture();
     };
@@ -1600,6 +1955,14 @@ function WorkspaceWasmCanvasImpl({
         cancelDragPreview();
         interaction.cancelled = true;
       }
+      if (interaction.mode === "resize" || interaction.mode === "rotate") {
+        // Escape drops the preview now; the release that follows finds the
+        // gesture cancelled and commits nothing (the keydown handler still
+        // clears the selection, like the CLJS interrupt + deselect-all).
+        cancelTransformPreview();
+        interaction.cancelled = true;
+        return;
+      }
     };
 
     // The keys are ignored while a form control has the focus (the CLJS
@@ -1620,6 +1983,16 @@ function WorkspaceWasmCanvasImpl({
       const wasMod = keys.mod;
       keys.shift = event.shiftKey;
       keys.mod = isMacos() ? event.metaKey : event.ctrlKey;
+      // A running transform gesture follows the modifier keys without
+      // waiting for the next pointer move (Shift/Alt/mod change the matrix).
+      if (transform.active && interaction.cancelled === false) {
+        transform.shift = event.shiftKey;
+        transform.alt = event.altKey;
+        transform.mod = keys.mod;
+        if (transform.rafId === 0) {
+          transform.rafId = window.requestAnimationFrame(flushTransform);
+        }
+      }
       // mod changes the hover stack (bottom-frames sort + the group
       // filter): refresh the outlines in place, like the CLJS mod-str
       // stream, so the hover follows without moving the cursor.
@@ -1692,6 +2065,8 @@ function WorkspaceWasmCanvasImpl({
       // canvas-local and go too (a StrictMode replay immediately rebuilds
       // the same closure).
       if (drag.active) cancelDragPreview();
+      if (transform.active) cancelTransformPreview();
+      gestureRef.current = null;
       cursorRef.current = null;
       setHover(null);
       setHoverShapeId(null);
@@ -1764,6 +2139,8 @@ function WorkspaceWasmCanvasImpl({
         file={file}
         pageId={pageId}
         showFrameTitles={showFrameTitles}
+        onResizeStart={handleResizeStart}
+        onRotateStart={handleRotateStart}
       />
       {error !== null ? (
         <div className="pp-viewport-placeholder" title={error}>

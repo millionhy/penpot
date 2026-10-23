@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.3 完成；F9 workspace：F9.1–F9.5 完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.3 完成；F9 workspace：F9.1–F9.6 完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
@@ -42,7 +42,7 @@
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | 🔧 | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；切成 F7.1–F7.4 四片（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入完成；F7.4 完整 API 上下文依赖 F9），见下与第 4 节 |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）与 F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）完成；F9 暂无排期的下一片——先补浏览器冒烟，再做 resize/rotate 手柄、撤销栈与 z-order 插入（7.25 路线），最后是 F7.4 workspace 插件代理；Web Worker + 协作光标等留 F8 后 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）与 F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）完成；余下按 7.25 路线补撤销栈、z-order 插入与伴随变更，再补浏览器冒烟，最后是 F7.4 workspace 插件代理；Web Worker + 协作光标等留 F8 后 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
@@ -313,8 +313,9 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   写入，见 7.24）；F9.3 拖动移动与保存完成（首个写路径：预览、update-file、重父级，
   见 7.25）；F9.4 外壳与菜单完成（三栏、左头重命名、主菜单、缩放、Layers、工具栏、
   帧标题，见 7.27）；F9.5 绘制工具与样式面板完成（frame/rect/ellipse 绘制、右栏基础
-  样式段，见 7.29）；F9 暂无排期的下一片——先补浏览器冒烟，再做 resize/rotate 手柄、
-  撤销栈与 z-order 插入（7.25 路线），最后是 F7.4 workspace 插件代理；Web Worker
+  样式段，见 7.29）；F9.6 resize/rotate 手柄完成（八手柄 + 四旋转区、修饰键、一次
+  提交，见 7.30）；余下补撤销栈、z-order 插入与伴随变更（7.25 路线），再补浏览器
+  冒烟，最后是 F7.4 workspace 插件代理；Web Worker
   （缩略图/索引/导入）+ 协作光标 + 其余绘制/布尔/编辑/token 子流程仍在 F3–F8 验证后推进。
 
 每个路由组的完成标准（DoD）：
@@ -359,7 +360,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.5 完成：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板)
+阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.6 完成：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板、缩放手柄)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
@@ -1644,6 +1645,62 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   锁定生效；只读文件全禁用；F9.2/F9.3 回归。
 - 下一步：先补浏览器冒烟；再做 resize/rotate 手柄、撤销栈与 z-order 插入（7.25 路线），
   然后是 F7.4 workspace 插件代理。F9 已无排期中的下一片。
+
+### 7.30 本轮（2026-10-23，第二十九批：F9.6 resize/rotate 手柄）
+
+- 动机：F9.5 只能创建形状与改样式，选中后无法改变尺寸或角度。F9.6 让覆盖层的八个
+  缩放手柄与四个旋转区变成真实手势：拖动边/角时沿反方向固定点缩放，拖动角外旋转区
+  时绕选择中心旋转；Shift 锁比例、Alt 以中心缩放、mod 吸附 45°、Shift 吸附 15°。
+  释放经同一条 update-file 写路径落盘，wasm 立即重绘。
+- 交付（均含代码注释登记偏差）：
+  - `lib/workspace-transform.ts`（917 行，新）：矩阵工具（multiply/translate/scale/
+    rotate/inverse、点变换、矩阵 record、SVG 字符串）、`selectionGeometry`（单选
+    selrect + center-wrapped transform；多选旋转点并集 + identity）、`frameCorners`、
+    `resizeHandlePoints`、`rotationZonePoints`、`resizeGesture`（handler 乘数/固定点、
+    局部化、noZeros、Shift/比例锁、Alt 中心）、`rotateGesture`（0..360 归一、45/15
+    吸附）、`applyTransformToShape`（apply-transform-generic：flip 点积、hypot
+    selrect、calculate-transform、rotation 增量、path/bool 走 content）、
+    `transformPathBytes`、`buildTransformChanges`、`applyTransformSet`。
+  - `lib/workspace-transform.test.ts`（655 行，新）：矩阵、选择框、手柄布局、缩放、
+    旋转、apply-transform、路径字节、变更与模型替换，40 例。
+  - `lib/workspace-store.ts`（+30/-1）：`TransformPreview` 与 `transformPreview` slice；
+    测试 +4 例（初值、写入、复位、通知），既有 reset 用例监听次数 6→7。
+  - `components/workspace-viewport-overlay.tsx`（269 行改动）：`selectionGeometry` 驱动
+    的选择框；8 个 `pp-overlay-handle-<handler>` 手柄（8/zoom）与 4 个 `pp-overlay-rotate`
+    旋转区（20/zoom）；`onResizeStart`/`onRotateStart` props；轮廓与选择框按 preview
+    矩阵绘制；只读、无几何或手势进行中时不渲染手柄。
+  - `components/workspace-wasm-canvas.tsx`（+374）：`resize`/`rotate` 交互模式、
+    `gestureRef` 桥（overlay 的 pointerdown → canvas）、pointer capture、rAF 合并的
+    `configureModifiers` + store 预览、修饰键跟随（pointermove + keydown/keyup）、
+    释放一次提交、Escape/pointercancel 复位、只读与 ABI 门控、提交成功后的模型替换
+    与索引重建。
+  - `styles/workspace.css`（39 行改动）：手柄 `pointer-events: all`、
+    `touch-action: none` 与八向 cursor；旋转区透明命中面 + crosshair。
+  - `lib/render-wasm/shape-upload.ts`（+24/-1）：`uploadShapeGeometry`（每个形状一次
+    `set_object`，循环后一次 `request_render`）；测试 +3 例（共 11）。
+  - `lib/workspace-move.ts`（5 行改动）：导出 `sameValue`，供变换 diff 复用。
+- 关键语义：
+  - 预览：按下即写入 identity 预览（手柄立即隐藏），之后每帧用同一世界矩阵驱动 wasm
+    modifier 与覆盖层；缩放矩阵是 `tf·T(o)·S·T(-o)·tf⁻¹`（Alt 时 o 取选择框中心），
+    旋转矩阵是 `T(c)·R(θ)·T(-c)`。
+  - 提交：释放点重算最后一帧；identity 矩阵、空修改集与单飞冲突都不发请求；每个形状
+    一条 mod-obj（只带变化的属性）；成功后 `applyTransformSet` 替换模型、重建索引，
+    并以 `end_modifiers + clean_modifiers + set_object` 在同一任务交接给 wasm；失败
+    只报错并复位预览。
+  - 取消：Escape 与 pointercancel 都复位 modifier 与预览且不动 revn；Escape 仍清空
+    选择（CLJS interrupt + deselect-all）。
+- 与 CLJS 的有意偏差（AD6）：同一世界矩阵作用于选择集及其子树，不做 frame 内约束/
+  布局传播；text 不参与；无吸附参考线/像素网格/grow-type/图片填充边界/文本缩放/双轴
+  翻转 UI；侧边手柄画小方块而非长条；手柄 cursor 不随 flip 旋转；手势期间手柄隐藏。
+- 验证：`pnpm test` 51 文件 1209 例全过（含新增 `workspace-transform.test.ts` 40 例与
+  store/shape-upload 的新用例）；`pnpm typecheck`、`pnpm lint` 干净；
+  `pnpm translations` 成功（en 877/877）；`pnpm build` 通过（/workspace 29.9 kB，
+  First Load JS 224 kB）。
+- 浏览器冒烟：本轮**未执行**（无可用登录会话）。待补清单：八个手柄的边/角缩放与
+  反向固定点；Shift 锁比例、Alt 中心；四角旋转与 mod/Shift 吸附；多选整体缩放/旋转；
+  只读文件无手柄；重载后几何一致；Escape/pointercancel 不落盘；F9.2–F9.5 回归。
+- 下一步：撤销栈；z-order 插入；伴随变更（hide-in-viewer/layout-item/组件同步）；
+  浏览器冒烟；最后是 F7.4 workspace 插件代理。
 
 ---
 

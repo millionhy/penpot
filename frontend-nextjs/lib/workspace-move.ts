@@ -304,8 +304,9 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 // strict equality (a zero delta component therefore stays home), the
 // selrect/points/position-data structures deeply, and two packed contents
 // byte-wise — a translation that float-rounds back to the same bytes
-// resends nothing.
-function sameValue(a: unknown, b: unknown): boolean {
+// resends nothing. Exported for the resize/rotate change builder (F9.6),
+// which diffs the same attribute shapes.
+export function sameValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (isPathData(a) || isPathData(b)) {
     return isPathData(a) && isPathData(b) && bytesEqual(a.bytes, b.bytes);

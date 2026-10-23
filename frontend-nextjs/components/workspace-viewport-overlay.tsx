@@ -15,10 +15,12 @@
 // model that answers the hit-testing.
 //
 // Ported pieces:
-// - the shape outlines (viewport/outline.cljs outline*): the rect of the
-//   selrect, the polygon of the rotated points; stroke 1 / zoom, fill none;
-// - the total bounds box of the selection plus the 8 static handles
-//   (viewport/selection.cljs calculate-handlers; draw-only for now);
+// - the shape outlines (viewport/outline.cljs outline*): the polygon of the
+//   stored points (rotated or not); stroke 1 / zoom, fill none;
+// - the selection frame plus the 8 resize handles and the 4 rotation zones
+//   (viewport/selection.cljs calculate-handlers / rotation-handler), now
+//   interactive: a press calls the canvas gesture through onResizeStart /
+//   onRotateStart and the canvas keeps the pointer capture from there;
 // - the hover outline of the single hover shape (the CLJS :id @hover);
 // - the marquee of the running area selection (widgets selection-rect*).
 // - the live drag offset (F9.3): while a move drag runs the selection
@@ -27,39 +29,61 @@
 //   the overlay keeps their outlines in step; the hover outline stays put.
 // - the draw preview (F9.5): a dashed rect of the live box of the
 //   frame/rect/ellipse gesture, in world coordinates like the marquee.
+// - the transform preview (F9.6): the store matrix of a running
+//   resize/rotate gesture maps the outlines and the frame; the handles and
+//   the rotation zones hide while it runs.
 //
 // Deviations from the compiled original, documented:
 // - Selection and hover outlines share the accent-tertiary color: the CLJS
 //   recolors shapes inside components with the assets-component highlight,
 //   which has no token port yet.
-// - The outlines are geometric approximations: rect/polygon from the
-//   selrect/points instead of the per-type rendering of outline.cljs
-//   (circle -> ellipse, path -> path data); exact path outlines are a
-//   later slice.
-// - The handles render as squares of 8 / zoom (draw-only; the CLJS draws
-//   circles and later slices wire their drag handlers, which F9.3 does
-//   not port: the resize gesture is outside this slice).
+// - The outlines are geometric approximations: polygon from the stored
+//   points instead of the per-type rendering of outline.cljs (circle ->
+//   ellipse, path -> path data); exact path outlines are a later slice.
+// - The handles are 8 / zoom squares (the CLJS draws circles and bars) and
+//   the rotation zones are 20 / zoom parallelograms outside the corners;
+//   their cursors do not follow a flipped shape.
 // - The marquee draws dashed (the CLJS draws it solid) and fills with the
 //   existing --color-accent-select token, the port of the CLJS
 //   accent-tertiary-muted fill.
-// - No rotation handler, snap guides, measurements or pixel overlays: this
-//   slice visualizes the selection, the hover and the area only.
+// - No snap guides, measurements or pixel overlays: this layer visualizes
+//   the selection, the hover and the running previews only.
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 
 import { WorkspaceFrameTitles } from "@/components/workspace-frame-titles";
-import { pageObjects, type WorkspaceFile, type WorkspaceShape } from "@/lib/workspace";
+import {
+  canEditFile,
+  pageObjects,
+  type WorkspaceFile,
+  type WorkspaceShape,
+} from "@/lib/workspace";
 import {
   getInitialWorkspaceState,
   getWorkspaceState,
   subscribeWorkspace,
-  type DragDelta,
+  type TransformPreview,
 } from "@/lib/workspace-store";
 import type { ViewportRect } from "@/lib/workspace-viewport";
+import {
+  frameCorners,
+  resizeHandlePoints,
+  rotationZonePoints,
+  selectionGeometry,
+  transformPoint,
+  translationMatrix,
+  type Matrix6,
+  type Point,
+  type ResizeHandler,
+  type RotationCorner,
+} from "@/lib/workspace-transform";
 
 // The handle square size of viewport/selection.cljs (resize-point-rect-size),
-// in world units.
+// in screen pixels.
 const HANDLE_SIZE = 8;
+
+// rotation-handler-size of viewport/selection.cljs, in screen pixels.
+const ROTATION_ZONE_SIZE = 20;
 
 // The marquee dash length, in world units.
 const DASH_SIZE = 4;
@@ -81,110 +105,99 @@ function selrectOf(shape: WorkspaceShape): ViewportRect | null {
   return { x, y, width, height };
 }
 
-// The rotated corner points as an SVG polygon, or null when the shape is
-// unrotated or the points are not usable; the drag offset shifts every
-// vertex.
-function polygonOf(shape: WorkspaceShape, dx: number, dy: number): string | null {
-  if (typeof shape.rotation !== "number" || shape.rotation === 0) return null;
-  const points = shape.points;
-  if (!Array.isArray(points) || points.length < 4) return null;
-  return points.map((point) => `${point.x + dx},${point.y + dy}`).join(" ");
+// The shape points as an SVG polygon, or null when the shape has no usable
+// geometry. The matrix is the live move translation or transform preview;
+// the hover outline passes none.
+function outlinePolygon(shape: WorkspaceShape, matrix: Matrix6 | null): string | null {
+  const points = shapeWorldPoints(shape);
+  if (points === null) return null;
+  const world = matrix === null ? points : points.map((point) => transformPoint(point, matrix));
+  return pointsToString(world);
 }
 
-// outline*: the polygon of a rotated shape, the rect of the selrect
-// otherwise; stroke 1 / zoom (the viewBox scale is the zoom, so the stroke
-// stays one screen pixel). The offset is the live drag delta.
+// The four world points of a shape: the stored points, or the selrect
+// corners for a shape that carries none.
+function shapeWorldPoints(shape: WorkspaceShape): Point[] | null {
+  const points = shape.points;
+  if (Array.isArray(points) && points.length >= 4) {
+    const out: Point[] = [];
+    for (const point of points as unknown[]) {
+      if (point === null || typeof point !== "object") break;
+      const { x, y } = point as Record<string, unknown>;
+      if (typeof x !== "number" || typeof y !== "number") break;
+      out.push({ x, y });
+    }
+    if (out.length >= 4) return out.slice(0, 4);
+  }
+  const rect = selrectOf(shape);
+  if (rect === null) return null;
+  return [
+    { x: rect.x, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y + rect.height },
+    { x: rect.x, y: rect.y + rect.height },
+  ];
+}
+
+function pointsToString(points: readonly Point[]): string {
+  return points.map((point) => `${point.x},${point.y}`).join(" ");
+}
+
+// outline*: the polygon of the shape points, stroke 1 / zoom (the viewBox
+// scale is the zoom, so the stroke stays one screen pixel).
 function ShapeOutline({
   shape,
   zoom,
   className,
   testId,
-  offset,
+  matrix = null,
 }: {
   shape: WorkspaceShape;
   zoom: number;
   className: string;
   testId?: string;
-  offset?: DragDelta | null;
+  matrix?: Matrix6 | null;
 }) {
-  const dx = offset?.dx ?? 0;
-  const dy = offset?.dy ?? 0;
-  const polygon = polygonOf(shape, dx, dy);
-  if (polygon !== null) {
-    return (
-      <polygon
-        className={className}
-        data-testid={testId}
-        points={polygon}
-        strokeWidth={1 / zoom}
-      />
-    );
-  }
-  const rect = selrectOf(shape);
-  if (rect === null) return null;
+  const polygon = outlinePolygon(shape, matrix);
+  if (polygon === null) return null;
   return (
-    <rect
+    <polygon
       className={className}
       data-testid={testId}
-      x={rect.x + dx}
-      y={rect.y + dy}
-      width={rect.width}
-      height={rect.height}
+      points={polygon}
       strokeWidth={1 / zoom}
     />
   );
 }
 
-// The union of the selrects of the selection (the bounds box of
-// calculate-handlers).
-function selectionBounds(shapes: readonly WorkspaceShape[]): ViewportRect | null {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const shape of shapes) {
-    const rect = selrectOf(shape);
-    if (rect === null) continue;
-    minX = Math.min(minX, rect.x);
-    minY = Math.min(minY, rect.y);
-    maxX = Math.max(maxX, rect.x + rect.width);
-    maxY = Math.max(maxY, rect.y + rect.height);
-  }
-  if (!Number.isFinite(minX)) return null;
-  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-}
-
-// The 8 static handles of calculate-handlers: the corners and the edge
-// midpoints of the bounds box.
-function handlePositions(rect: ViewportRect): { x: number; y: number }[] {
-  const midX = rect.x + rect.width / 2;
-  const midY = rect.y + rect.height / 2;
-  return [
-    { x: rect.x, y: rect.y },
-    { x: midX, y: rect.y },
-    { x: rect.x + rect.width, y: rect.y },
-    { x: rect.x + rect.width, y: midY },
-    { x: rect.x + rect.width, y: rect.y + rect.height },
-    { x: midX, y: rect.y + rect.height },
-    { x: rect.x, y: rect.y + rect.height },
-    { x: rect.x, y: midY },
-  ];
+// The store preview in the matrix tuple the transform module uses.
+function matrixOf(preview: TransformPreview | null): Matrix6 | null {
+  if (preview === null) return null;
+  return [preview.a, preview.b, preview.c, preview.d, preview.e, preview.f];
 }
 
 export interface WorkspaceViewportOverlayProps {
   // The resolved file of lib/workspace (the store's file): the overlay
-  // reads the page objects for the outline geometry.
+  // reads the page objects for the outline geometry and the permissions
+  // that decide whether the handles render.
   file: WorkspaceFile;
   pageId: string;
   // The artboard-name toggle of the shell (View menu), passed down as a
   // prop so UI state stays out of the store.
   showFrameTitles: boolean;
+  // A press on a resize handle: the canvas starts the gesture and keeps the
+  // pointer capture from there.
+  onResizeStart?: (handler: ResizeHandler, event: ReactPointerEvent<SVGElement>) => void;
+  // A press on a rotation zone.
+  onRotateStart?: (corner: RotationCorner, event: ReactPointerEvent<SVGElement>) => void;
 }
 
 export function WorkspaceViewportOverlay({
   file,
   pageId,
   showFrameTitles,
+  onResizeStart,
+  onRotateStart,
 }: WorkspaceViewportOverlayProps) {
   const state = useSyncExternalStore(
     subscribeWorkspace,
@@ -192,12 +205,23 @@ export function WorkspaceViewportOverlay({
     getInitialWorkspaceState,
   );
 
-  const { selection, hoverShapeId, areaSelect, zoom, vbox, dragDelta, drawPreview } = state;
+  const {
+    selection,
+    hoverShapeId,
+    areaSelect,
+    zoom,
+    vbox,
+    dragDelta,
+    drawPreview,
+    transformPreview,
+  } = state;
   const storeObjects = state.objects;
   const objects = useMemo(
     () => storeObjects ?? pageObjects(file, pageId),
     [storeObjects, file, pageId],
   );
+  const geometry = useMemo(() => selectionGeometry(objects, selection), [objects, selection]);
+  const previewMatrix = useMemo(() => matrixOf(transformPreview), [transformPreview]);
 
   if (zoom === null || vbox === null) return null;
 
@@ -207,17 +231,22 @@ export function WorkspaceViewportOverlay({
     if (shape !== undefined && shape !== null) selectedShapes.push(shape);
   }
   const hoverShape = hoverShapeId === null ? null : (objects[hoverShapeId] ?? null);
-  const bounds = selectionBounds(selectedShapes);
-  // The selection visuals follow a running drag; the hover outline does not.
-  const drawnBounds =
-    bounds !== null && dragDelta !== null
-      ? {
-          x: bounds.x + dragDelta.dx,
-          y: bounds.y + dragDelta.dy,
-          width: bounds.width,
-          height: bounds.height,
-        }
-      : bounds;
+  // The live preview wins over the move translation: only one gesture runs.
+  const displayMatrix =
+    previewMatrix ??
+    (dragDelta === null ? null : translationMatrix(dragDelta.dx, dragDelta.dy));
+  const boundsPoints =
+    geometry === null ? null : pointsToString(frameCorners(geometry, displayMatrix));
+  const handles =
+    geometry === null ? [] : resizeHandlePoints(geometry, displayMatrix);
+  const rotationZones =
+    geometry === null
+      ? []
+      : rotationZonePoints(geometry, ROTATION_ZONE_SIZE / zoom, displayMatrix);
+  // The handles and the rotation zones only exist for an editable selection
+  // of supported types, and they hide while a transform gesture runs.
+  const handlesVisible =
+    canEditFile(file) && geometry !== null && previewMatrix === null;
   const handleSize = HANDLE_SIZE / zoom;
 
   return (
@@ -243,30 +272,44 @@ export function WorkspaceViewportOverlay({
             zoom={zoom}
             className="pp-overlay-outline"
             testId="selection-outline"
-            offset={dragDelta}
+            matrix={displayMatrix}
           />
         ))}
       </g>
-      {drawnBounds !== null ? (
+      {boundsPoints !== null ? (
         <g className="pp-overlay-bounds">
-          <rect
+          <polygon
             className="pp-overlay-bounds-box"
-            x={drawnBounds.x}
-            y={drawnBounds.y}
-            width={drawnBounds.width}
-            height={drawnBounds.height}
+            points={boundsPoints}
             strokeWidth={1 / zoom}
           />
-          {handlePositions(drawnBounds).map((point, index) => (
-            <rect
-              key={index}
-              className="pp-overlay-handle"
-              x={point.x - handleSize / 2}
-              y={point.y - handleSize / 2}
-              width={handleSize}
-              height={handleSize}
-            />
-          ))}
+          {handlesVisible
+            ? rotationZones.map((zone) => (
+                <polygon
+                  key={zone.corner}
+                  className="pp-overlay-rotate"
+                  data-testid="rotate-zone"
+                  data-corner={zone.corner}
+                  points={pointsToString(zone.points)}
+                  onPointerDown={(event) => onRotateStart?.(zone.corner, event)}
+                />
+              ))
+            : null}
+          {handlesVisible
+            ? handles.map((handle) => (
+                <rect
+                  key={handle.handler}
+                  className={`pp-overlay-handle pp-overlay-handle-${handle.handler}`}
+                  data-testid="resize-handle"
+                  data-handler={handle.handler}
+                  x={handle.x - handleSize / 2}
+                  y={handle.y - handleSize / 2}
+                  width={handleSize}
+                  height={handleSize}
+                  onPointerDown={(event) => onResizeStart?.(handle.handler, event)}
+                />
+              ))
+            : null}
         </g>
       ) : null}
       {drawPreview !== null ? (
