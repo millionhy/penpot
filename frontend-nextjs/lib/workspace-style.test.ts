@@ -1,6 +1,7 @@
 // Unit tests for the workspace style model (lib/workspace-style): the
-// immutable fill/stroke surgery, the shape defaults and the mod-obj change
-// the panel sends. The module is pure, so every branch runs in node.
+// immutable fill/stroke/shadow/blur surgery, the shape defaults and the
+// mod-obj change the panel sends. The module is pure, so every branch runs in
+// node.
 
 import { describe, expect, it } from "vitest";
 
@@ -8,22 +9,35 @@ import type { WorkspaceShape } from "@/lib/workspace";
 import {
   DEFAULT_FILL,
   DEFAULT_STROKE,
+  addBlur,
   addFill,
+  addShadow,
   addStroke,
+  blurOf,
   buildStyleChange,
   fillsOf,
   isSolidFill,
   isSolidStroke,
   radiusOf,
   removeFill,
+  removeShadow,
   removeStroke,
   shapeBlocked,
   shapeHidden,
   shapeOpacity,
+  shadowsOf,
+  shadowsPatch,
   strokesOf,
   supportsFillStroke,
+  withBlurHidden,
+  withBlurValue,
   withFillColor,
   withFillOpacity,
+  withShadowColor,
+  withShadowHidden,
+  withShadowNumber,
+  withShadowOpacity,
+  withShadowStyle,
   withStrokeColor,
   withStrokeOpacity,
   withStrokeWidth,
@@ -189,6 +203,136 @@ describe("supportsFillStroke", () => {
     expect(supportsFillStroke("text")).toBe(false);
     expect(supportsFillStroke("group")).toBe(false);
     expect(supportsFillStroke("svg-raw")).toBe(false);
+  });
+});
+
+describe("shadows", () => {
+  const SHADOW = {
+    id: "shadow-1",
+    style: "drop-shadow",
+    "offset-x": 4,
+    "offset-y": 4,
+    blur: 4,
+    spread: 0,
+    hidden: false,
+    color: { color: "#000000", opacity: 0.2 },
+  };
+
+  it("reads the list, a missing or malformed value as none", () => {
+    expect(shadowsOf(shape({ shadow: [SHADOW] }))).toEqual([SHADOW]);
+    expect(shadowsOf(shape())).toEqual([]);
+    expect(shadowsOf(shape({ shadow: null }))).toEqual([]);
+    expect(shadowsOf(shape({ shadow: SHADOW }))).toEqual([]);
+  });
+
+  it("prepends the CLJS default shadow and keeps the existing order", () => {
+    const next = addShadow([SHADOW], "shadow-2");
+    expect(next).toHaveLength(2);
+    expect(next[0]).toEqual({
+      id: "shadow-2",
+      style: "drop-shadow",
+      "offset-x": 4,
+      "offset-y": 4,
+      blur: 4,
+      spread: 0,
+      hidden: false,
+      color: { color: "#000000", opacity: 0.2 },
+    });
+    expect(next[1]).toBe(SHADOW);
+  });
+
+  it("removes by index and ignores an out-of-range index", () => {
+    const other = { ...SHADOW, id: "shadow-2" };
+    expect(removeShadow([SHADOW, other], 0)).toEqual([other]);
+    expect(removeShadow([SHADOW, other], 7)).toEqual([SHADOW, other]);
+  });
+
+  it("replaces the list with a nil val when the last shadow goes", () => {
+    const shadows = [SHADOW];
+    expect(shadowsPatch([])).toBeNull();
+    expect(shadowsPatch(shadows)).toEqual(shadows);
+    expect(shadowsPatch(shadows)).not.toBe(shadows);
+  });
+
+  it("edits the numeric fields, clamping the blur at zero", () => {
+    const moved = withShadowNumber([SHADOW], 0, "offset-x", -12)[0] as Record<string, unknown>;
+    expect(moved).toEqual({ ...SHADOW, "offset-x": -12 });
+    const blurred = withShadowNumber([SHADOW], 0, "blur", -3)[0] as Record<string, unknown>;
+    expect(blurred).toEqual({ ...SHADOW, blur: 0 });
+    const spread = withShadowNumber([SHADOW], 0, "spread", 6)[0] as Record<string, unknown>;
+    expect(spread).toEqual({ ...SHADOW, spread: 6 });
+  });
+
+  it("ignores a non-finite number and an out-of-range index", () => {
+    const shadows = [SHADOW];
+    expect(withShadowNumber(shadows, 0, "blur", Number.NaN)[0]).toBe(SHADOW);
+    expect(withShadowNumber(shadows, 3, "blur", 8)[0]).toBe(SHADOW);
+  });
+
+  it("keeps the style inside the schema enum", () => {
+    expect(withShadowStyle([SHADOW], 0, "inner-shadow")[0]).toMatchObject({
+      style: "inner-shadow",
+    });
+    expect(withShadowStyle([SHADOW], 0, "glow")[0]).toBe(SHADOW);
+  });
+
+  it("flips the visibility", () => {
+    expect(withShadowHidden([SHADOW], 0, true)[0]).toMatchObject({ hidden: true });
+    expect(withShadowHidden([SHADOW], 0, false)[0]).toMatchObject({ hidden: false });
+  });
+
+  it("merges the color and the opacity into the nested color map", () => {
+    const linked = {
+      ...SHADOW,
+      color: { color: "#111111", opacity: 0.3, "ref-id": "color-1", "ref-file": "file-1" },
+    };
+    expect(withShadowColor([linked], 0, "#00FF00")[0]).toMatchObject({
+      color: {
+        color: "#00FF00",
+        opacity: 0.3,
+        "ref-id": "color-1",
+        "ref-file": "file-1",
+      },
+    });
+    expect(withShadowOpacity([SHADOW], 0, 0.75)[0]).toMatchObject({
+      color: { color: "#000000", opacity: 0.75 },
+    });
+    expect(withShadowOpacity([SHADOW], 0, 4)[0]).toMatchObject({
+      color: { opacity: 1 },
+    });
+  });
+
+  it("leaves the other shadows and the input array untouched", () => {
+    const other = { ...SHADOW, id: "shadow-2" };
+    const shadows = [SHADOW, other];
+    const next = withShadowNumber(shadows, 0, "offset-y", 9);
+    expect(next[1]).toBe(other);
+    expect(shadows[0]).toBe(SHADOW);
+  });
+});
+
+describe("blur", () => {
+  const BLUR = { id: "blur-1", type: "layer-blur", value: 4, hidden: false };
+
+  it("reads the single map, a missing or malformed value as none", () => {
+    expect(blurOf(shape({ blur: BLUR }))).toEqual(BLUR);
+    expect(blurOf(shape())).toBeNull();
+    expect(blurOf(shape({ blur: "nope" }))).toBeNull();
+  });
+
+  it("creates the CLJS default layer blur", () => {
+    expect(addBlur("blur-2")).toEqual({
+      id: "blur-2",
+      type: "layer-blur",
+      value: 4,
+      hidden: false,
+    });
+  });
+
+  it("edits the value and the visibility, clamping at zero", () => {
+    expect(withBlurValue(BLUR, -2)).toEqual({ ...BLUR, value: 0 });
+    expect(withBlurValue(BLUR, 12)).toEqual({ ...BLUR, value: 12 });
+    expect(withBlurHidden(BLUR, true)).toEqual({ ...BLUR, hidden: true });
   });
 });
 

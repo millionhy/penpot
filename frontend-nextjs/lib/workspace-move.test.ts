@@ -13,7 +13,7 @@ import {
   applyMove,
   applyReparent,
   buildMoveChanges,
-  buildReparentChange,
+  isValidMove,
   moveShapePatch,
   movedGeometry,
   reparentRoots,
@@ -606,9 +606,7 @@ describe("topNestedFrameAt", () => {
   });
 });
 
-describe("reparentRoots + buildReparentChange", () => {
-  const PAGE = "00000000-0000-0000-0000-0000000000ff";
-
+describe("reparentRoots", () => {
   function reparentFixture(): WorkspaceObjects {
     return {
       [ZERO_UUID]: rootShape(["f1", "f2"]),
@@ -639,22 +637,124 @@ describe("reparentRoots + buildReparentChange", () => {
     expect(reparentRoots(objects, ["loose", "leaf", "loose"], "f2")).toEqual(["loose", "leaf"]);
   });
 
-  it("builds a mov-objects change with the reversed ids", () => {
+  it("uses the layout branch of the target cleanup", () => {
     const objects = reparentFixture();
-    const change = buildReparentChange(objects, ["loose", "leaf"], "f2", PAGE);
-    expect(change).toEqual({
-      type: "mov-objects",
-      "page-id": PAGE,
-      "parent-id": "f2",
-      shapes: ["leaf", "loose"],
-    });
+    objects["flex"] = frameShape(
+      "flex",
+      { x: 400, y: 0, width: 100, height: 100 },
+      { layout: "flex", "layout-flex-dir": "row", shapes: ["child"] },
+    );
+    objects["child"] = shape("child", "rect", { "parent-id": "flex", "frame-id": "flex" });
+    objects["deep"] = shape("deep", "rect", { "parent-id": "child", "frame-id": "flex" });
+    // A direct child of the layout stays (the drop reorders it); a shape
+    // already in the frame but nested deeper drops out instead of being
+    // reparented to the layout root.
+    expect(reparentRoots(objects, ["child", "deep"], "flex")).toEqual(["child"]);
+    // On a plain target, a shape already in that frame drops out.
+    objects["plain"] = frameShape("plain", { x: 0, y: 0, width: 100, height: 100 });
+    objects["inPlain"] = shape("inPlain", "rect", { "parent-id": "plain", "frame-id": "plain" });
+    expect(reparentRoots(objects, ["inPlain"], "plain")).toEqual([]);
+    // The flex children still move to a plain target; the selected
+    // ancestor already covers the nested one.
+    expect(reparentRoots(objects, ["child", "deep"], "f1")).toEqual(["child"]);
   });
 
-  it("returns null when nothing would move", () => {
+  it("drops the shapes whose parent is inside a component copy", () => {
     const objects = reparentFixture();
-    expect(buildReparentChange(objects, ["leaf"], "f1", PAGE)).toBeNull();
-    expect(buildReparentChange(objects, [], "f2", PAGE)).toBeNull();
-    expect(buildReparentChange(objects, ["missing"], "f2", PAGE)).toBeNull();
+    objects["copy"] = shape("copy", "frame", {
+      "parent-id": ZERO_UUID,
+      "frame-id": ZERO_UUID,
+      "shape-ref": "main",
+      shapes: ["inside"],
+    });
+    objects["inside"] = shape("inside", "rect", { "parent-id": "copy", "frame-id": "copy" });
+    expect(reparentRoots(objects, ["inside"], "f2")).toEqual([]);
+    // The copy root itself hangs from the zero root and still moves.
+    expect(reparentRoots(objects, ["copy"], "f2")).toEqual(["copy"]);
+  });
+
+  it("drops the absolute shapes that would keep their parent", () => {
+    const objects = reparentFixture();
+    objects["abs"] = shape("abs", "rect", {
+      "parent-id": "f2",
+      "frame-id": "f2",
+      "layout-item-absolute": true,
+    });
+    objects["hidden"] = shape("hidden", "rect", {
+      "parent-id": "f2",
+      "frame-id": "f2",
+      hidden: true,
+    });
+    expect(reparentRoots(objects, ["abs", "hidden"], "f2")).toEqual([]);
+    // Another parent still takes them.
+    expect(reparentRoots(objects, ["abs"], "f1")).toEqual(["abs"]);
+  });
+});
+
+describe("isValidMove", () => {
+  function moveFixture(): WorkspaceObjects {
+    return {
+      [ZERO_UUID]: rootShape(["f1", "f2"]),
+      f1: frameShape("f1", { x: 0, y: 0, width: 100, height: 100 }, { shapes: ["g"] }),
+      f2: frameShape("f2", { x: 200, y: 0, width: 100, height: 100 }),
+      g: shape("g", "group", { shapes: ["inner"], "parent-id": "f1", "frame-id": "f1" }),
+      inner: shape("inner", "rect", { "parent-id": "g", "frame-id": "f1" }),
+    };
+  }
+
+  it("accepts a plain move", () => {
+    const objects = moveFixture();
+    expect(isValidMove(objects, "g", "f2")).toBe(true);
+    expect(isValidMove(objects, "g", ZERO_UUID)).toBe(true);
+  });
+
+  it("rejects a missing root and a target inside the moved subtree", () => {
+    const objects = moveFixture();
+    expect(isValidMove(objects, "missing", "f2")).toBe(false);
+    expect(isValidMove(objects, "g", "inner")).toBe(false);
+    expect(isValidMove(objects, "g", "g")).toBe(false);
+  });
+
+  it("rejects a move from or into a component copy", () => {
+    const objects = moveFixture();
+    objects["copy"] = shape("copy", "frame", {
+      "parent-id": ZERO_UUID,
+      "frame-id": ZERO_UUID,
+      "shape-ref": "main",
+      shapes: ["inside"],
+    });
+    objects["inside"] = shape("inside", "rect", { "parent-id": "copy", "frame-id": "copy" });
+    expect(isValidMove(objects, "inside", "f2")).toBe(false);
+    expect(isValidMove(objects, "g", "copy")).toBe(false);
+  });
+
+  it("rejects a component nesting loop", () => {
+    const objects = moveFixture();
+    objects["f1"] = frameShape(
+      "f1",
+      { x: 0, y: 0, width: 100, height: 100 },
+      { shapes: ["head"] },
+    );
+    objects["head"] = shape("head", "rect", {
+      "parent-id": "f1",
+      "frame-id": "f1",
+      "component-id": "c1",
+      "component-root": true,
+    });
+    objects["f2"] = frameShape(
+      "f2",
+      { x: 200, y: 0, width: 100, height: 100 },
+      { shapes: ["nested"] },
+    );
+    objects["nested"] = shape("nested", "rect", {
+      "parent-id": "f2",
+      "frame-id": "f2",
+      "component-id": "c1",
+    });
+    // Moving the head below another head of the same component would put
+    // two heads of c1 in one ancestor chain.
+    expect(isValidMove(objects, "head", "nested")).toBe(false);
+    expect(isValidMove(objects, "head", "f2")).toBe(true);
   });
 });
 
@@ -738,6 +838,46 @@ describe("applyReparent", () => {
     expect(next.f1.shapes).toEqual([]);
   });
 
+  it("inserts at the requested index instead of the tail", () => {
+    const objects: WorkspaceObjects = {
+      [ZERO_UUID]: rootShape(["r1"]),
+      f1: frameShape("f1", { x: 0, y: 0, width: 100, height: 100 }, { shapes: ["a", "b"] }),
+      a: shape("a", "rect", { "parent-id": "f1", "frame-id": "f1" }),
+      b: shape("b", "rect", { "parent-id": "f1", "frame-id": "f1" }),
+      r1: shape("r1", "rect", { "parent-id": ZERO_UUID, "frame-id": ZERO_UUID }),
+    };
+    const next = applyReparent(objects, ["r1"], "f1", 1);
+    expect(next.f1.shapes).toEqual(["a", "r1", "b"]);
+    expect(next[ZERO_UUID].shapes).toEqual([]);
+  });
+
+  it("re-orders a shape inside its own parent with insert-at-index", () => {
+    const objects: WorkspaceObjects = {
+      [ZERO_UUID]: rootShape(["f1"]),
+      f1: frameShape("f1", { x: 0, y: 0, width: 100, height: 100 }, { shapes: ["a", "b", "c"] }),
+      a: shape("a", "rect", { "parent-id": "f1", "frame-id": "f1" }),
+      b: shape("b", "rect", { "parent-id": "f1", "frame-id": "f1" }),
+      c: shape("c", "rect", { "parent-id": "f1", "frame-id": "f1" }),
+    };
+    const next = applyReparent(objects, ["b"], "f1", 3);
+    expect(next.f1.shapes).toEqual(["a", "c", "b"]);
+    expect(next.b["parent-id"]).toBe("f1");
+  });
+
+  it("keeps a same-parent shape in place without an index", () => {
+    const objects: WorkspaceObjects = {
+      [ZERO_UUID]: rootShape(["f1"]),
+      f1: frameShape("f1", { x: 0, y: 0, width: 100, height: 100 }, { shapes: ["a", "b", "c"] }),
+      a: shape("a", "rect", { "parent-id": "f1", "frame-id": "f1" }),
+      b: shape("b", "rect", { "parent-id": "f1", "frame-id": "f1" }),
+      c: shape("c", "rect", { "parent-id": "f1", "frame-id": "f1" }),
+    };
+    // append-at-the-end keeps the ids already in the list where they are,
+    // so the no-index branch never duplicates a child.
+    const next = applyReparent(objects, ["b"], "f1");
+    expect(next.f1.shapes).toEqual(["a", "b", "c"]);
+  });
+
   it("returns the same reference when the target is inside the moved subtree", () => {
     const objects: WorkspaceObjects = {
       [ZERO_UUID]: rootShape(["f1"]),
@@ -752,6 +892,25 @@ describe("applyReparent", () => {
     // gate), and dragging a frame into itself too.
     expect(applyReparent(objects, ["f1"], "inner")).toBe(objects);
     expect(applyReparent(objects, ["f1"], "f1")).toBe(objects);
+  });
+
+  it("returns the same reference when any root fails the structural gate", () => {
+    const objects: WorkspaceObjects = {
+      [ZERO_UUID]: rootShape(["f1", "f2"]),
+      f1: frameShape("f1", { x: 0, y: 0, width: 100, height: 100 }),
+      f2: frameShape("f2", { x: 200, y: 0, width: 100, height: 100 }),
+      copy: shape("copy", "frame", {
+        "parent-id": ZERO_UUID,
+        "frame-id": ZERO_UUID,
+        "shape-ref": "main",
+        shapes: ["inside"],
+      }),
+      inside: shape("inside", "rect", { "parent-id": "copy", "frame-id": "copy" }),
+      leaf: shape("leaf", "rect", { "parent-id": ZERO_UUID, "frame-id": ZERO_UUID }),
+    };
+    // leaf alone would move, but the all-shapes validity gate of the
+    // backend drops the whole change when any root fails.
+    expect(applyReparent(objects, ["leaf", "inside"], "f2")).toBe(objects);
   });
 
   it("returns the same reference for a missing root or target", () => {

@@ -454,6 +454,7 @@
 
 .pp-workspace-style-toggle:disabled,
 .pp-workspace-style-icon-button:disabled,
+.pp-workspace-style-select:disabled,
 .pp-workspace-style-input:disabled {
   cursor: default;
   opacity: 0.5;
@@ -499,6 +500,113 @@
 
 .pp-workspace-style-row--stroke {
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1fr) auto;
+}
+
+/* The single blur row: the value, the hide checkbox, the remove button. */
+.pp-workspace-style-row--blur {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+/* The measures block and the shadow values: two fields per row. */
+.pp-workspace-style-grid {
+  display: grid;
+  gap: var(--sp-xs);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* One shadow: the style select, the hide checkbox and the remove button
+   above the value grid. */
+.pp-workspace-style-shadow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+}
+
+.pp-workspace-style-shadow-head {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+}
+
+.pp-workspace-style-select {
+  background-color: var(--color-background-tertiary);
+  border: var(--b-1) solid transparent;
+  border-radius: var(--br-4);
+  color: var(--color-foreground-primary);
+  flex: 1;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  height: var(--sz-28);
+  min-width: 0;
+  padding: 0 var(--sp-xs);
+}
+
+.pp-workspace-style-select:focus-visible {
+  border-color: var(--color-accent-primary);
+  outline: none;
+}
+
+/* The hide flag of a shadow or a blur row: a checkbox in a control-sized
+   cell so it lines up with the inputs. */
+.pp-workspace-style-check {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-28);
+  justify-content: center;
+  width: var(--sz-28);
+}
+
+.pp-workspace-style-check input {
+  accent-color: var(--color-accent-primary);
+  cursor: pointer;
+  margin: 0;
+}
+
+.pp-workspace-style-check input:disabled {
+  cursor: default;
+}
+
+/* A labeled checkbox (the absolute flag, fix when scrolling): the box and
+   the text on one control line. */
+.pp-workspace-style-check--labeled {
+  gap: var(--sp-xs);
+  justify-content: flex-start;
+  width: auto;
+}
+
+/* The add and clear pair of a batch section header. */
+.pp-workspace-style-actions {
+  display: flex;
+  gap: var(--sp-xxs);
+}
+
+/* A select under a field label: full width, no grow along the column. */
+.pp-workspace-style-select--field {
+  flex: none;
+  width: 100%;
+}
+
+/* The grid track list: one block per axis, one row per track. */
+.pp-workspace-style-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+}
+
+.pp-workspace-style-track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+}
+
+.pp-workspace-style-row--track {
+  align-items: flex-end;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.pp-workspace-style-input::placeholder {
+  color: var(--color-foreground-secondary);
 }
 
 .pp-workspace-style-radius {

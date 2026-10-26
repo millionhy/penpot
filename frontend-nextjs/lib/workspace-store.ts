@@ -10,8 +10,8 @@
 // Only the read-only slice F9.1 needs lives here; F9.2 adds the
 // selection/hover/area slice; F9.3 adds the JS model reference and the
 // live drag translation; F9.5 the draw preview; F9.6 the transform
-// preview. Page switching, history and the rest of workspace-local arrive
-// with the next slices.
+// preview; F9.7 the undo availability flags. Page switching, history and
+// the rest of workspace-local arrive with the next slices.
 
 import type { WorkspaceDrawTool, WorkspaceFile, WorkspaceObjects } from "@/lib/workspace";
 import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";
@@ -94,6 +94,10 @@ export interface WorkspaceState {
   // The live world matrix of a running resize/rotate gesture (F9.6); null
   // otherwise.
   transformPreview: TransformPreview | null;
+  // The undo/redo availability of the page load (F9.7): the canvas owns the
+  // stack and mirrors its cursor here for the menu and its disabled states.
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 const initialState: WorkspaceState = {
@@ -114,6 +118,8 @@ const initialState: WorkspaceState = {
   dragDelta: null,
   drawPreview: null,
   transformPreview: null,
+  canUndo: false,
+  canRedo: false,
 };
 
 let state: WorkspaceState = initialState;
@@ -234,4 +240,13 @@ export function setDrawPreview(preview: DrawPreview | null): void {
 // release, Escape and pointercancel.
 export function setTransformPreview(preview: TransformPreview | null): void {
   setWorkspaceState({ transformPreview: preview });
+}
+
+// --- Undo availability (F9.7) -----------------------------------------------
+
+// Mirror the undo/redo cursor of the canvas stack into the store, so the
+// main menu rebuilds its disabled states without reading the canvas ref.
+export function setUndoAvailability(canUndoValue: boolean, canRedoValue: boolean): void {
+  if (state.canUndo === canUndoValue && state.canRedo === canRedoValue) return;
+  setWorkspaceState({ canUndo: canUndoValue, canRedo: canRedoValue });
 }

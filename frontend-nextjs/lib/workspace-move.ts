@@ -19,13 +19,12 @@
 //   fast box / even-odd polygon branches) and app.common.math
 //   (almost-zero?);
 // - frontend/src/app/main/data/workspace/transforms.cljs
-//   (cleanup-invalid-moving-shapes reduced to the non-layout path);
-//   common/src/app/common/files/changes_builder.cljc (change-parent: the
-//   reversed shapes and the omitted index); common/src/app/common/files/
-//   changes.cljc (process-change :mov-objects: the all-shapes validity
-//   gate, the append-at-the-end, the previous-parent removal and the
-//   update-frame-id rule — frames keep their subtree, other shapes
-//   rewrite it).
+//   (cleanup-invalid-moving-shapes); common/src/app/common/files/
+//   changes_builder.cljc (change-parent: the reversed shapes and the
+//   omitted index); common/src/app/common/files/changes.cljc
+//   (process-change :mov-objects: the all-shapes validity gate, the
+//   append-at-the-end, the previous-parent removal and the update-frame-id
+//   rule — frames keep their subtree, other shapes rewrite it).
 //
 // Only translations reach these functions (the drag emits a plain dx/dy
 // vector, AD2/AD4), so the generic flip/rotation machinery of
@@ -41,12 +40,13 @@
 //   selrect, points, position-data, content). The CLJS assocs width/height
 //   on the generic branch too, but a translation leaves them unchanged and
 //   the update-shapes diff drops them again (AD4).
-// - The reparent walk drops the layout and component branches of the
-//   CLJS: no layout z-index in the frame sort (plain sibling order), no
-//   exclude-frames-siblings, no position-absolute cleanup, no
-//   in-component-copy cleanup and no find-valid-parent-and-frame-ids
-//   navigation. Plain frames over plain shapes take the same path as the
-//   original; the richer structures are not reachable from the F9.3 UI.
+// - The reparent walk drops no cleanup branch of the CLJS: the copy and
+//   absolute-position cleanup, the layout frame-id cleanup and the
+//   structural validity gate (is-valid-move?) all run (F9.3 companion
+//   changes). The layout z-index branch of the frame sort,
+//   exclude-frames-siblings and the find-valid-parent-and-frame-ids
+//   navigation stay out; the companion changes of generate-relocate live
+//   in lib/workspace-relocate.
 // - The blocked frames always drop out (the read-only? true path is not
 //   ported).
 
@@ -55,10 +55,12 @@ import {
   isPathData,
   PathData,
   type UpdateFileModObjChange,
-  type UpdateFileMovObjectsChange,
   type UpdateFileSetOperation,
 } from "@/lib/transit";
 import type { WorkspaceObjects, WorkspaceShape } from "@/lib/workspace";
+import { componentsNestingLoop, isInComponentCopy } from "@/lib/workspace-component";
+import { isAnyLayout, isPositionAbsolute } from "@/lib/workspace-layout";
+import { insertChildren } from "@/lib/workspace-order";
 import { getParentId, getParentIds, isFrameShape, orderedUnique } from "@/lib/workspace-selection";
 
 // --- Packed path content (types/path/impl.cljc) ------------------------------
@@ -563,10 +565,14 @@ export function topNestedFrameAt(
 
 // --- Reparent change building (T4) ------------------------------------------
 
-// transforms.cljs cleanup-invalid-moving-shapes reduced to the F9.3 path
-// (no components, no layouts): the selection-level ids lose every id whose
-// ancestor is also in the set (clean-loops), and the shapes already owned
-// by the target frame drop out (the non-layout frame-id branch).
+// transforms.cljs cleanup-invalid-moving-shapes: the selection-level ids
+// lose every id whose ancestor is also in the set (clean-loops), the shapes
+// whose parent is inside a component copy (the structure of a copy is not
+// editable), the absolute shapes that would keep their parent, and the
+// shapes already owned by the target frame. The last filter follows the
+// layout branch: with a flex/grid target only the shapes already sitting
+// directly under it drop out, with a plain target every shape whose
+// frame-id is the target does.
 export function reparentRoots(
   objects: WorkspaceObjects,
   selection: readonly string[],
@@ -574,36 +580,27 @@ export function reparentRoots(
 ): string[] {
   const roots = orderedUnique(selection);
   const rootSet = new Set(roots);
+  const layout = isAnyLayout(objects[targetFrameId] ?? null);
   const result: string[] = [];
   for (const id of roots) {
     const shape = objects[id];
     if (shape === undefined || shape === null) continue;
     if (getParentIds(objects, id).some((parentId) => rootSet.has(parentId))) continue;
-    if (shape["frame-id"] === targetFrameId) continue;
+    const parentId = shape["parent-id"];
+    const parent = typeof parentId === "string" ? (objects[parentId] ?? null) : null;
+    if (isInComponentCopy(parent)) continue;
+    if (isPositionAbsolute(shape) && parentId === targetFrameId) continue;
+    if (!layout && shape["frame-id"] === targetFrameId) continue;
+    if (layout && shape["frame-id"] === targetFrameId && parentId !== targetFrameId) {
+      continue;
+    }
     result.push(id);
   }
   return result;
 }
 
-// changes_builder.cljc change-parent: {:type :mov-objects :page-id ..
-// :parent-id .. :shapes [<reversed ids>]} with no index (append at the
-// tail) and ZERO_UUID as the root frame. Null when the cleanup leaves
-// nothing to move.
-export function buildReparentChange(
-  objects: WorkspaceObjects,
-  selection: readonly string[],
-  targetFrameId: string,
-  pageId: string,
-): UpdateFileMovObjectsChange | null {
-  const roots = reparentRoots(objects, selection, targetFrameId);
-  if (roots.length === 0) return null;
-  return {
-    type: "mov-objects",
-    "page-id": pageId,
-    "parent-id": targetFrameId,
-    shapes: roots.slice().reverse(),
-  };
-}
+// The backend is-valid-move? (changes.cljc process-change :mov-objects): the
+// drop filters every root before any companion change is built.
 
 // --- Model application (T5) ---------------------------------------------------
 
@@ -624,6 +621,26 @@ function subtreeHas(objects: WorkspaceObjects, rootId: string, targetId: string)
     }
   }
   return false;
+}
+
+// The structural gate of the mov-objects change (see above): the target
+// must not sit in the moved subtree, the move must not create a component
+// nesting loop, and neither the old parent nor the target may be a
+// component copy (no change here sends allow-altering-copies). The backend
+// applies the whole change or none of it.
+export function isValidMove(
+  objects: WorkspaceObjects,
+  rootId: string,
+  targetFrameId: string,
+): boolean {
+  const shape = objects[rootId];
+  if (shape === undefined || shape === null) return false;
+  if (subtreeHas(objects, rootId, targetFrameId)) return false;
+  if (componentsNestingLoop(objects, rootId, targetFrameId)) return false;
+  const oldParentId = shape["parent-id"];
+  const oldParent = typeof oldParentId === "string" ? (objects[oldParentId] ?? null) : null;
+  if (isInComponentCopy(oldParent)) return false;
+  return !isInComponentCopy(objects[targetFrameId] ?? null);
 }
 
 // The update-frame-id of the backend: the moved root takes the new
@@ -649,29 +666,44 @@ function setFrameIdDeep(
   }
 }
 
+// helpers.cljc append-at-the-end: add the ids the list does not own yet and
+// keep the existing ones in place, so a same-parent move without an index is
+// a no-op (the backend reads the same rule).
+function appendChildren(children: readonly string[], ids: readonly string[]): string[] {
+  const out = [...children];
+  const present = new Set(children);
+  for (const id of ids) {
+    if (present.has(id)) continue;
+    present.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
 // The mov-objects effect over the JS model: the commit replaces
 // objectsRef/indexRef/store.objects with this result (AD9) so the next
 // gesture resolves targets against the committed state. Mirrors
 // process-change :mov-objects: the same `objects` reference comes back
 // when the backend would skip the change entirely (no shapes, a missing
-// root or target, or a root whose subtree contains the target — the
-// all-shapes validity gate), otherwise: append to the new parent, set
-// parent-id, detach from the previous parent (skipped when unchanged)
-// and rewrite the frame-id. `roots` is the change's shape list; the
-// upstream alignment (reparentRoots) keeps it free of nesting and of
-// current-parent duplicates.
+// root or target, or any root failing is-valid-move? — the all-shapes
+// validity gate), otherwise: insert into the new parent (at the tail
+// without an index, at the insert-at-index position with one), set
+// parent-id, detach from the previous parent (skipped when unchanged) and
+// rewrite the frame-id. `roots` is the change's shape list; the upstream
+// alignment (reparentRoots) keeps it free of nesting and of current-parent
+// duplicates.
 export function applyReparent(
   objects: WorkspaceObjects,
   roots: readonly string[],
   targetFrameId: string,
+  index?: number,
 ): WorkspaceObjects {
   if (roots.length === 0) return objects;
   const parent = objects[targetFrameId];
   if (parent === undefined || parent === null) return objects;
   for (const rootId of roots) {
-    const root = objects[rootId];
-    if (root === undefined || root === null) return objects;
-    if (subtreeHas(objects, rootId, targetFrameId)) return objects;
+    if (objects[rootId] === undefined || objects[rootId] === null) return objects;
+    if (!isValidMove(objects, rootId, targetFrameId)) return objects;
   }
   // frame-id = (if (frame-shape? parent) (:id parent) (:frame-id parent)).
   const newFrameId = isFrameShape(parent)
@@ -680,11 +712,17 @@ export function applyReparent(
       ? (parent["frame-id"] as string)
       : ZERO_UUID;
   const next: WorkspaceObjects = { ...objects };
-  // add-to-parent: append-at-the-end over the target children.
+  // add-to-parent: insert-at-index over the target children, or the
+  // append-at-the-end of the CLJS when the change carries no index. A
+  // same-parent reorder keeps the ids out of both halves first, so the
+  // index reads against the pre-change list (app.common.data/insert-at-index);
+  // without an index an id already under the target keeps its place.
   const targetChildren = parent.shapes;
+  const list = Array.isArray(targetChildren) ? targetChildren : [];
   next[targetFrameId] = {
     ...parent,
-    shapes: Array.isArray(targetChildren) ? [...targetChildren, ...roots] : [...roots],
+    shapes:
+      typeof index === "number" ? insertChildren(list, index, roots) : appendChildren(list, roots),
   };
   for (const rootId of roots) {
     const original = objects[rootId];

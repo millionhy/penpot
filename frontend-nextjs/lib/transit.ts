@@ -401,9 +401,10 @@ export interface UpdateFileModObjChange {
 }
 
 // {:type :add-obj :id <uuid> :obj <shape> :page-id <uuid> :frame-id <uuid>
-//  :parent-id <uuid>}: inserts one new shape (F9.5). The change id follows
-// the shape id; index is omitted, so ctst/add-shape appends at the tail of
-// the parent.
+//  :parent-id <uuid> [:index <int>]}: inserts one new shape (F9.5). The
+// change id follows the shape id; a missing index makes ctst/add-shape
+// append at the tail of the parent, while an index places the shape at that
+// position of the current children list (0 is the bottom).
 export interface UpdateFileAddObjChange {
   type: "add-obj";
   id: string;
@@ -411,22 +412,36 @@ export interface UpdateFileAddObjChange {
   "page-id": string;
   "frame-id": string;
   "parent-id": string;
+  index?: number;
 }
 
-// {:type :mov-objects :page-id <uuid> :parent-id <uuid> :shapes [<uuid>..]}:
-// re-parents shapes (T4). The ids ride in reverse order like change-parent,
-// no index means append at the tail, and ZERO_UUID is the root frame.
+// {:type :mov-objects :page-id <uuid> :parent-id <uuid> :shapes [<uuid>..]
+//  [:index <int>]}: re-parents or re-orders shapes (T4). The ids ride in
+// reverse order like change-parent, no index means append at the tail, and
+// an index follows the insert-at-index rule (0 is the bottom, ids already in
+// the list move to the requested position). ZERO_UUID is the root frame.
 export interface UpdateFileMovObjectsChange {
   type: "mov-objects";
   "page-id": string;
   "parent-id": string;
   shapes: string[];
+  index?: number;
+}
+
+// {:type :del-obj :page-id <uuid> :id <uuid>}: removes one shape and its
+// subtree. The F9.7 undo stack produces it as the inverse of a draw; the
+// backend ctst/delete-shape handles the recursion.
+export interface UpdateFileDelObjChange {
+  type: "del-obj";
+  "page-id": string;
+  id: string;
 }
 
 export type UpdateFileChange =
   | UpdateFileAddObjChange
   | UpdateFileModObjChange
-  | UpdateFileMovObjectsChange;
+  | UpdateFileMovObjectsChange
+  | UpdateFileDelObjChange;
 
 export interface UpdateFileParams {
   id: string;
@@ -453,12 +468,14 @@ const UUID_VALUE_KEY =
 
 // Values the CLJS file-data holds as keywords (::sm/one-of in the backend
 // schemas) but this boundary normalizes to strings (the ":" reader handler
-// above): the shape and gradient :type, the stroke enums, the blend mode
-// and the shadow grow type. A plain "rect" fails ::sm/one-of on arrival
-// and the wasm stroke alignment falls to its default branch, so the writer
-// re-tags them.
+// above): the shape and gradient :type, the stroke enums, the blend mode,
+// the shadow grow type, the shadow :style and the layout-item sizing
+// (fix/auto/fill). A plain "rect" fails ::sm/one-of on arrival and the wasm
+// stroke alignment falls to its default branch, so the writer re-tags them.
+// :style rides the shadow commit (drop-shadow / inner-shadow), which is the
+// only attr of that name in the model.
 const KEYWORD_VALUE_KEY =
-  /^(type|stroke-style|stroke-alignment|stroke-cap-start|stroke-cap-end|blend-mode|grow-type)$/;
+  /^(type|style|stroke-style|stroke-alignment|stroke-cap-start|stroke-cap-end|blend-mode|grow-type|layout-item-h-sizing|layout-item-v-sizing)$/;
 const UUID_FORM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function encodeUpdateAttrEntry(key: string, value: unknown): unknown {
@@ -566,6 +583,8 @@ function encodeUpdateChange(change: UpdateFileChange): unknown {
       "page-id": uuid(change["page-id"]),
       "frame-id": uuid(change["frame-id"]),
       "parent-id": uuid(change["parent-id"]),
+      // keywordMap drops undefined entries, so an append stays index-free.
+      index: change.index,
     });
   }
   if (change.type === "mov-objects") {
@@ -574,6 +593,14 @@ function encodeUpdateChange(change: UpdateFileChange): unknown {
       "page-id": uuid(change["page-id"]),
       "parent-id": uuid(change["parent-id"]),
       shapes: change.shapes.map((id) => uuid(id)),
+      index: change.index,
+    });
+  }
+  if (change.type === "del-obj") {
+    return keywordMap({
+      type: keyword("del-obj"),
+      "page-id": uuid(change["page-id"]),
+      id: uuid(change.id),
     });
   }
   return keywordMap({

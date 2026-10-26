@@ -269,4 +269,14 @@ describe("applyAddShape", () => {
 
     expect(next.frame.shapes).toEqual(["new"]);
   });
+
+  it("inserts at the requested index instead of the tail", () => {
+    const objects = fixture();
+    objects.frame = { ...objects.frame, shapes: ["a", "b"] };
+    const added = createDrawShape("rect", RECT, "frame", "new");
+
+    const next = applyAddShape(objects, added, "frame", 1);
+
+    expect(next.frame.shapes).toEqual(["a", "new", "b"]);
+  });
 });

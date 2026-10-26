@@ -20,6 +20,7 @@ import {
   setHoverTopFrameId,
   setSelection,
   setTransformPreview,
+  setUndoAvailability,
   setWorkspaceObjects,
   setWorkspaceState,
   setWorkspaceViewport,
@@ -48,6 +49,8 @@ describe("getInitialWorkspaceState", () => {
     expect(initial.dragDelta).toBeNull();
     expect(initial.drawPreview).toBeNull();
     expect(initial.transformPreview).toBeNull();
+    expect(initial.canUndo).toBe(false);
+    expect(initial.canRedo).toBe(false);
   });
 
   it("keeps its identity across writes", () => {
@@ -243,6 +246,26 @@ describe("transform preview slice", () => {
   });
 });
 
+describe("setUndoAvailability", () => {
+  it("writes both flags in one notification", () => {
+    const listener = vi.fn();
+    const unsub = subscribeWorkspace(listener);
+    setUndoAvailability(true, false);
+    expect(getWorkspaceState().canUndo).toBe(true);
+    expect(getWorkspaceState().canRedo).toBe(false);
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+
+  it("skips the write when the flags do not change", () => {
+    const listener = vi.fn();
+    const unsub = subscribeWorkspace(listener);
+    setUndoAvailability(false, false);
+    expect(listener).not.toHaveBeenCalled();
+    unsub();
+  });
+});
+
 describe("resetWorkspaceState", () => {
   it("restores the initial slice and notifies the listeners", () => {
     const listener = vi.fn();
@@ -257,6 +280,7 @@ describe("resetWorkspaceState", () => {
     setDragDelta({ dx: 1, dy: 1 });
     setDrawPreview({ tool: "frame", x: 0, y: 0, width: 10, height: 10 });
     setTransformPreview({ a: 2, b: 0, c: 0, d: 2, e: 0, f: 0 });
+    setUndoAvailability(true, true);
 
     resetWorkspaceState();
 
@@ -274,8 +298,10 @@ describe("resetWorkspaceState", () => {
     expect(state.dragDelta).toBeNull();
     expect(state.drawPreview).toBeNull();
     expect(state.transformPreview).toBeNull();
+    expect(state.canUndo).toBe(false);
+    expect(state.canRedo).toBe(false);
     expect(getWorkspaceViewport()).toBeNull();
-    expect(listener).toHaveBeenCalledTimes(7);
+    expect(listener).toHaveBeenCalledTimes(8);
     unsub();
   });
 });

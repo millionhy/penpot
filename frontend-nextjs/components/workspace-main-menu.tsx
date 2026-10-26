@@ -5,10 +5,11 @@
 // side-by-side dropdown becomes a drilldown, as AD10 documents.
 //
 // Wired in this slice: rename (when the file is editable), back to the
-// dashboard, select all (root children), deselect all, the five zoom
-// commands, hide UI, the artboard-name toggle and the help link. Export,
-// version history, undo/redo, shortcuts and about stay disabled; menu
-// shortcut labels are display only and no global handler is installed.
+// dashboard, select all (root children), deselect all, undo/redo through
+// the canvas handle (F9.7), the four z-order commands of the selection
+// (F9.8), the five zoom commands, hide UI, the artboard-name toggle and the
+// help link. Export, version history, shortcuts and about stay disabled;
+// menu shortcut labels are display only and no global handler is installed.
 //
 // The menu reads selection and objects from the store so its enabled
 // states stay correct even if the shell is memoized later. The page keeps
@@ -25,7 +26,7 @@ import {
 } from "@/components/dashboard-menu";
 import type { WorkspaceCanvasHandle } from "@/components/workspace-wasm-canvas";
 import { tr } from "@/lib/i18n";
-import { isMacos, metaLabel } from "@/lib/shortcuts";
+import { commandToTooltip, isMacos, metaLabel } from "@/lib/shortcuts";
 import { immediateChildren } from "@/lib/workspace";
 import {
   clearSelection,
@@ -143,15 +144,50 @@ export function WorkspaceMainMenu({
             type: "item",
             id: "workspace-menu-undo",
             label: tr("workspace.header.menu.undo"),
-            disabled: true,
-            onSelect: noop,
+            shortcut: metaLabel("Z", macos),
+            disabled: !state.canUndo,
+            onSelect: () => canvas.current?.undo(),
           },
           {
             type: "item",
             id: "workspace-menu-redo",
             label: tr("workspace.header.menu.redo"),
-            disabled: true,
-            onSelect: noop,
+            shortcut: metaLabel("Shift+Z", macos),
+            disabled: !state.canRedo,
+            onSelect: () => canvas.current?.redo(),
+          },
+          { type: "separator", id: "workspace-menu-edit-order-separator" },
+          {
+            type: "item",
+            id: "workspace-menu-forward",
+            label: tr("workspace.shape.menu.forward"),
+            shortcut: commandToTooltip("command+up", macos) ?? undefined,
+            disabled: !canEdit || !hasSelection,
+            onSelect: () => canvas.current?.orderSelection("up"),
+          },
+          {
+            type: "item",
+            id: "workspace-menu-front",
+            label: tr("workspace.shape.menu.front"),
+            shortcut: commandToTooltip("command+shift+up", macos) ?? undefined,
+            disabled: !canEdit || !hasSelection,
+            onSelect: () => canvas.current?.orderSelection("top"),
+          },
+          {
+            type: "item",
+            id: "workspace-menu-backward",
+            label: tr("workspace.shape.menu.backward"),
+            shortcut: commandToTooltip("command+down", macos) ?? undefined,
+            disabled: !canEdit || !hasSelection,
+            onSelect: () => canvas.current?.orderSelection("down"),
+          },
+          {
+            type: "item",
+            id: "workspace-menu-back",
+            label: tr("workspace.shape.menu.back"),
+            shortcut: commandToTooltip("command+shift+down", macos) ?? undefined,
+            disabled: !canEdit || !hasSelection,
+            onSelect: () => canvas.current?.orderSelection("bottom"),
           },
         ],
       },
@@ -252,6 +288,8 @@ export function WorkspaceMainMenu({
     onToggleHideUI,
     router,
     showFrameTitles,
+    state.canRedo,
+    state.canUndo,
   ]);
 
   return (

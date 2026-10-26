@@ -302,6 +302,35 @@ describe("encodeUpdateFile", () => {
     expect(doc).toContain('"~#penpot/path-data"');
   });
 
+  it("re-tags the layout-item sizing enums and keeps a nil val", () => {
+    const params: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 6,
+      vern: 2,
+      changes: [
+        {
+          type: "mod-obj",
+          "page-id": PAGE_ID,
+          id: SHAPE_ID,
+          operations: [
+            { type: "set", attr: "layout-item-h-sizing", val: "fix" },
+            { type: "set", attr: "layout-item-v-sizing", val: "auto" },
+            { type: "set", attr: "hide-in-viewer", val: null },
+          ],
+        },
+      ],
+    };
+
+    const doc = encodeUpdateFile(params);
+    // The layout:item-hsizing enum of the backend schema is ::sm/one-of, so
+    // a plain "fix" fails validation; the writer sends the keyword. A nil
+    // val rides the JSON null and the reader gives it back.
+    expect(doc).toContain('"~:val","~:fix"');
+    expect(doc).toContain('"~:auto"');
+    expect(decodeTransit<UpdateFileParams>(doc)).toEqual(params);
+  });
+
   it("round-trips through the reader into the original JS shape", () => {
     const doc = encodeUpdateFile(moveParams(new PathData(packedMoveBytes())));
     const decoded = decodeTransit<UpdateFileParams>(doc);
@@ -370,6 +399,56 @@ describe("encodeUpdateFile", () => {
     expect(doc).toContain(`"~u${root}"`);
     expect(doc).toContain(`"~u${SHAPE_ID}"`);
     expect(doc).toMatch(/"~:shapes",\["~u/);
+    const decoded = decodeTransit<UpdateFileParams>(doc);
+    expect(decoded).toEqual(params);
+  });
+
+  it("carries the optional mov-objects index and omits it otherwise", () => {
+    const params: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 6,
+      vern: 2,
+      changes: [
+        {
+          type: "mov-objects",
+          "page-id": PAGE_ID,
+          "parent-id": SHAPE_ID,
+          shapes: [FILE_ID],
+          index: 0,
+        },
+      ],
+    };
+    const withIndex = encodeUpdateFile(params);
+    expect(withIndex).toContain('"~:index",0');
+    expect(decodeTransit<UpdateFileParams>(withIndex)).toEqual(params);
+
+    const without = encodeUpdateFile({
+      ...params,
+      changes: [
+        {
+          type: "mov-objects",
+          "page-id": PAGE_ID,
+          "parent-id": SHAPE_ID,
+          shapes: [FILE_ID],
+        },
+      ],
+    });
+    expect(without).not.toContain('"~:index"');
+  });
+
+  it("writes a del-obj change with uuid ids for the undo of a draw", () => {
+    const params: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 7,
+      vern: 2,
+      changes: [{ type: "del-obj", "page-id": PAGE_ID, id: SHAPE_ID }],
+    };
+    const doc = encodeUpdateFile(params);
+    expect(doc).toContain('"~:del-obj"');
+    expect(doc).toContain('"~:page-id"');
+    expect(doc).toContain(`"~u${SHAPE_ID}"`);
     const decoded = decodeTransit<UpdateFileParams>(doc);
     expect(decoded).toEqual(params);
   });
@@ -570,6 +649,16 @@ describe("encodeUpdateFile add-obj", () => {
     const params = addObjParams(rectShape());
     const decoded = decodeTransit<UpdateFileParams>(encodeUpdateFile(params));
     expect(decoded).toEqual(params);
+  });
+
+  it("carries the optional add-obj index", () => {
+    const params = addObjParams(rectShape());
+    const change = params.changes[0];
+    if (change.type !== "add-obj") throw new Error("expected an add-obj change");
+    change.index = 2;
+    const doc = encodeUpdateFile(params);
+    expect(doc).toContain('"~:index",2');
+    expect(decodeTransit<UpdateFileParams>(doc)).toEqual(params);
   });
 
   it("writes frame children as UUIDs and keeps an empty vector", () => {

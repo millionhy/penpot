@@ -6,13 +6,13 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.3 完成；F9 workspace：F9.1–F9.6 完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.3 完成；F9 workspace：F9.1–F9.9 与 F9.3 伴随变更完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
-| 最后更新 | 2026-10-22 |
+| 最后更新 | 2026-10-23 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -42,7 +42,7 @@
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | 🔧 | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；切成 F7.1–F7.4 四片（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入完成；F7.4 完整 API 上下文依赖 F9），见下与第 4 节 |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）与 F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）完成；余下按 7.25 路线补撤销栈、z-order 插入与伴随变更，再补浏览器冒烟，最后是 F7.4 workspace 插件代理；Web Worker + 协作光标等留 F8 后 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）完成；余下按 7.25 路线补浏览器冒烟，最后是 F7.4 workspace 插件代理；Web Worker + 协作光标等留 F8 后 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
@@ -314,8 +314,13 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   见 7.25）；F9.4 外壳与菜单完成（三栏、左头重命名、主菜单、缩放、Layers、工具栏、
   帧标题，见 7.27）；F9.5 绘制工具与样式面板完成（frame/rect/ellipse 绘制、右栏基础
   样式段，见 7.29）；F9.6 resize/rotate 手柄完成（八手柄 + 四旋转区、修饰键、一次
-  提交，见 7.30）；余下补撤销栈、z-order 插入与伴随变更（7.25 路线），再补浏览器
-  冒烟，最后是 F7.4 workspace 插件代理；Web Worker
+  提交，见 7.30）；F9.7 撤销/重做完成（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，
+  见 7.31）；F9.8 z-order 插入完成（四条命令、index 全链路、撤销保真，见 7.32）；
+  F9.3 伴随变更完成（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，
+  见 7.33）；drop-index 完成（flex 插入/重排、绘制插入、mov index，见 7.34）；
+  F9.9 样式面板扩展完成（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，
+  见 7.36–7.37）；余下补浏览器冒烟，最后是 F7.4 workspace 插件代理；
+  Web Worker
   （缩略图/索引/导入）+ 协作光标 + 其余绘制/布尔/编辑/token 子流程仍在 F3–F8 验证后推进。
 
 每个路由组的完成标准（DoD）：
@@ -360,7 +365,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  ████████████████████████████░░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.6 完成：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板、缩放手柄)
+阶段 F  █████████████████████████████░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.8、F9.3 伴随变更、drop-index 与 F9.9 样式面板扩展完成：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板、缩放手柄、撤销/重做、z-order、伴随变更、布局内插入与重排、布局/约束段与多选批量)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
@@ -1701,6 +1706,380 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   只读文件无手柄；重载后几何一致；Escape/pointercancel 不落盘；F9.2–F9.5 回归。
 - 下一步：撤销栈；z-order 插入；伴随变更（hide-in-viewer/layout-item/组件同步）；
   浏览器冒烟；最后是 F7.4 workspace 插件代理。
+
+### 7.31 本轮（2026-10-23，第三十批：F9.7 撤销/重做）
+
+- 动机：F9.3–F9.6 的写路径都已落盘，却无法回退（§7.25 已登记「撤销缺失」）。F9.7
+  补客户端撤销栈：每次提交自动记录一条可反转的 update-file；Ctrl/Cmd+Z 撤销，
+  Ctrl/Cmd+Shift+Z（Windows 另加 Ctrl+Y）重做；主菜单 Undo/Redo 同步可用状态。
+- 交付（均含代码注释登记偏差）：
+  - `lib/workspace-undo.ts`（256 行，新）：`UNDO_LIMIT = 50`；`UndoState { entries, index }`
+    （-1 为空）；`pushUndo`（截断 redo 分支、超限丢最旧）；`undoStep`/`redoStep`；
+    `invertChanges`（从提交前模型派生反向：mod-obj 倒序写回旧值、add-obj → del-obj、
+    mov-objects 按旧父分组、整体倒序遍历）；`applyUpdateChanges`（mod/add/del/mov 本地
+    重放，mov 复用 `applyReparent`，del 递归删子树并脱离父 children）。
+  - `lib/workspace-undo.test.ts`（313 行，新，15 例）：游标与截断、50 上限、mod 旧值
+    倒序、add→del、mov 分组、del 无逆、本地重放（mod/add/del/根级删除/mov）与 move
+    round-trip。
+  - `lib/transit.ts`（+18/-1）：`UpdateFileDelObjChange`（type/page-id/id）、union 成员与
+    `del-obj` 编码；`transit.test.ts` +1 例。
+  - `lib/render-wasm/shape-upload.ts`（+67）：`uploadChangedShapes`——先对受影响父级
+    `use_shape` + `set_shape_children`，再对仍存在的 shape `set_object`，最后一次
+    `request_render`；测试 +5 例（mod/add/del/mov/缺失形状）。
+  - `lib/workspace-store.ts`（+17/-2）：`canUndo`/`canRedo` 与 `setUndoAvailability`
+    （值不变时不发通知）；`workspace-store.test.ts` +2 例，reset 用例补两字段并把
+    通知数 7→8。
+  - `components/workspace-wasm-canvas.tsx`（+129/-1）：`undoRef` 栈与 `historyRef` 命令；
+    `sendUpdateFile(changes, recordUndo = true)` 在**请求前**从旧模型反转换（无法反转的
+    提交不落盘），成功后 push；`WorkspaceCanvasHandle` 增 `undo`/`redo`；加载 effect
+    起点重置栈；`performHistory` 发送 → 本地重放 → wasm 同步 → 移动游标 → 恢复选择/
+    清悬停；快捷键与 cleanup（清栈并把菜单置灰）。
+  - `components/workspace-main-menu.tsx`（+13/-8）：Undo/Redo 接 canvas handle，按 store
+    的 `canUndo`/`canRedo` 禁用，快捷键标签 Cmd/Ctrl+Z 与 Shift+Z。
+- 关键语义：
+  - 一次提交一条目：移动+重父级、一次绘制、一次样式修改、一次变换各一条；零变更、
+    请求失败与单飞冲突不记录；新提交截断 redo 分支；最多 50 条。
+  - undo/redo 各发一次 update-file（`recordUndo = false`），成功后本地重放同一 changes，
+    再 `uploadChangedShapes` 交给 wasm；失败只报 store error，栈、模型与选择不动。
+  - 选择：撤销回到提交前选择，重做回到撤销前的选择（undo 成功时写入 `selectionAfter`）；
+    已删除的 id 被过滤；悬停状态清空。
+  - 删除的 wasm 同步：render-wasm 没有删除 API，`del-obj` 靠父 `children` 移除后
+    `request_render` 停止绘制；根级形状同样从 ZERO_UUID 根的 children 脱离。
+- 与 CLJS 的有意偏差（代码注释均登记）：1）栈按页面加载持有，切换页面/重载即清空，
+  不是文件级全局栈；2）无 undo transaction/group（F9 写路径都是离散提交）；3）
+  `selection-after` 在撤销时记录，而非提交时。
+- 验证：`pnpm test` 52 文件 1232 例全过（新增 `workspace-undo.test.ts` 15 例，既有文件
+  +8 例）；`pnpm typecheck`、`pnpm lint` 干净；`pnpm build` 通过（/workspace 31.3 kB，
+  First Load JS 225 kB）。
+- 浏览器冒烟：本轮**未执行**（无可用登录会话）。待补清单：移动/绘制/样式/变换各自
+  撤销与重做；多步撤销后新编辑截断 redo；51 步后最旧条目丢弃；撤销删除后形状从画布
+  消失、重做恢复；选择恢复；只读文件不产生条目；F9.2–F9.6 回归。
+- 下一步：z-order 插入；伴随变更（hide-in-viewer/layout-item/组件同步）；浏览器冒烟；
+  最后是 F7.4 workspace 插件代理。
+
+---
+
+### 7.32 本轮（2026-10-23，第三十一批：F9.8 z-order 插入）
+
+- 动机：§7.25 AD8 与 §7.29 AD12.5 都登记了「插入位置省略 index、追加尾部」，
+  CLJS 的 bring-forward/front/backward/back 四条命令因此缺失；F9.7 的 mov 反转还
+  按旧父批量尾插，撤销会丢失层叠位置。F9.8 补齐 index 全链路与四条命令。
+- 交付（均含代码注释登记偏差）：
+  - `lib/workspace-order.ts`（96 行，新）：`insertChildren` 逐步镜像
+    `app.common.data/insert-at-index`：split-at 钳制 index → 前后两半移除 incoming
+    → before + incoming + after（index 0 为底层、尾部为顶层）；
+    `buildVerticalOrderChanges` 镜像 `vertical-order-selected` 的快照索引：`:top`
+    = count、`:up` = current+2、`:down` = max(0, current-1)、`:bottom` = selection
+    内序号；每个 shape 一条 mov-objects，带 index。`workspace-order.test.ts`
+    （110 行，新，9 例）。
+  - `lib/transit.ts`（+16/-8）：add-obj 与 mov-objects 各加可选 `index`；编码走
+    `keywordMap`（undefined 自动丢弃），append 仍不带键；`transit.test.ts` +2 例。
+  - `lib/workspace-draw.ts`（+14/-4）：`applyAddShape` 增可选 index（id 已存在则
+    不动）；`workspace-draw.test.ts` +1 例。
+  - `lib/workspace-move.ts`（+15/-7）：`applyReparent` 增可选 index；同父重排由
+    insertChildren 先移除再插入，与 process-change 一致；`workspace-move.test.ts`
+    +2 例（跨父插入、同父重排）。
+  - `lib/workspace-undo.ts`（+46/-17）：`applyUpdateChanges` 的 add-obj/mov-objects
+    传 index；`invertChanges` 的 mov 改为每个 shape 一条，带旧父与旧 index，按旧
+    父/索引升序输出（批量尾插会丢层叠）；`workspace-undo.test.ts` +3 例（含同父
+    z-order round-trip 与多 shape 堆叠恢复）。
+  - `components/workspace-wasm-canvas.tsx`（+67）：`orderRef` 与
+    `WorkspaceCanvasHandle.orderSelection`；`performOrder` = 构建 changes →
+    `sendUpdateFile`（一条撤销）→ 本地重放 → `uploadChangedShapes`；Ctrl/Cmd+↑/↓
+    与 Shift 变体（idle、非表单、只读不响应）；cleanup 清命令引用。
+  - `components/workspace-main-menu.tsx`（+38/-5）：Edit 组在 Undo/Redo 后加分隔线
+    与四项（Bring forward / Bring to front / Send backward / Send to back），标签
+    用 `workspace.shape.menu.*`，快捷键用
+    `commandToTooltip("command[+shift]+up/down")`，`!canEdit || !hasSelection` 禁用。
+  - `lib/translations/*.ts`（各 +4）：`pnpm translations` 重新生成（en 877→881）。
+- 关键语义：
+  - index 0 = 父 children 最底层，append = 顶层；`insert-at-index` 先 split 再移除
+    待插 id，所以同父重排的 index 按移动前的列表解释（CLJS 的 `:up` 用 current+2
+    正是如此）。
+  - 四条命令与 CLJS 一致：Top/Bottom 一次跨越全部兄弟，Forward/Backward 只交换一
+    格；多选 Bottom 按选择顺序自底向上保留相对次序；已到极限时仍发一条 no-op
+    change（CLJS 也不比较位置）。
+  - 撤销：mov 反向按每个 shape 的旧 index 恢复，[A,B,C,D] 移走 B、D 后撤销回到
+    [A,B,C,D]；同父 z-order 重排也可逆。
+  - 绘制仍尾插：CLJS 普通帧的 drop-index 为空（只有 flex/grid 计算），因此这与
+    CLJS 一致；add-obj 的 index 通道留给后续布局切片。
+- 与 CLJS 的有意偏差（代码注释均登记）：1）父级缺失的 shape 直接跳过（CLJS 会发
+  nil parent 的 change 由后端丢弃）；2）z-order 命令不进 undo transaction（F9.7 的
+  一请求一条目已覆盖）；3）settings/shortcuts 页面尚未登记 workspace 命令，主菜单
+  内联标签为准。
+- 验证：`pnpm test` 53 文件 1249 例全过（新增 17 例）；`pnpm typecheck`、`pnpm lint`
+  干净；`pnpm build` 通过（/workspace 31.8 kB，First Load JS 226 kB）。
+- 浏览器冒烟：本轮**未执行**（无可用登录会话）。待补清单：四条命令的层叠变化与
+  wasm 重绘；同父/跨帧撤销与重做；多选 Bottom；只读文件不响应；F9.2–F9.7 回归。
+- 下一步：伴随变更（hide-in-viewer/layout-item/组件同步）；浏览器冒烟；最后是 F7.4
+  workspace 插件代理。
+
+---
+
+### 7.33 本轮（2026-10-23，第三十二批：F9.3 伴随变更）
+
+- 动机：§7.25 AD5 登记了 generate-relocate 的伴随变更缺失——移动只发 mov-objects 与几何
+  mod-obj，帧入帧不隐藏、离开 flex/grid 不清理 layout-item、组件实例进出的
+  component-root 不维护。本轮补齐四类伴随变更（关闭 AD5），并让撤销与 transit 支持它们。
+- 交付（均含代码注释登记偏差）：
+  - `lib/workspace-component.ts`（151 行，新）：`isRootShape`/`isInComponentCopy`/
+    `isInstanceRoot`/`isSubinstanceHead`/`getInstanceRoot`/`getChildHeads`/
+    `getChildrenIdsWithSelf`/`componentsNestingLoop`；`isInstanceHead` 复用
+    `workspace-selection`；walks 带 visited 集防环。
+  - `lib/workspace-layout.ts`（190 行，新）：flex/grid/行列/auto/fill/absolute 谓词、
+    `changeHSizing`/`changeVSizing`、`layoutItemAttrsToRemove`（9 属性 + 条件 h/v
+    sizing）、`LAYOUT_ITEM_TOKEN_KEYS` 与 `unapplyLayoutItemTokens`。
+  - `lib/workspace-relocate.ts`（206 行，新）：`OperationList` 按 shape 汇总 set 操作；
+    `childrenAfterMove` 复刻 mov 后的子列表；`buildRelocateChanges` 按 generate-relocate
+    顺序生成 layout-item/token → hide-in-viewer → component-root → sizing → mov-objects。
+  - `lib/workspace-move.ts`：`reparentRoots` 补 copy 父、absolute 同父、layout 帧三条
+    清理分支；新增 `isValidMove`（形状存在、目标不在子树、组件嵌套环、双侧非 copy）；
+    `applyReparent` 改为全有或全无；删除 `buildReparentChange`（drop 统一走 relocate）。
+  - `lib/workspace-undo.ts`：`invertChanges` 对旧模型缺失属性输出 `val: null`；
+    `applyUpdateChanges` 把 null 当删除（后端 set-shape-attr 的 dissoc），缺失属性
+    no-op。撤销 relocate 提交时 hide-in-viewer/component-root 会真正删除。
+  - `lib/transit.ts`：`KEYWORD_VALUE_KEY` 增 `layout-item-h-sizing`/
+    `layout-item-v-sizing`，枚举按关键字发送（后端 ::sm/one-of）。
+  - `components/workspace-wasm-canvas.tsx`：`commitMove` 生成 relocate 并随同一请求发送；
+    本地模型用 `applyUpdateChanges` 应用；relocate 非空时 wasm 走 endModifiers +
+    cleanModifiers + uploadChangedShapes（先父 children 再 set_object），空时仍走几何增量。
+  - 测试：`workspace-component.test.ts`（155 行，9 例）、`workspace-relocate.test.ts`
+    （388 行，15 例）；`workspace-move.test.ts` 净增 6 例（清理分支、isValidMove、全有或
+    全无）；`workspace-undo.test.ts` +3（nil 反向、nil 删除、relocate round-trip）；
+    `transit.test.ts` +1（枚举与 nil round-trip）。
+- 关键语义：
+  - hide-in-viewer 只给「帧根、目标非 ZERO、目标本身是帧」的移动置 true；已为 true 不
+    重发。
+  - layout-item 仅在目标不是 flex/grid 时清理：删除存在的 9 个属性；applied-tokens 只删
+    `layout-item-min/max-w/h` 与 `m1..m4`，其余保留；shape 自身是布局且该轴非 fill 时
+    保留 h/v sizing（嵌套布局仍受父级约束）。
+  - sizing：父级集合 = 目标 + 每个 root 的旧父（去重）；children 用移动后的列表，子属性
+    读原始模型。`changeHSizing` 过滤绝对/隐藏子（列 every?、行 some）；`changeVSizing`
+    不过滤（列 some、行 every?）；空列表的 every? 为 true——均为 CLJS 原样。
+  - 组件：目标在实例内（`getInstanceRoot` 非空）→ 移动子树逐 shape 删 component-root；
+    目标在实例外 → `getChildHeads` 补 true（含自身，遇 head 停止）。两分支互斥。
+  - `isValidMove` 对齐后端：目标在子树内、components-nesting-loop、旧父或目标为 copy 时
+    整体拒绝；roots 先过滤再生成伴随变更，避免后端丢 mov 后留下脏伴随。
+  - mov-objects 始终最后，roots 反序，不带 index（尾插）。
+- 与 CLJS 的有意偏差（代码注释均登记）：1）swap-slot 未做（touched group 尚未编码）；
+  2）空组清理/mask/detach/deroot/reroot 未发——detach 在 CLJS 不可达，deroot/reroot
+  与两条 component-root 规则等价；3）constraints、grid cell、blocked、variant、
+  resize-parents 仍留给后续切片；4）每个 shape 一条 mod-obj 代替 update-shapes 聚合
+  （操作互不重叠）；5）isValidMove 预过滤与 applyReparent 全有或全无是有意收紧。
+- 已知限制：drop 仍无 index，布局内的直接子级拖放按尾插解释（CLJS 会传 drop-index）；
+  布局重排因此可能改变层叠，待 drop-index 切片。
+- 验证：`pnpm test` 55 文件 1283 例全过（本轮 +34）；`pnpm typecheck`、`pnpm lint`
+  干净；`pnpm build` 通过（/workspace 33.1 kB，First Load JS 228 kB）。
+- 浏览器冒烟：本轮**未执行**（无可用登录会话）。待补清单：帧拖入帧后 viewer 隐藏；
+  拖出 flex 后 layout-item 属性与 token 消失；flex 父/子 sizing 翻 fix；组件实例内外
+  拖动后的 component-root 与图层结构；撤销/重做上述四类；只读文件不响应；F9.2–F9.8 回归。
+- 下一步：drop-index（布局内插入与重排）；浏览器冒烟；最后是 F7.4 workspace 插件代理。
+
+### 7.34 本轮（2026-10-23，第三十三批：drop-index）
+
+- 动机：§7.33 留下一条已知限制：drop 仍无 index，布局内的直接子级拖放按尾插解
+  释，重排会改变层叠结构。本轮接入 CLJS 的 drop-index（flex 布局的插入槽），让拖入
+  与绘制都按指针位置插入，并让同父重排走 mov-objects 的 index 分支。
+- 交付（均含代码注释登记偏差）：
+  - `lib/workspace-drop.ts`（119 行，新）：`dropIndexForFrame(objects, frameId,
+    point)`，仅 flex；按子形状主轴中心切分单行流，正常方向映射 `listIndex + 1`、
+    末端映射 0，反向（`row-reverse`/`column-reverse`）映射 `listIndex`、末端映射
+    children 数；隐藏与 absolute 子形状不参与流，但仍占列表槽位。
+  - `lib/workspace-relocate.ts`：`buildRelocateChanges` 增第 5 参 `dropIndex`
+    （默认 null）；`childrenAfterMove` 对同父用 `insertChildren` 得到重排后的子列表
+    （sizing 计算因此看到真实顺序）；mov-objects 在 index 非空时带 `index`。
+  - `lib/workspace-move.ts`：`applyReparent` 的无 index 分支改按 helpers.cljc 的
+    `append-at-the-end`（已存在则保持原位），修掉同父无 index 时父列表重复 id 的
+    旧隐患，与后端一致。
+  - `components/workspace-wasm-canvas.tsx`：`commitMove` 以释放点调用
+    `dropIndexForFrame` 并随 relocate 发送；`commitDraw` 增按下点参数，flex 父时把
+    同一 index 写进 add-obj 与本地 `applyAddShape`（对应 CLJS box/curve/line 的
+    initial 点取 index）。
+  - 测试：`workspace-drop.test.ts`（172 行，7 例：正常/反向/行列、中心边界、
+    hidden/absolute、selrect 回退、缺失与无几何）；`workspace-relocate.test.ts` +1
+    （mov 带 index）；`workspace-move.test.ts` +1（同父无 index 保持原位）。
+- 关键语义：
+  - 主轴：`row`/`row-reverse` 用 x，`column`/`column-reverse` 用 y；中心优先取
+    selrect，缺失时用 x/y + width/height。
+  - 槽位：按中心升序取第一个 `center >= pointer` 的流子形状；正好落在中心归前半
+    （与 CLJS seek 先命中 start-half 一致）。无命中时正常方向回 0（列表头），反向回
+    children 数（列表尾）。
+  - 空流（无子、全隐藏/absolute、全无几何）与非 flex 返回 null，调用方保留尾插。
+  - index 按 `parent.shapes` 完整列表计数，因为 insert-at-index 操作该列表；CLJS
+    的 enumerate 基于去 hidden 后的列表。
+- 与 CLJS 的有意偏差（代码注释均登记）：1）只做单行主轴，wrap 多行、gap 半区、
+  帧旋转/翻转（CLJS 用 transform-inverse 转点）与 grid 的 drop-cell 未做；2）绘制
+  与拖动的 index 都取世界轴，旋转帧按轴对齐近似；3）多选 roots 仍按选择顺序，
+  CLJS 的 order-by-indexed-shapes 未引入。
+- 已知限制：grid 同父重排仍无 cell/index，退化为保持原位（不再重复 id）；旋转帧内
+  的插入槽可能偏移；浏览器插入指示线尚未绘制（CLJS 有 drop overlay）。
+- 验证：`pnpm test` 56 文件 1292 例全过（本轮 +9）；`pnpm typecheck`、`pnpm lint`
+  干净；`pnpm build` 通过（/workspace 33.4 kB，First Load JS 228 kB）。
+- 浏览器冒烟：本轮**未执行**（无可用登录会话）。待补清单：flex row/column 与反向
+  方向拖入子形状到不同槽位；同父直接子级拖放重排（层叠与视觉一致）；绘制 rect/
+  ellipse/frame 到 flex 不同槽位；非 flex/空布局仍尾插；撤销/重做插入与重排；
+  只读文件不响应；F9.2–F9.8 与 §7.33 伴随变更回归。
+- 下一步：浏览器冒烟；grid drop-cell 与插入指示线（如需）；最后是 F7.4 workspace
+  插件代理。
+
+---
+
+### 7.35 本轮（2026-10-26，第三十四批：属性面板样式不生效）
+
+- 问题：样式面板改不透明度或点隐藏后，面板与 store 立即变化，画布像素不动。
+- 定位（运行时取证，非推断）：Playwright 打开文件、画矩形、改不透明度 40、点隐藏，
+  同时记录控制台与画布截图 sha1。面板值 40、按钮文案变「显示」，画布 hash 完全
+  不变，无 `role="alert"`。控制台给出真因：
+  `render-wasm: $APP["$app$render_wasm$api$set_shape_opacity$$"] is not a function`
+  （hidden 与 children 的两条同理）。
+- 根因：`$APP` 是 shadow-cljs 的选择性导出对象。本构建里
+  `set_shape_children`、`set_shape_fills`、`set_shape_strokes`、
+  `set_shape_opacity`、`set_shape_hidden`、`set_shape_corners` 只有顶层 var
+  （`public/js/shared.js` 里是 `var $app$render_wasm$api$xxx$$=function(...)`），
+  没有 `$APP.<key>=` 导出赋值；`set_object`、`use_shape`、`request_render`、
+  `decode_str`、`uuid_parse` 有。`interop.call` 因此抛错，调用方 catch 成
+  `console.warn`，文件与本地模型都已接受改动，只有 wasm 侧没收到。
+- 修复（`lib/render-wasm/shape-upload.ts` 三条路径统一走 `set_object`）：
+  - `applyShapeStyle(app, shape, attrs)`：整条已合并的 shape 重传。`set_object`
+    的 base props 含 opacity/hidden/r1..r4，host attrs 含 fills/strokes，一次 FFI
+    覆盖全部样式字段；不再需要逐项 setter。
+  - `uploadNewShape(app, shape, parentShape)`：新 shape 一条，父记录一条（父的
+    children 列表随记录写入），再用 request_render 收尾。根父在模型里没有记录时
+    跳过第二条。
+  - `uploadChangedShapes`：父节点改为整条 `set_object(after[parentId])`，并把
+    已在父集合里的 id 从 shapes 集合移除，避免重复写。
+  - `interop.ts` 删除六个未导出的 KEY，注释改为记录实测结论；`useShape` 也一并
+    删除（改后无消费者）。`cljsValue` 与其测试随细粒度 setter 一起移除。
+  - `workspace-wasm-canvas.tsx`：`updateShapeAttrs` 把 `nextShape` 传给
+    `applyShapeStyle`；`commitDraw` 传 `next[parentId]` 而非 children 数组。
+  - 测试：`shape-upload.test.ts` 改为只 stub `set_object`/`request_render`，断言
+    调用序列与 payload（新 shape、父 children、样式整条重传、blocked-only 不写）。
+- 验证：`pnpm test` 56 文件 1293 例全过；`pnpm typecheck`、`pnpm lint` 干净；
+  `pnpm build` 通过（/workspace 33.3 kB）。浏览器复测：改不透明度 40 后 +120ms
+  画布 hash 已变（`6165bb3c5238 → 7741f6d1444d`），点隐藏再变
+  （`→ e03623124235`），无 alert、无 wasm 报错；新画的矩形也可见。
+- 已知限制（既有，未随本轮扩大）：画布没有 Delete 快捷键；撤销「在根下新增」时
+  父为页面根，不在 objects 模型里，`uploadChangedShapes` 无法写根 children，被删
+  形状可能残留在画布上。两件都属 F9.5/F9.7 的后续补齐项。
+- 与 CLJS 的有意偏差：CLJS 的增量路径 `set-wasm-attr!` 逐 key 调细粒度 setter，
+  本实现改为整条记录重传。代价是每次样式提交多序列化一个 shape；当前面板在
+  blur/Enter 提交，不是连续拖动，开销可接受。好处是不依赖未导出的 FFI。
+
+### 7.36 本轮（2026-10-26，第三十五批：F9.9 尺寸/位置与阴影模糊）
+
+- 目标：右栏样式面板从「不透明度/填充/描边/圆角」扩到「尺寸/位置/旋转 + 阴影 +
+  模糊」。F9.9 分三批，本批为第一批（单形状）；布局/约束第二批，多选批量第三批。
+- 新增 `lib/workspace-geometry.ts`（17 例）：`geometryOf` 给出面板读数
+  （x/y 取 points 包围盒左上，宽高取 selrect，rotation 取存储值），
+  `geometryEditable` 用 `isTransformableShape` 与 selrect 双重门禁，
+  `buildGeometryChange` 按「绕 selrect 中心旋转 → 以 points[0] 为定点做世界轴缩放 →
+  平移落到目标 x/y」合成一个世界矩阵，再走 `transformShapePatch` 与
+  `buildStyleChange`，目标与现状相同则返回 null。
+- `lib/workspace-style.ts` 增阴影/模糊纯函数（该文件测试 32 例）：
+  `shadowsOf`/`addShadow`（前插，默认 drop-shadow、黑 0.2、4/4、blur 4、spread 0）、
+  `removeShadow`、`withShadowNumber/Style/Hidden/Color/Opacity`、
+  `shadowsPatch`（空列表 → null）、`blurOf`/`addBlur`/`withBlurValue`/`withBlurHidden`。
+  值都夹在 `schema:shadow` 与 `schema:blur` 范围内，颜色只改嵌套 `color`/`opacity`
+  并保留 refs。
+- 写路径语义：`set` 的 val 为 null 等于删除属性（后端
+  `ctn/set-shape-attr` 的 dissoc）。删最后一个阴影、删模糊都发 null；
+  `workspace-wasm-canvas.tsx` 的 `updateShapeAttrs` 本地合并同步改成「null/undefined
+  即 delete」，否则模型里会留 null 键。
+- `applyShapeStyle` 的白名单补 `shadow`/`blur`（含 null）：不补的话阴影与模糊只进
+  模型不进画布。新增 2 例断言 `drop-shadow` 以关键字出线、nil 删除仍重传整条记录
+  （`shape-upload.test.ts` 19 例）。
+- `lib/transit.ts` 的 `KEYWORD_VALUE_KEY` 加 `style`：阴影的 `:style` 是枚举，
+  留字符串会被后端 `::sm/one-of` 拒。
+- 画布句柄增 `updateShapeGeometry(id, target)`：门禁 → 构 change（null 直接成功）
+  → `sendUpdateFile` → 重读模型后 `applyUpdateChanges` → 更新 objects/index/store →
+  `uploadShapeGeometry`（整条 set_object）。
+- 面板：`run` 泛化为接受 action，新增 `commitMeasureDraft` 走几何句柄；新增
+  尺寸块（W/H/X/Y/Rotation 两列网格，rotation −359..359，单位 °）、阴影段
+  （标题 + 加号；每行 style 下拉、隐藏勾选、删除，其下颜色/不透明度/偏移/模糊/
+  扩展 6 格）与模糊段（无值时给加号；有值时值 + 隐藏 + 删除）。
+- 配套：`styles/workspace.css` 增 `.pp-workspace-style-grid`、`--shadow`、
+  `-shadow-head`、`-select`、`-check`、`row--blur` 与 disabled 态；
+  `pnpm translations` 重新抽取（901 键，en/zh_cn/zh_hant 同步）。
+- 与 CLJS 的有意偏差：measures 无比例锁、帧预设与布局禁用；阴影一行一条并带
+  样式下拉（CLJS 是折叠行）；模糊只有 layer blur（background-blur 属新渲染开关）；
+  多选仍只显示提示文案。尺寸块对 text/svg-raw/blocked 类型隐藏，因为本切片不重算
+  position-data。存储 rotation 归一在 [0,360)，输入框仍取 −359..359。
+- 验证：`pnpm test` 57 文件 1325 例全过；`pnpm typecheck` 退出 0；`pnpm lint`
+  无告警；`pnpm build` 通过（/workspace 35.5 kB，First Load JS 230 kB）。
+  本轮未做浏览器复测。
+- 已知限制：布局/约束/网格/导出段仍未实现；阴影逐条编辑，无「全部移除」按钮；
+  文本与 svg-raw 的几何只读；多选批量编辑在第三批。
+- 下一步：第二批做布局与约束段（含 flex 子项的定位/尺寸禁用规则），第三批做
+  多选批量编辑。
+
+### 7.37 本轮（2026-10-26，第三十六批：F9.9 布局/约束段与多选批量编辑）
+
+- 目标：F9.9 的第二、三批。样式面板补「布局」「布局项」「约束」三段，并把多选的
+  「N selected」提示换成批量编辑面板。
+- 新增 `lib/workspace-layout-attrs.ts`（27 例）：枚举表与属性清单照
+  `common/.../types/shape/layout.cljc` 的 `layout-attrs` / `layout-child-attrs` 抄；
+  `layoutValues` 按 `initial-flex-layout` / `initial-grid-layout` 补默认值，缺键的
+  记录也读出编辑器会创建的值。`layoutPatch` 建 flex/grid 初始值，
+  `removeLayoutPatch` 把全部键发 null。`gapPatch` / `paddingPatch` / `marginPatch`
+  每次发完整 map，`trackPatch` / `tracksPatch` 管 grid 轨道。约束面：
+  `constraintsOf` 按 `default-constraints-h/v` 取值（父为 frame → left/top，否则
+  scale），`inFrameForConstraints` 用 parent-id ≠ ZERO_UUID 判断，
+  `fixedScrollVisible` 只给 first-level 子级返回真。`measureLocks` 复刻
+  `menus/measures.cljs` 的三条禁用规则。
+- 新增 `lib/workspace-multi.ts`（13 例）：`sharedValue` / `sharedFlag` 给 mixed
+  判定；`flagUpdates`、`opacityUpdates`、`radiusUpdates`（只对 rect/frame）、
+  `shadowAddUpdates` / `shadowClearUpdates`、`blurAddUpdates` / `blurClearUpdates`、
+  `constraintUpdates`、`sizingUpdates` 各返一个 `{id, attrs}` 列表。每个形状拿自己
+  的补丁与自己的新 uuid，阴影/模糊的 id 不会在形状之间串。
+- 新增 `components/workspace-style-field.tsx`：把面板原有的 `DraftField`、数值与
+  颜色读取函数、草稿钩子抽出，另加 `SelectField`。`useDraftFields` 保留「同一文本
+  只发一次」（Enter 失焦会再触发一次 blur）与 send 落定后丢草稿的行为；新段与多选
+  面板共用同一套提交语义。
+- 新增 `components/workspace-layout-options.tsx`（800 行，三段）：
+  - 布局（只对 frame）：无 layout 时两个按钮建 flex/grid；有 layout 时给类型下拉
+    （切换即按初始值重建）、方向、align items、wrap（flex）或 justify items
+    （grid）、align content、justify content、gap 类型与值、padding 类型与值；
+    grid 再给行/列轨道列表（类型下拉 + 数值或 Auto + 增删）。
+  - 布局项（父级有布局时）：h/v sizing、align-self、absolute、margin 与 min/max
+    宽高；min/max 清空即发 null 删除（schema 里可选）。
+  - 约束（parent 不是根板时）：h/v 两个下拉用 `workspace.options.constraints.*`
+    目录标签；first-level 子级多一个 fixed-scroll 勾选。
+- 新增 `components/workspace-multi-options.tsx`（377 行）：N selected 标题、
+  隐藏/锁定、不透明度、圆角、阴影加/清、模糊加/清、约束、布局项 sizing。混合值用
+  两套表达：输入框留空并以 `settings.multiple` 作 placeholder，下拉插一个禁用的
+  mixed 选项。
+- 画布句柄增 `updateShapesAttrs(updates)`：一次 `sendUpdateFile` 带 N 个 mod-obj，
+  本地用 `applyUpdateChanges` 镜像（null 即删键），重建索引与 store，再对属性会被
+  渲染器读取的子集调一次 `uploadChangedShapes`。`updateShapeAttrs` 语义不变。
+- `lib/render-wasm/shape-upload.ts`：样式白名单提为导出函数 `attrsWriteStyle`，
+  前缀表加 `layout`（覆盖 `layout-item-*`）与 `constraints-`，`fixed-scroll` 单列。
+  不补的话布局与约束只进模型不进画布。测试 21 例（+2）。
+- 面板：单形状时按条件插入三段（布局 = frame；布局项 = 父级有布局；约束 = 父级
+  不是根板），measures 的 x/y 与 W/H 改用 `measureLocks` 禁用。
+- 与 CLJS 的有意偏差：
+  - wire 的 `set` 整体替换值，CLJS 的 `update-layout` 用 `d/patch-object` 深合并。
+    所以这里每个 map 都发完整键（padding 必带 p1..p4，gap 必带两值），否则
+    `schema:layout-padding` 的必填键会拒。
+  - `remove-layout` 连 grid 键一起清。CLJS 的 `layout-keys` 只列 flex 键（上游
+    遗漏），删掉 grid 布局会留下 `layout-grid-*`。
+  - 枚举标题硬编码英文，与 `layout_container.cljs` 的做法一致（上游多数用图标
+    title，po 里没有这些键）。
+  - 不移植 reflow，也没有 grid cells 编辑与「edit grid」模式。
+  - 多选批量只覆盖单形状面板已有的属性；fills、strokes 与逐条阴影/模糊仍走单选。
+- 已知限制（本轮明确记录）：
+  - 布局属性会落库并随 `set_object` 进 wasm，但客户端不重算子级位置。视觉重排要
+    等父级下一次 modifier（拖动子级、缩放父级），因为 `reflow_flex_layout` /
+    `reflow_grid_layout` 只在 modifier 管线里跑，`set_object` 不重排。
+  - 约束同理：属性存进去，resize 不套用（`lib/workspace-transform.ts` 明确只变换
+    选区，不传播约束与布局）。
+  - 网格布局的 `layout-grid-cells` 没有编辑入口，轨道只改 `layout-grid-rows` /
+    `layout-grid-columns`。
+- 验证：`pnpm test` 59 文件 1367 例全过；`pnpm typecheck` 退出 0；`pnpm lint`
+  无告警；`pnpm build` 通过（/workspace 40.5 kB，First Load JS 236 kB）；
+  `pnpm translations` 重新抽取（928 键，en 全量，zh_cn 796、zh_hant 912，其余
+  回落英文）。本轮未做浏览器复测。
+- 下一步：F9.9 余下的是 grid cells 与布局 reflow 的移植（要做可视化重排才需要），
+  以及 resize 的约束传播。
 
 ---
 

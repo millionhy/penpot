@@ -27,6 +27,7 @@
 import { ZERO_UUID } from "@/lib/file-data";
 import { IDENTITY_TRANSFORM, type WorkspaceDrawTool } from "@/lib/workspace";
 import type { WorkspaceObjects, WorkspaceShape } from "@/lib/workspace";
+import { insertChildren } from "@/lib/workspace-order";
 
 // The minimum drag, in screen pixels, before the preview starts
 // (handle-drawing: (> (* (distance point initial) zoom) 10)).
@@ -217,13 +218,16 @@ export function createDrawShape(
 }
 
 // shape_tree.cljc add-shape over the JS model: the shape takes the change
-// id, the normalized parent/frame ids and appends to the parent's children.
-// A missing parent normalizes to the root (uuid/zero), like the backend.
-// The input objects map and every untouched shape stay shared.
+// id, the normalized parent/frame ids and joins the parent's children. A
+// missing parent normalizes to the root (uuid/zero), like the backend. A
+// missing index appends at the tail; an index follows the insert-at-index
+// rule of the CLJS (0 is the bottom). The input objects map and every
+// untouched shape stay shared.
 export function applyAddShape(
   objects: WorkspaceObjects,
   shape: WorkspaceShape,
   parentId: string,
+  index?: number,
 ): WorkspaceObjects {
   const parent = objects[parentId];
   const resolvedParentId = parent === undefined || parent === null ? ZERO_UUID : parentId;
@@ -239,7 +243,13 @@ export function applyAddShape(
     const children = resolvedParent.shapes;
     const list = Array.isArray(children) ? children : [];
     if (!list.includes(shape.id)) {
-      next[resolvedParentId] = { ...resolvedParent, shapes: [...list, shape.id] };
+      next[resolvedParentId] = {
+        ...resolvedParent,
+        shapes:
+          typeof index === "number"
+            ? insertChildren(list, index, [shape.id])
+            : [...list, shape.id],
+      };
     }
   }
   return next;

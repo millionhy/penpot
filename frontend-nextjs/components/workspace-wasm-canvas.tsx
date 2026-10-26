@@ -166,8 +166,10 @@ import {
   workspacePageObjects,
 } from "@/lib/render-wasm/workspace-data";
 import {
-  uploadNewShape,
   applyShapeStyle,
+  attrsWriteStyle,
+  uploadChangedShapes,
+  uploadNewShape,
   uploadShapeGeometry,
 } from "@/lib/render-wasm/shape-upload";
 import { isMacos } from "@/lib/shortcuts";
@@ -193,16 +195,30 @@ import {
   firstValidParent,
   type DrawRect,
 } from "@/lib/workspace-draw";
+import { dropIndexForFrame } from "@/lib/workspace-drop";
 import {
   applyMove,
-  applyReparent,
   buildMoveChanges,
-  buildReparentChange,
   movedGeometry,
   resolveMoveSet,
   topNestedFrameAt,
 } from "@/lib/workspace-move";
+import { buildRelocateChanges } from "@/lib/workspace-relocate";
+import { buildGeometryChange, type GeometryTarget } from "@/lib/workspace-geometry";
 import { buildStyleChange } from "@/lib/workspace-style";
+import type { ShapeUpdate } from "@/lib/workspace-multi";
+import { buildVerticalOrderChanges, type VerticalOrderLocation } from "@/lib/workspace-order";
+import {
+  applyUpdateChanges,
+  canRedo,
+  canUndo,
+  createUndoState,
+  invertChanges,
+  pushUndo,
+  redoStep,
+  undoStep,
+  type UndoState,
+} from "@/lib/workspace-undo";
 import {
   applyTransformSet,
   buildTransformChanges,
@@ -240,6 +256,7 @@ import {
   setHoverTopFrameId,
   setSelection,
   setTransformPreview,
+  setUndoAvailability,
   setWorkspaceObjects,
   setWorkspaceState,
   setWorkspaceViewport,
@@ -368,6 +385,24 @@ export interface WorkspaceCanvasHandle {
   // F9.5 AD7: one mod-obj for the style panel; resolves false when the
   // file is read-only, the shape is gone or the commit could not run.
   updateShapeAttrs(id: string, attrs: Record<string, unknown>): Promise<boolean>;
+  // F9.9: the multi-selection commit. One update-file call carries a mod-obj
+  // per shape (the panel builds the per-shape patches, a shadow or a blur id
+  // included), then the local model applies the same changes and one wasm
+  // batch rewrites the records a style attribute touched. An empty list, or
+  // a list whose shapes are all gone, resolves true without an RPC.
+  updateShapesAttrs(updates: readonly ShapeUpdate[]): Promise<boolean>;
+  // F9.9: one geometry edit from the size/position/rotation fields. The
+  // canvas builds the same world matrix the resize and rotate gestures use,
+  // commits one mod-obj and pushes the whole record to wasm; resolves true
+  // without a request when the target already matches.
+  updateShapeGeometry(id: string, target: GeometryTarget): Promise<boolean>;
+  // F9.7: one undo/redo step; the main menu and the Ctrl/Cmd+Z handler
+  // reach the effect-owned stack through these.
+  undo(): void;
+  redo(): void;
+  // F9.8: one vertical-order command over the current selection; the main
+  // menu and the Ctrl/Cmd+arrow handlers reach the effect-owned command.
+  orderSelection(location: VerticalOrderLocation): void;
 }
 
 export interface WorkspaceWasmCanvasProps {
@@ -436,6 +471,17 @@ function WorkspaceWasmCanvasImpl({
   const sessionIdRef = useRef<string | null>(null);
   // A commit in flight rejects new presses (AD9).
   const commitPendingRef = useRef(false);
+  // The undo stack of this page load (F9.7): the canvas owns it and mirrors
+  // its cursor into the store; the imperative handle and the keydown reach
+  // the effect-owned commands through historyRef.
+  const undoRef = useRef<UndoState>(createUndoState());
+  const historyRef = useRef<{
+    undo: () => void;
+    redo: () => void;
+  } | null>(null);
+  // F9.8: the vertical-order command of the current load, owned by the
+  // interaction effect like the history step.
+  const orderRef = useRef<((location: VerticalOrderLocation) => void) | null>(null);
   // The tool prop mirrored for the long-lived interaction effect, the
   // onToolChange prop mirrored the same way, and the cursor repaint the
   // tool effect triggers without re-running the gesture effect.
@@ -488,9 +534,17 @@ function WorkspaceWasmCanvasImpl({
   // already in flight or the session id is missing; throws when the request
   // fails (the callers own their error reporting and local rollback).
   const sendUpdateFile = useCallback(
-    async (changes: UpdateFileChange[]): Promise<number | null> => {
+    async (changes: UpdateFileChange[], recordUndo = true): Promise<number | null> => {
       const sessionId = sessionIdRef.current;
       if (sessionId === null || commitPendingRef.current) return null;
+      // The inverse is derived from the model the commit was built on, so
+      // the snapshot and the selection are taken before the request. The
+      // inversion runs before the request too: a change that cannot be
+      // undone must not reach the file.
+      const before = recordUndo ? objectsRef.current : null;
+      const selectionBefore = recordUndo ? [...getWorkspaceState().selection] : [];
+      const undoChanges =
+        recordUndo && before !== null ? invertChanges(before, changes) : [];
       commitPendingRef.current = true;
       try {
         const body = encodeUpdateFile({
@@ -514,6 +568,17 @@ function WorkspaceWasmCanvasImpl({
         // rejects a revn ABOVE the stored one (files_update.clj), so a
         // lagging submit stays accepted.
         revnRef.current = Math.max(revnRef.current, revn + 1);
+        // F9.7: one successful request is one undo entry, whatever the
+        // number of changes (a move plus its reparent stays one step).
+        if (undoChanges.length > 0) {
+          undoRef.current = pushUndo(undoRef.current, {
+            changes: [...changes],
+            undoChanges,
+            selectionBefore,
+            selectionAfter: selectionBefore,
+          });
+          setUndoAvailability(canUndo(undoRef.current), canRedo(undoRef.current));
+        }
         return revn;
       } finally {
         commitPendingRef.current = false;
@@ -599,14 +664,22 @@ function WorkspaceWasmCanvasImpl({
           if (currentObjects === null || currentShape === undefined || currentShape === null) {
             return false;
           }
-          const next = { ...currentObjects, [id]: { ...currentShape, ...attrs } };
+          // A nil val deletes the attribute, the rule ctn/set-shape-attr
+          // applies on the backend: a removed shadow or blur must leave no
+          // null key behind on the local model.
+          const nextShape: WorkspaceShape = { ...currentShape };
+          for (const [attr, val] of Object.entries(attrs)) {
+            if (val === null || val === undefined) delete nextShape[attr];
+            else nextShape[attr] = val;
+          }
+          const next = { ...currentObjects, [id]: nextShape };
           objectsRef.current = next;
           indexRef.current = createWorkspaceIndex(next);
           setWorkspaceObjects(next);
           const app = appRef.current;
           if (app !== null) {
             try {
-              applyShapeStyle(app, id, attrs);
+              applyShapeStyle(app, nextShape, attrs);
             } catch (cause: unknown) {
               console.warn("[workspace] could not sync the style to wasm:", cause);
             }
@@ -618,6 +691,105 @@ function WorkspaceWasmCanvasImpl({
           return false;
         }
       },
+      // F9.9: one RPC and one wasm batch for a whole selection. The changes
+      // go in order, applyUpdateChanges mirrors them (a nil val deletes the
+      // attribute), and only the shapes whose attrs the renderer reads are
+      // rewritten in wasm: a blocked-only edit stays a JS-side change.
+      updateShapesAttrs: async (updates) => {
+        if (!canEditRef.current) return false;
+        const objects = objectsRef.current;
+        if (objects === null) return false;
+        const entries = updates.filter(
+          (update) =>
+            Object.keys(update.attrs).length > 0 &&
+            objects[update.id] !== undefined &&
+            objects[update.id] !== null,
+        );
+        if (entries.length === 0) return true;
+        const changes = entries.map((entry) =>
+          buildStyleChange(entry.id, pageIdRef.current, entry.attrs),
+        );
+        try {
+          const revn = await sendUpdateFile(changes);
+          if (revn === null) return false;
+          // Re-read: the model may have been replaced while the RPC ran.
+          const currentObjects = objectsRef.current;
+          if (currentObjects === null) return false;
+          const after = applyUpdateChanges(currentObjects, changes);
+          objectsRef.current = after;
+          indexRef.current = createWorkspaceIndex(after);
+          setWorkspaceObjects(after);
+          const app = appRef.current;
+          if (app !== null) {
+            const styled = changes.filter((_, index) =>
+              attrsWriteStyle(entries[index].attrs),
+            );
+            if (styled.length > 0) {
+              try {
+                uploadChangedShapes(app, currentObjects, after, styled);
+              } catch (cause: unknown) {
+                console.warn(
+                  "[workspace] could not sync the style batch to wasm:",
+                  cause,
+                );
+              }
+            }
+          }
+          return true;
+        } catch (cause: unknown) {
+          console.error("[workspace] style batch failed:", cause);
+          setWorkspaceState({ error: cause });
+          return false;
+        }
+      },
+      // F9.9: the size/position/rotation fields of the style panel. One
+      // mod-obj built with the same world matrices the gestures use, then
+      // the local model and the wasm record. A target equal to the current
+      // geometry sends nothing and resolves true: the wanted state already
+      // holds, so the panel must not flash its generic error.
+      updateShapeGeometry: async (id, target) => {
+        if (!canEditRef.current) return false;
+        const objects = objectsRef.current;
+        if (objects === null) return false;
+        const shape = objects[id];
+        if (shape === undefined || shape === null) return false;
+        const change = buildGeometryChange(shape, target, pageIdRef.current);
+        if (change === null) return true;
+        try {
+          const revn = await sendUpdateFile([change]);
+          if (revn === null) return false;
+          // Re-read: the model may have been replaced while the RPC ran. The
+          // patch carries absolute geometry, so it lands on either snapshot.
+          const currentObjects = objectsRef.current;
+          const currentShape = currentObjects === null ? undefined : currentObjects[id];
+          if (currentObjects === null || currentShape === undefined || currentShape === null) {
+            return false;
+          }
+          const patched = applyUpdateChanges({ [id]: currentShape }, [change])[id];
+          const next = { ...currentObjects, [id]: patched };
+          objectsRef.current = next;
+          indexRef.current = createWorkspaceIndex(next);
+          setWorkspaceObjects(next);
+          const app = appRef.current;
+          if (app !== null) {
+            try {
+              // The whole record: set_object carries the selrect, points,
+              // rotation and transform a selrect-only push would drop.
+              uploadShapeGeometry(app, [patched]);
+            } catch (cause: unknown) {
+              console.warn("[workspace] could not sync the new geometry to wasm:", cause);
+            }
+          }
+          return true;
+        } catch (cause: unknown) {
+          console.error("[workspace] geometry commit failed:", cause);
+          setWorkspaceState({ error: cause });
+          return false;
+        }
+      },
+      undo: () => historyRef.current?.undo(),
+      redo: () => historyRef.current?.redo(),
+      orderSelection: (location) => orderRef.current?.(location),
     }),
     [applyViewport, sendUpdateFile],
   );
@@ -659,6 +831,10 @@ function WorkspaceWasmCanvasImpl({
     delete canvas.dataset.shapes;
     stateRef.current = null;
     dragEnabledRef.current = false;
+    // F9.7: the stack is per load (see lib/workspace-undo); a page switch
+    // reloads the model, so no entry may survive it.
+    undoRef.current = createUndoState();
+    setUndoAvailability(false, false);
     // The write-path bookkeeping of this file (AD5/AD11): the ids the
     // interaction effect commits with, the edit gate, the revn/vern
     // guards and the session id minted once per mount.
@@ -1298,6 +1474,107 @@ function WorkspaceWasmCanvasImpl({
       }
     };
 
+    // F9.7: one undo or redo step. Both directions send one pessimistic
+    // update-file through the shared write path (never recorded again),
+    // then apply the same changes locally, push them to wasm and move the
+    // cursor. A failed request leaves the stack, the model and the
+    // selection alone.
+    const performHistory = async (direction: "undo" | "redo"): Promise<void> => {
+      if (commitPendingRef.current) return;
+      const step = direction === "undo" ? undoStep(undoRef.current) : redoStep(undoRef.current);
+      if (step === null) return;
+      const before = objectsRef.current;
+      if (before === null) return;
+      const changes = direction === "undo" ? step.entry.undoChanges : step.entry.changes;
+      if (changes.length === 0) return;
+      const selectionBeforeStep = [...getWorkspaceState().selection];
+      try {
+        const revn = await sendUpdateFile(changes, false);
+        if (revn === null) return;
+        const after = applyUpdateChanges(before, changes);
+        objectsRef.current = after;
+        indexRef.current = createWorkspaceIndex(after);
+        setWorkspaceObjects(after);
+        // The wasm handover: the parents whose children changed, then the
+        // shapes that still exist. A wasm failure never fails the commit.
+        const app = appRef.current;
+        if (app !== null) {
+          try {
+            uploadChangedShapes(app, before, after, changes);
+          } catch (cause: unknown) {
+            console.warn("[workspace] could not sync the history step to wasm:", cause);
+          }
+        }
+        // Undo returns to the selection before the commit; redo returns to
+        // the selection the user had when undoing. Ids that no longer
+        // exist are dropped.
+        const selection =
+          direction === "undo" ? step.entry.selectionBefore : step.entry.selectionAfter;
+        if (direction === "undo") step.entry.selectionAfter = selectionBeforeStep;
+        undoRef.current = step.state;
+        setSelection(selection.filter((id) => after[id] !== undefined && after[id] !== null));
+        // The hover stack may name a shape the step just deleted.
+        setHover(null);
+        setHoverShapeId(null);
+        setHoverTopFrameId(null);
+        setUndoAvailability(canUndo(undoRef.current), canRedo(undoRef.current));
+      } catch (cause: unknown) {
+        console.error(`[workspace] ${direction} failed:`, cause);
+        setWorkspaceState({ error: cause });
+      }
+    };
+
+    const performUndo = (): void => {
+      void performHistory("undo");
+    };
+
+    const performRedo = (): void => {
+      void performHistory("redo");
+    };
+
+    historyRef.current = { undo: performUndo, redo: performRedo };
+
+    // F9.8: one vertical-order command over the current selection. The
+    // change list is built from the model snapshot, sent through the shared
+    // write path (one undo entry, inverted from the same snapshot), then
+    // applied locally and pushed to wasm like a history step. The selection
+    // and the hover stay untouched: every shape survives the command.
+    const performOrder = async (location: VerticalOrderLocation): Promise<void> => {
+      if (commitPendingRef.current || !canEditRef.current) return;
+      const objects = objectsRef.current;
+      if (objects === null) return;
+      const changes = buildVerticalOrderChanges(
+        objects,
+        getWorkspaceState().selection,
+        location,
+        pageIdRef.current,
+      );
+      if (changes.length === 0) return;
+      try {
+        const revn = await sendUpdateFile(changes);
+        if (revn === null) return;
+        const after = applyUpdateChanges(objects, changes);
+        objectsRef.current = after;
+        indexRef.current = createWorkspaceIndex(after);
+        setWorkspaceObjects(after);
+        const app = appRef.current;
+        if (app !== null) {
+          try {
+            uploadChangedShapes(app, objects, after, changes);
+          } catch (cause: unknown) {
+            console.warn("[workspace] could not sync the z-order change to wasm:", cause);
+          }
+        }
+      } catch (cause: unknown) {
+        console.error("[workspace] z-order command failed:", cause);
+        setWorkspaceState({ error: cause });
+      }
+    };
+
+    orderRef.current = (location) => {
+      void performOrder(location);
+    };
+
     // The threshold crossing of a pending press (AD3): commit the branch
     // the press decided — a single/toggle press updates the selection
     // first — then resolve the move set over the JS model and enter the
@@ -1378,8 +1655,18 @@ function WorkspaceWasmCanvasImpl({
     // cljs snapshot freezes at load and goes stale after the first commit
     // (the F9.2 KEY.topNestedFrame would misjudge the moved frames). The
     // frames of the live move are excluded (a frame never reparents into
-    // itself), and the mov-objects change follows the mod-obj list in the
-    // same request (AD5).
+    // itself), and the mov-objects change follows the companion mod-obj
+    // list of generate-relocate in the same request (AD5).
+    //
+    // F9.3 companions: hide-in-viewer, layout-item cleanup,
+    // component-root, flex sizing) come from buildRelocateChanges; the
+    // same list decides the wasm handover below, because a reparent also
+    // changes the tree, not just the geometry.
+    //
+    // F9.3 drop-index: a flex target turns the release point into the
+    // insertion slot of the mov-objects change (lib/workspace-drop), which
+    // also re-orders a drop inside the same flex parent. A non-flex target
+    // keeps the tail append.
     const commitMove = async (
       ids: string[],
       dx: number,
@@ -1396,14 +1683,16 @@ function WorkspaceWasmCanvasImpl({
         if (isFrameShape(objects[id] ?? null)) excluded.add(id);
       }
       const targetFrameId = topNestedFrameAt(objects, releaseWorld, excluded);
+      const dropIndex = dropIndexForFrame(objects, targetFrameId, releaseWorld);
       const changes: UpdateFileChange[] = buildMoveChanges(objects, ids, dx, dy, pageIdRef.current);
-      const reparent = buildReparentChange(
+      const relocate = buildRelocateChanges(
         objects,
         getWorkspaceState().selection,
         targetFrameId,
         pageIdRef.current,
+        dropIndex,
       );
-      if (reparent !== null) changes.push(reparent);
+      changes.push(...relocate);
       if (changes.length === 0) {
         cancelDragPreview();
         return;
@@ -1416,11 +1705,11 @@ function WorkspaceWasmCanvasImpl({
           cancelDragPreview();
           return;
         }
-        // T5: the model swap. The move applies over the whole drag set,
-        // the reparent over the ids the change carried; the store takes
-        // the same reference the refs hold (AD10).
+        // T5: the model swap. The move applies over the whole drag set, the
+        // relocate list (mov-objects included) over that result; the store
+        // takes the same reference the refs hold (AD10).
         const moved = applyMove(objects, ids, dx, dy);
-        const next = reparent === null ? moved : applyReparent(moved, reparent.shapes, targetFrameId);
+        const next = relocate.length === 0 ? moved : applyUpdateChanges(moved, relocate);
         objectsRef.current = next;
         indexRef.current = createWorkspaceIndex(next);
         setWorkspaceObjects(next);
@@ -1431,14 +1720,29 @@ function WorkspaceWasmCanvasImpl({
         setDragDelta(null);
         const pushApp = appRef.current;
         if (pushApp !== null) {
-          const entries: Array<readonly [GeometryShape, ShapeGeometry]> = [];
-          for (const id of ids) {
-            const shape = objects[id];
-            if (shape === undefined || shape === null) continue;
-            const geometry = movedGeometry(shape, dx, dy);
-            if (geometry !== null) entries.push([shape, geometry]);
+          // A wasm failure never fails the committed file.
+          try {
+            if (relocate.length === 0) {
+              const entries: Array<readonly [GeometryShape, ShapeGeometry]> = [];
+              for (const id of ids) {
+                const shape = objects[id];
+                if (shape === undefined || shape === null) continue;
+                const geometry = movedGeometry(shape, dx, dy);
+                if (geometry !== null) entries.push([shape, geometry]);
+              }
+              commitShapeGeometry(pushApp, entries);
+            } else {
+              // A reparent rewrites the tree (children lists, frame ids,
+              // component-root): the selrect-only push cannot carry it, so
+              // leave the preview, drop the overrides and upload every
+              // shape the change list touches.
+              endModifiers(pushApp);
+              cleanModifiers(pushApp);
+              uploadChangedShapes(pushApp, objects, next, changes);
+            }
+          } catch (cause: unknown) {
+            console.warn("[workspace] could not sync the move to wasm:", cause);
           }
-          commitShapeGeometry(pushApp, entries);
         }
       } catch (cause: unknown) {
         console.error("[workspace] move commit failed:", cause);
@@ -1455,10 +1759,15 @@ function WorkspaceWasmCanvasImpl({
     // a failed or cancelled commit leaves the file untouched. Every exit
     // returns the tool to move (the CLJS clear-drawing), so a failed draw
     // never traps the pointer in a tool.
+    //
+    // F9.3 drop-index: a flex parent places the new shape at the slot of the
+    // press point (the CLJS box/curve/line drawing passes the initial
+    // position to get-drop-index); a non-flex parent appends at the tail.
     const commitDraw = async (
       tool: WorkspaceDrawTool,
       rect: DrawRect,
       parentId: string | null,
+      origin: { x: number; y: number } | null,
     ): Promise<void> => {
       if (!canEditRef.current) {
         setDrawPreview(null);
@@ -1484,6 +1793,8 @@ function WorkspaceWasmCanvasImpl({
         return;
       }
       const shape = createDrawShape(tool, rect, parentId, crypto.randomUUID());
+      const dropIndex =
+        origin === null ? null : dropIndexForFrame(objects, parentId, origin);
       const change: UpdateFileChange = {
         type: "add-obj",
         id: shape.id,
@@ -1491,6 +1802,7 @@ function WorkspaceWasmCanvasImpl({
         "page-id": pageIdRef.current,
         "frame-id": parentId,
         "parent-id": parentId,
+        ...(dropIndex !== null ? { index: dropIndex } : {}),
       };
       try {
         const revn = await sendUpdateFile([change]);
@@ -1499,10 +1811,10 @@ function WorkspaceWasmCanvasImpl({
           onToolChangeRef.current("move");
           return;
         }
-        // The local mirror of the backend add-shape (AD10): append to the
-        // parent, replace the shared model and rebuild the hit-testing
-        // index (hidden/blocked affect the next queries).
-        const next = applyAddShape(objects, shape, parentId);
+        // The local mirror of the backend add-shape (AD10): insert into the
+        // parent at the same slot, replace the shared model and rebuild the
+        // hit-testing index (hidden/blocked affect the next queries).
+        const next = applyAddShape(objects, shape, parentId, dropIndex ?? undefined);
         objectsRef.current = next;
         indexRef.current = createWorkspaceIndex(next);
         setWorkspaceObjects(next);
@@ -1513,8 +1825,8 @@ function WorkspaceWasmCanvasImpl({
         const app = appRef.current;
         if (app !== null) {
           try {
-            const parentChildren = next[parentId]?.shapes ?? [];
-            uploadNewShape(app, shape, parentChildren);
+            const parentShape = next[parentId];
+            uploadNewShape(app, shape, parentShape);
           } catch (cause: unknown) {
             console.warn("[workspace] could not sync the new shape to wasm:", cause);
           }
@@ -1804,7 +2116,7 @@ function WorkspaceWasmCanvasImpl({
           onToolChangeRef.current("move");
           return;
         }
-        void commitDraw(drawTool, rect, parentId);
+        void commitDraw(drawTool, rect, parentId, start);
         return;
       }
 
@@ -2001,6 +2313,39 @@ function WorkspaceWasmCanvasImpl({
 
     const onKeyDown = (event: KeyboardEvent): void => {
       if (isFormTarget(event.target)) return;
+      // F9.7: Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z (or Ctrl+Y on Windows)
+      // redoes. Only an idle canvas takes the shortcut: a running gesture
+      // owns the pointer and its pending release.
+      const mod = isMacos() ? event.metaKey : event.ctrlKey;
+      if (mod && !event.altKey && !event.isComposing && interaction.mode === "idle") {
+        const key = event.key.toLowerCase();
+        const redo =
+          (key === "z" && event.shiftKey) ||
+          (!isMacos() && key === "y" && !event.shiftKey);
+        if (key === "z" || redo) {
+          event.preventDefault();
+          if (redo) performRedo();
+          else performUndo();
+          return;
+        }
+        // F9.8: Ctrl/Cmd+arrow re-orders the selection; the Shift variants
+        // jump to the top or the bottom (the CLJS bring-* shortcuts). A
+        // read-only file keeps the handler quiet, like emit-when-no-readonly.
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+          if (!canEditRef.current) return;
+          event.preventDefault();
+          const location: VerticalOrderLocation =
+            event.key === "ArrowUp"
+              ? event.shiftKey
+                ? "top"
+                : "up"
+              : event.shiftKey
+                ? "bottom"
+                : "down";
+          void performOrder(location);
+          return;
+        }
+      }
       if (event.key === " ") {
         if (!keys.space) {
           keys.space = true;
@@ -2067,6 +2412,9 @@ function WorkspaceWasmCanvasImpl({
       if (drag.active) cancelDragPreview();
       if (transform.active) cancelTransformPreview();
       gestureRef.current = null;
+      historyRef.current = null;
+      orderRef.current = null;
+      setUndoAvailability(false, false);
       cursorRef.current = null;
       setHover(null);
       setHoverShapeId(null);

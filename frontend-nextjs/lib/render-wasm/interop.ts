@@ -52,19 +52,15 @@ export const KEY = {
   internalFrameId: "$app$render_wasm$wasm$internal_frame_id$$",
 
   // --- F9.5 shape writes (app.render-wasm.api) ---
-  // set-object writes one shape record and its fills/strokes, leaving it
-  // current; use-shape switches the current shape; set-shape-children
-  // rewrites the current shape's children. The fill/stroke setters write the
-  // current shape too: their shape-id only drives image fetches. All eight
-  // are present in public/js/shared.js.
+  // Only set_object is exported in this build (runtime-probed: the $APP
+  // entry exists and is a function). It writes one whole shape record: base
+  // props, children list and the host attrs (fills/strokes included). It
+  // also leaves that shape current, so every write path goes through it.
+  // set_shape_children / set_shape_fills / set_shape_strokes /
+  // set_shape_opacity / set_shape_hidden / set_shape_corners exist as
+  // top-level vars in public/js/shared.js but carry no $APP entry: calling
+  // one throws "is not a function". See lib/render-wasm/shape-upload.ts.
   setObject: "$app$render_wasm$api$set_object$$",
-  useShape: "$app$render_wasm$api$use_shape$$",
-  setShapeChildren: "$app$render_wasm$api$set_shape_children$$",
-  setShapeFills: "$app$render_wasm$api$set_shape_fills$$",
-  setShapeStrokes: "$app$render_wasm$api$set_shape_strokes$$",
-  setShapeOpacity: "$app$render_wasm$api$set_shape_opacity$$",
-  setShapeHidden: "$app$render_wasm$api$set_shape_hidden$$",
-  setShapeCorners: "$app$render_wasm$api$set_shape_corners$$",
 
   // cljs.core
   deref: "$cljs$core$_deref$$",
