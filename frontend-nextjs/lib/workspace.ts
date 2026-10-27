@@ -191,12 +191,23 @@ export async function renameWorkspaceFile(
   return { id: response.id ?? id, name: response.name ?? name };
 }
 
+// The project label of the left header (left_header.cljs reads :name off the
+// project of the open file). A missing or failed lookup leaves it empty, so
+// the file name still shows.
+export async function fetchWorkspaceProjectName(
+  projectId: string,
+): Promise<string | null> {
+  const project = await cmd<{ name?: string }>("get-project", { id: projectId });
+  return typeof project.name === "string" ? project.name : null;
+}
+
 // --- URL parameters --------------------------------------------------------
 
 export interface WorkspaceQueryParams {
   fileId: string | null;
   pageId: string | null;
   teamId: string | null;
+  projectId: string | null;
 }
 
 // rt/get-params + uuid/parse over the workspace parameters (the shape of
@@ -206,5 +217,6 @@ export function parseWorkspaceQuery(search: URLSearchParams): WorkspaceQueryPara
     fileId: parseUuid(search.get("file-id")),
     pageId: parseUuid(search.get("page-id")),
     teamId: parseUuid(search.get("team-id")),
+    projectId: parseUuid(search.get("project-id")),
   };
 }

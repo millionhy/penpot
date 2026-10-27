@@ -98,6 +98,54 @@ export function initializeWorkspaceViewport(
   );
 }
 
+// set-rulers-visible! / set-rulers-frame-visible!: the workspace chrome of
+// viewport-wasm.cljs. The rulers draw inside the canvas surface, so the
+// caller turns them on after the viewport is initialized and asks for a
+// render (the compiled effects do the same pair).
+export function setWorkspaceRulersVisible(
+  app: RendererApp,
+  visible: boolean,
+): void {
+  call(app, KEY.setRulersFrameVisible, visible);
+  call(app, KEY.setRulersVisible, visible);
+  call(app, KEY.requestRender, "set-rulers-visible");
+}
+
+// The light palette of the reference workspace rulers
+// (rulers-state/theme-colors): panel background, panel border, layer row
+// foreground, accent tertiary.
+const RULER_THEME = {
+  bg: "#fff",
+  border: "#eef0f2",
+  label: "#495e74",
+  accent: "#8c33eb",
+} as const;
+
+// hex->u32argb with opacity 1, the ARGB u32 the wasm ABI takes
+// (sr-clr/hex->u32argb in the CLJS original).
+function hexToArgbU32(hex: string): number {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return (0xff << 24) | value;
+}
+
+// set-rulers-colors!: push the ruler chrome colors into the wasm UI state.
+// The default RulerState is the dark theme, so the workspace must push the
+// light palette once after the canvas init, like push-ruler-theme-colors!
+// in viewport_wasm.cljs.
+export function setWorkspaceRulerColors(app: RendererApp): void {
+  const internal = app[KEY.internalModule] as Record<
+    string,
+    (...args: number[]) => unknown
+  >;
+  internal._set_rulers_colors(
+    hexToArgbU32(RULER_THEME.bg),
+    hexToArgbU32(RULER_THEME.border),
+    hexToArgbU32(RULER_THEME.label),
+    hexToArgbU32(RULER_THEME.accent),
+  );
+  call(app, KEY.requestRender, "set-rulers-colors");
+}
+
 // set-view-box: push zoom/vbox into the renderer. No-ops unless the context
 // is ready (the guard lives inside the compiled function) and covers the
 // whole interaction step, including the debounced finalize.

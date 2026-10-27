@@ -28,6 +28,9 @@ const assetsOrigin = process.env.PENPOT_ASSETS_ORIGIN ?? backendOrigin;
 
 const nextConfig = {
   reactStrictMode: true,
+  // The workspace port matches the CLJS UI pixel for pixel, so the dev
+  // overlay (the floating Next badge in the corner) stays off.
+  devIndicators: false,
   // @penpot/api-types ships raw TS sources (generated contract types).
   transpilePackages: ["@penpot/api-types"],
   // frontend-nextjs is a self-contained workspace with its own lockfile; pin the

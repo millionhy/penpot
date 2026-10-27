@@ -1,10 +1,11 @@
 "use client";
 
-// The workspace zoom widget (F9.4): the percentage button of the right
-// sidebar header plus a compact -/+ pair. The percentage opens a drilldown
-// menu with the five zoom commands; every command goes through the canvas
-// handle, so the viewport math stays inside the canvas and the store write
-// path stays the single applyViewport.
+// The workspace zoom widget (right_header.cljs zoom-widget-workspace*): a
+// 48x28 pill with only the percentage label; the -/+ pair lives inside the
+// dropdown menu (the basic-zoom-bar), not on the header. The pill opens a
+// dropdown with the five zoom commands; every command goes through the
+// canvas handle, so the viewport math stays inside the canvas and the store
+// write path stays the single applyViewport.
 //
 // The widget reads zoom, selection and objects from the store. The page
 // already re-renders at the store rate, but the local subscription keeps
@@ -22,7 +23,6 @@ import {
   type MenuAnchor,
   type MenuEntry,
 } from "@/components/dashboard-menu";
-import { MinusIcon, PlusIcon } from "@/components/workspace-icons";
 import type { WorkspaceCanvasHandle } from "@/components/workspace-wasm-canvas";
 import { tr } from "@/lib/i18n";
 import { immediateChildren } from "@/lib/workspace";
@@ -98,20 +98,10 @@ export function WorkspaceZoomWidget({
 
   return (
     <>
-      <div className="pp-workspace-zoom-widget">
-        <button
-          type="button"
-          className="pp-workspace-zoom-button"
-          title={tr("shortcuts.decrease-zoom")}
-          aria-label={tr("shortcuts.decrease-zoom")}
-          onClick={() => canvas.current?.zoomOut()}
-        >
-          <MinusIcon />
-        </button>
+      <div className="pp-workspace-zoom-widget" title={tr("workspace.header.zoom")}>
         <button
           type="button"
           className="pp-workspace-zoom-value"
-          title={tr("workspace.header.zoom")}
           aria-label={tr("workspace.header.zoom")}
           aria-haspopup="menu"
           aria-expanded={menuAnchor !== null}
@@ -128,15 +118,6 @@ export function WorkspaceZoomWidget({
           }}
         >
           {percent}
-        </button>
-        <button
-          type="button"
-          className="pp-workspace-zoom-button"
-          title={tr("shortcuts.increase-zoom")}
-          aria-label={tr("shortcuts.increase-zoom")}
-          onClick={() => canvas.current?.zoomIn()}
-        >
-          <PlusIcon />
         </button>
       </div>
 

@@ -32,6 +32,7 @@ import {
 const FILE_ID = "11111111-1111-1111-1111-111111111111";
 const PAGE_ID = "22222222-2222-2222-2222-222222222222";
 const TEAM_ID = "33333333-3333-3333-3333-333333333333";
+const PROJECT_ID = "44444444-4444-4444-4444-444444444444";
 
 function makeFile(): WorkspaceFile {
   return {
@@ -55,6 +56,7 @@ describe("parseWorkspaceQuery", () => {
   it("parses the uuid parameters of workspace-href links", () => {
     const search = new URLSearchParams({
       "team-id": TEAM_ID,
+      "project-id": PROJECT_ID,
       "file-id": FILE_ID,
       "page-id": PAGE_ID,
     });
@@ -62,12 +64,18 @@ describe("parseWorkspaceQuery", () => {
       fileId: FILE_ID,
       pageId: PAGE_ID,
       teamId: TEAM_ID,
+      projectId: PROJECT_ID,
     });
   });
 
   it("treats missing and malformed values as absent", () => {
     const search = new URLSearchParams({ "file-id": "not-a-uuid" });
-    expect(parseWorkspaceQuery(search)).toEqual({ fileId: null, pageId: null, teamId: null });
+    expect(parseWorkspaceQuery(search)).toEqual({
+      fileId: null,
+      pageId: null,
+      teamId: null,
+      projectId: null,
+    });
   });
 });
 

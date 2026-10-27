@@ -38,7 +38,7 @@
 //   components/workspace-multi-options and shows the mixed values as the
 //   "multiple" placeholder; it has no layer ordering or alignment rows.
 
-import { useState, useSyncExternalStore, type RefObject } from "react";
+import { useState, useSyncExternalStore, type CSSProperties, type RefObject } from "react";
 
 import { MinusIcon, PlusIcon } from "@/components/workspace-icons";
 import {
@@ -1028,6 +1028,99 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
   );
 }
 
+// page.cljs options*: the design tab without a selection shows the two
+// page-level color rows (canvas background, pixel grid), each as an
+// element-set with a title-bar and a color-row copied from color_row.cljs
+// and swatch.cljs.
+function WorkspacePageOptions() {
+  return (
+    <div className="pp-workspace-design-options">
+      <section
+        className="pp-workspace-element-set"
+        aria-label={tr("workspace.options.canvas-background-section")}
+      >
+        <div className="pp-workspace-element-title">
+          <div className="pp-workspace-title-bar">
+            <h3 className="pp-workspace-title-only">
+              {tr("workspace.options.canvas-background")}
+            </h3>
+          </div>
+        </div>
+        <div className="pp-workspace-element-content">
+          <div className="pp-workspace-color-info">
+            <div className="pp-workspace-color-name-wrapper pp-workspace-color-name-wrapper--no-opacity">
+              <div className="pp-workspace-color-bullet-wrapper">
+                <div className="pp-workspace-swatch pp-workspace-swatch--small">
+                  <div className="pp-workspace-swatch-opacity">
+                    <span
+                      className="pp-workspace-swatch-solid-side"
+                      style={{ backgroundColor: "#E8E9EA" }}
+                    />
+                    <span
+                      className="pp-workspace-swatch-opacity-side pp-workspace-swatch-opacity-side-solid-color"
+                      style={{ "--solid-color-overlay": "#E8E9EA" } as CSSProperties}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="pp-workspace-color-input-wrapper">
+                <input
+                  className="pp-workspace-color-input"
+                  value="E8E9EA"
+                  readOnly
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="pp-workspace-element-set">
+        <div className="pp-workspace-element-title">
+          <div className="pp-workspace-title-bar">
+            <h3 className="pp-workspace-title-only">
+              {tr("workspace.options.pixel-grid-color")}
+            </h3>
+          </div>
+        </div>
+        <div className="pp-workspace-element-content">
+          <div className="pp-workspace-color-info">
+            <div className="pp-workspace-color-name-wrapper">
+              <div className="pp-workspace-color-bullet-wrapper">
+                <div className="pp-workspace-swatch pp-workspace-swatch--small">
+                  <div className="pp-workspace-swatch-opacity">
+                    <span
+                      className="pp-workspace-swatch-solid-side"
+                      style={{ backgroundColor: "#0070E4" }}
+                    />
+                    <span
+                      className="pp-workspace-swatch-opacity-side pp-workspace-swatch-opacity-side-transparency"
+                      style={
+                        { "--solid-color-overlay": "rgba(0, 112, 228, 0.2)" } as CSSProperties
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="pp-workspace-color-input-wrapper">
+                <input
+                  className="pp-workspace-color-input"
+                  value="0070E4"
+                  readOnly
+                />
+              </div>
+            </div>
+            <div className="pp-workspace-opacity-element-wrapper">
+              <span className="pp-workspace-icon-text">%</span>
+              <input className="pp-workspace-opacity-input" value="20" readOnly />
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function WorkspaceStylePanel({
   canEdit,
   canvas,
@@ -1039,7 +1132,7 @@ export function WorkspaceStylePanel({
   );
 
   if (state.selection.length === 0) {
-    return <p className="pp-workspace-empty">{tr("labels.empty")}</p>;
+    return <WorkspacePageOptions />;
   }
 
   if (state.selection.length > 1) {

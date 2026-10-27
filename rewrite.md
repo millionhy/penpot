@@ -2353,6 +2353,32 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 一次性文件：本次 `ad9d5693-49bf-81be-8008-da0df15c683a`，未删。
 - 下一步：F7.4 workspace 插件代理。
 
+### 7.43 本轮（2026-10-27，第四十二批：workspace 与参考端 1:1 还原对齐）
+
+- 诉求：以参考端 CLJS Penpot（:9001）实测几何为基准，把 frontend-nextjs
+  （:3450）workspace 界面逐块对齐到像素级一致（左栏、工具条、画布、右栏）。
+- 方法：自建 CDP 探针（headless Chrome + WebSocket，`.git/*-probe.mjs`，不入
+  库）对两端同文件同页测量 DOM 几何与截图，逐块对照修正。
+- 左栏（a3–a5）：页签胶囊 294x36（padding 2、gap 2、三等分 95.3x32，选中
+  quaternary 底 + accent 字色）；页面区/图层标题/搜索对齐；图层树行高 36px、
+  缩进与图标对齐。
+- 左栏头部（b2）：DRAFTS 行补齐（项目名 + 文件行 + 用户头像行）。
+- 工具条（b3）：7 组按钮 + 分隔线 + plugins + 手柄，全部对齐参考几何。
+- 画布（b4）：亮色标尺（白字）、画布底色 #E8E9EA、去掉黑边。
+- 右栏（b5）：presence 双头像（重叠 4px）、缩放胶囊 48x28、comments/history/
+  share/play 按钮组 28x28；设计/原型/检查 tabs（294x36）；设计面板复刻
+  page.cljs options：画布背景与像素网格两段（swatch 16x16 + 透明度棋盘格 +
+  color input 无 # 前缀），滚动条 thin + 10px gutter 保证内容宽 284。
+- i18n：extract-translations.mjs 支持 labelKey 字段扫描；workspace.sidebar.
+  tokens 作为 runtimeKey 保留在目录（组件按 CLJS 惯例硬编码 "Tokens" 字面量）。
+- 验证：右栏探针三轮迭代后 14 项几何全部命中参考值（elementSet 284x64、
+  colorInput 250 宽、opacityInput 1361.3/39.7、avatar2 x=1140、zoomText 76%、
+  tab 95.3x32）；两端全屏截图像素采样 14/14 颜色一致（画布底 #E8E9EA、工具条
+  选中蓝 #194DE6、右栏 tertiary #F3F4F6）；`npx vitest run` 64 文件 1493 例全
+  过；`npx tsc --noEmit` 干净；`npx next lint` 无告警；console 冒烟无错误。
+- 截图：`.git/a5-ref.png`（参考端）与 `.git/b5-cur.png`（重写端），不入库。
+- 下一步：F7.4 workspace 插件代理。
+
 ---
 
 ## 8. 开发环境备注（本机）

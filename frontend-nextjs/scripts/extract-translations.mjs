@@ -43,15 +43,19 @@ const skipDirs = new Set(["translations", "node_modules", ".next"]);
 // Test files assert against catalog values; they are not call sites.
 const skipFileRe = /\.test\.tsx?$/;
 
-// Keys that reach tr() through a dynamic argument, so the scanner cannot see
-// them. Mirrors the commented list next to the [:validation :weak-password]
-// branch in frontend/src/app/main/ui/auth/register.cljs.
+// Keys that reach tr() through a dynamic argument or stay out of the static
+// call sites, so the scanner cannot see them. Mirrors the commented list
+// next to the [:validation :weak-password] branch in
+// frontend/src/app/main/ui/auth/register.cljs, plus the left-sidebar Tokens
+// tab label (workspace-layers-panel keeps the CLJS literal on purpose, but
+// the catalog carries the translation for i18n.test.ts).
 const runtimeKeys = [
   "errors.weak-password.too-short",
   "errors.weak-password.insufficient-digits",
   "errors.weak-password.insufficient-lowercase",
   "errors.weak-password.insufficient-uppercase",
   "errors.weak-password.insufficient-special",
+  "workspace.sidebar.tokens",
 ];
 
 // --- gettext parsing -------------------------------------------------------

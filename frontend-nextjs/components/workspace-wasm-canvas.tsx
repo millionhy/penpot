@@ -170,6 +170,8 @@ import {
   initializeWorkspaceViewport,
   initWorkspaceCanvas,
   resizeWorkspaceCanvas,
+  setWorkspaceRulerColors,
+  setWorkspaceRulersVisible,
   setWorkspaceViewBox,
 } from "@/lib/render-wasm/workspace-render";
 import {
@@ -1246,6 +1248,12 @@ function WorkspaceWasmCanvasImpl({
             canvas.dataset.shapes = "true";
           },
         });
+
+        // The workspace chrome: rulers visible, a rounded viewport frame
+        // and the light ruler palette (the wasm default is the dark
+        // theme), like the compiled viewport effects after the canvas init.
+        setWorkspaceRulerColors(app);
+        setWorkspaceRulersVisible(app, true);
 
         setWorkspaceViewport(fitted);
       } catch (cause: unknown) {

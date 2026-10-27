@@ -64,7 +64,6 @@
 
 .pp-workspace-left {
   background-color: var(--color-background-primary);
-  border-right: var(--b-1) solid var(--color-background-quaternary);
   display: flex;
   flex-direction: column;
   grid-area: left-sidebar;
@@ -83,10 +82,11 @@
   position: relative;
 }
 
-/* The top toolbar (top_toolbar.scss .toolbar.no-rulers): floating at the
-   top center of the viewport, 8px from the top, above the canvas and below
-   the menus (z-index panels < dropdown). It sizes to its content, so it
-   never captures pointer events outside its own box. */
+/* The top toolbar (top_toolbar.scss .toolbar): floating at the top center
+   of the viewport, 28px from the top (the 22px ruler bar plus its 6px
+   clearance), above the canvas and below the menus (z-index panels <
+   dropdown). It sizes to its content, so it never captures pointer events
+   outside its own box. */
 .pp-workspace-toolbar {
   align-items: center;
   background-color: var(--color-background-primary);
@@ -94,27 +94,35 @@
   border-radius: var(--br-8);
   cursor: default;
   display: flex;
-  gap: var(--sp-xs);
+  flex-direction: column;
   left: 50%;
   padding: var(--sp-m);
   position: absolute;
-  top: var(--sp-s);
+  top: 28px;
   transform: translateX(-50%);
   z-index: var(--z-index-panels);
+}
+
+/* .toolbar-options: the tool row, 32px tall with a 4px gap. */
+.pp-workspace-toolbar-options {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+  height: var(--sz-32);
 }
 
 .pp-workspace-tool {
   align-items: center;
   background: none;
   border: 0;
-  border-radius: var(--br-4);
+  border-radius: var(--br-8);
   color: var(--color-icon-default);
   cursor: pointer;
   display: flex;
-  height: var(--sz-28);
+  height: var(--sz-32);
   justify-content: center;
   padding: 0;
-  width: var(--sz-28);
+  width: var(--sz-32);
 }
 
 .pp-workspace-tool:hover:not(:disabled) {
@@ -128,9 +136,7 @@
 }
 
 .pp-workspace-tool:disabled {
-  color: var(--color-foreground-secondary);
   cursor: default;
-  opacity: 0.5;
 }
 
 .pp-workspace-tool:focus-visible {
@@ -138,9 +144,40 @@
   outline-offset: var(--sp-xxs);
 }
 
+/* .toolbar-separator: a 1px quaternary line, 32px tall, inset 12px from
+   the neighboring tools. */
+.pp-workspace-toolbar-separator {
+  background-color: var(--color-background-quaternary);
+  flex-shrink: 0;
+  height: var(--sz-32);
+  margin: 0 var(--sp-m);
+  width: var(--b-1);
+}
+
+/* .toolbar-handler: the full-width strip under the row (the collapse
+   trigger in the CLJS original; decorative here). The 64px indicator
+   centers itself. */
+.pp-workspace-toolbar-handler {
+  background: none;
+  border: 0;
+  cursor: default;
+  height: var(--sp-m);
+  padding: 0;
+  position: absolute;
+  top: 44px;
+  width: calc(100% - var(--sp-xs));
+}
+
+.pp-workspace-toolbar-handler-indicator {
+  background-color: var(--color-background-quaternary);
+  border-radius: var(--sp-xs);
+  height: var(--sp-xs);
+  margin: 0 auto;
+  width: var(--sz-64);
+}
+
 .pp-workspace-right {
   background-color: var(--color-background-primary);
-  border-left: var(--b-1) solid var(--color-background-quaternary);
   display: flex;
   flex-direction: column;
   grid-area: right-sidebar;
@@ -148,37 +185,61 @@
   overflow: hidden;
 }
 
-/* The left header (left_header.scss): a 52px row with the logo, the file
-   name and the menu trigger. */
+/* The left header (left_header.scss): the 32px logo, the project/file stack
+   (11px uppercase project, 14px file name with the 6px saved dot) and the
+   32px menu trigger; padded 12px 12px 8px. */
 .pp-workspace-left-header {
   align-items: center;
   display: flex;
-  gap: var(--sp-xs);
+  flex-shrink: 0;
   min-height: 52px;
-  padding: var(--sp-s) var(--sp-m);
+  padding: 12px 12px 8px;
 }
 
 .pp-workspace-logo {
-  color: var(--color-icon-default);
+  color: var(--color-foreground-primary);
   display: grid;
   flex-shrink: 0;
-  height: var(--sz-32);
+  height: 32px;
+  margin-right: 4px;
   place-items: center;
-  width: var(--sz-32);
+  width: 32px;
 }
 
 .pp-workspace-logo svg {
   fill: currentColor;
-  height: var(--sz-32);
-  width: var(--sz-32);
+  height: 32px;
+  width: 32px;
 }
 
-.pp-workspace-file {
+.pp-workspace-project-tree {
+  flex: 1;
+  height: 32px;
+  min-width: 0;
+  position: relative;
+}
+
+.pp-workspace-project-name,
+.pp-workspace-file-name {
   align-items: center;
   display: flex;
-  flex: 1;
-  gap: var(--sp-xs);
-  min-width: 0;
+  font-family: inherit;
+  height: 16px;
+  overflow: hidden;
+  padding: 0 0 2px;
+  text-align: left;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.pp-workspace-project-name {
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 13.2px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
 }
 
 .pp-workspace-file-name {
@@ -186,20 +247,32 @@
   border: 0;
   color: var(--color-foreground-primary);
   cursor: pointer;
-  flex: 1;
-  font-family: inherit;
-  font-size: var(--fs-14);
-  font-weight: var(--fw-medium);
-  min-width: 0;
-  overflow: hidden;
-  padding: 0;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 16.8px;
+  text-transform: none;
 }
 
 .pp-workspace-file-name[aria-disabled="true"] {
   cursor: default;
+}
+
+/* .status-notification.saved-status: the persistence dot, to the left of
+   the file name. */
+.pp-workspace-status-dot {
+  background-color: var(--color-accent-success);
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 6px;
+  margin-right: 4px;
+  width: 6px;
+}
+
+.pp-workspace-file-name-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pp-workspace-file-input {
@@ -207,34 +280,28 @@
   border: var(--b-1) solid var(--color-accent-primary);
   border-radius: var(--br-4);
   color: var(--color-foreground-primary);
-  flex: 1;
   font-family: inherit;
-  font-size: var(--fs-14);
+  font-size: 14px;
+  height: 22px;
   min-width: 0;
-  padding: var(--sp-xxs) var(--sp-xs);
+  padding: 0 var(--sp-xs);
   user-select: text;
-}
-
-.pp-workspace-saved {
-  color: var(--color-accent-success);
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
+  width: 100%;
 }
 
 .pp-workspace-menu-button {
   align-items: center;
   background: none;
   border: 0;
-  border-radius: var(--br-4);
+  border-radius: var(--br-8);
   color: var(--color-icon-default);
   cursor: pointer;
   display: flex;
   flex-shrink: 0;
-  height: var(--sz-28);
+  height: 32px;
   justify-content: center;
   padding: 0;
-  width: var(--sz-28);
+  width: 32px;
 }
 
 .pp-workspace-menu-button:hover,
@@ -251,67 +318,63 @@
   padding: var(--sp-xs) var(--sp-m);
 }
 
-/* The layers panel (layers.scss + left-sidebar tabs): tab switcher, search
-   and the tree. The tree scrolls on its own, under the fixed tabs and
-   search row. */
+/* The left content column (sidebar.scss .left-sidebar-content and
+   .layers-tab): the 36px tab nav, then the tab that owns the sitemap and
+   the layers tree. */
 .pp-workspace-layers {
   display: flex;
-  flex: 1;
+  flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
-.pp-workspace-layers-tabs {
-  align-items: flex-end;
-  border-bottom: var(--b-1) solid var(--color-background-quaternary);
-  display: flex;
+/* tab_switcher .padding-wrapper: the 12px inline padding around the nav,
+   so the 36px pill spans the 294px between them. */
+.pp-workspace-tabs-wrap {
   flex-shrink: 0;
-  gap: var(--sp-m);
-  padding: var(--sp-xs) var(--sp-m) 0;
+  padding: 0 var(--sp-m);
 }
 
-.pp-workspace-layers-tablist {
-  align-items: flex-end;
-  display: flex;
-  gap: var(--sp-m);
+/* tab_switcher.scss .tab-nav: 2px padding, 2px gap, an 8px radius and the
+   secondary background; the collapse button owns the auto column. */
+.pp-workspace-tabs {
+  background-color: var(--color-background-secondary);
+  border-radius: var(--br-8);
+  display: grid;
+  gap: var(--sp-xxs);
+  grid-template-columns: auto 1fr;
+  padding: var(--sp-xxs);
 }
 
-.pp-workspace-layers-tab {
-  background: none;
-  border: 0;
-  border-bottom: var(--b-2) solid transparent;
-  color: var(--color-foreground-secondary);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: var(--fs-12);
-  font-weight: var(--fw-medium);
-  padding: 0 0 var(--sp-xs);
+.pp-workspace-tabs-list {
+  display: grid;
+  gap: var(--sp-xxs);
+  grid-auto-flow: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
 }
 
-.pp-workspace-layers-tab:hover {
-  color: var(--color-foreground-primary);
+/* The tab buttons are the grid items of the tab list, like the CLJS
+   original: the li only carries the list semantics. */
+.pp-workspace-tabs-item {
+  display: contents;
 }
 
-.pp-workspace-layers-tab--active {
-  border-bottom-color: var(--color-accent-primary);
-  color: var(--color-foreground-primary);
-}
-
-/* The collapse trigger of the left sidebar, at the start of the tab
-   switcher (the CLJS collapse-button* in the action position "start").
-   The chevron points left; the expanded panel uses a right chevron. */
+/* .collapse-button: 24px wide on the full 32px height, the chevron turned
+   to the left. */
 .pp-workspace-tabs-collapse {
   align-items: center;
-  align-self: stretch;
   background: none;
   border: 0;
-  border-radius: var(--br-4);
   color: var(--color-foreground-secondary);
   cursor: pointer;
   display: flex;
   flex-shrink: 0;
+  height: var(--sz-32);
   justify-content: center;
-  margin-left: calc(-1 * var(--sp-xs));
   padding: 0;
   width: var(--sz-24);
 }
@@ -321,7 +384,6 @@
 }
 
 .pp-workspace-tabs-collapse:hover {
-  background-color: var(--color-background-tertiary);
   color: var(--color-foreground-primary);
 }
 
@@ -330,184 +392,277 @@
   outline-offset: calc(-1 * var(--b-2));
 }
 
-/* The page list (sitemap, sitemap.scss): a header row that folds, the
-   scrollable list of pages and the inline rename/delete states. */
-.pp-workspace-pages {
-  border-bottom: var(--b-1) solid var(--color-background-quaternary);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  padding-bottom: var(--sp-xs);
-}
-
-.pp-workspace-pages-header {
+/* tab_switcher .tab: 32px tall with an 8px radius, 12px inline padding
+   and 12/500 uppercase on the secondary background. The selected tab takes
+   the quaternary fill and the accent text. */
+.pp-workspace-tab {
   align-items: center;
-  display: flex;
-  gap: var(--sp-xxs);
-  padding: var(--sp-xs) var(--sp-m) var(--sp-xxs);
-}
-
-.pp-workspace-pages-toggle {
-  align-items: center;
-  background: none;
+  background-color: transparent;
   border: 0;
-  border-radius: var(--br-4);
+  border-radius: var(--br-8);
   color: var(--color-foreground-secondary);
   cursor: pointer;
-  display: flex;
-  flex-shrink: 0;
-  height: var(--sz-16);
-  justify-content: center;
-  padding: 0;
-  width: var(--sz-16);
-}
-
-.pp-workspace-pages-toggle .pp-workspace-icon {
-  transform: rotate(90deg);
-}
-
-.pp-workspace-pages-toggle--collapsed .pp-workspace-icon {
-  transform: rotate(0deg);
-}
-
-.pp-workspace-pages-toggle:hover {
-  color: var(--color-foreground-primary);
-}
-
-.pp-workspace-pages-title {
-  flex: 1;
-  font-size: var(--fs-12);
-  font-weight: var(--fw-medium);
-  margin: 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pp-workspace-pages-add {
-  align-items: center;
-  background: none;
-  border: 0;
-  border-radius: var(--br-4);
-  color: var(--color-foreground-secondary);
-  cursor: pointer;
-  display: flex;
-  flex-shrink: 0;
-  height: var(--sz-24);
-  justify-content: center;
-  padding: 0;
-  width: var(--sz-24);
-}
-
-.pp-workspace-pages-add:hover:not(:disabled) {
-  background-color: var(--color-background-tertiary);
-  color: var(--color-foreground-primary);
-}
-
-.pp-workspace-pages-add:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.pp-workspace-pages-add:focus-visible {
-  outline: var(--b-2) solid var(--color-accent-primary);
-  outline-offset: var(--sp-xxs);
-}
-
-.pp-workspace-pages-body {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding: 0 var(--sp-xs);
-}
-
-.pp-workspace-pages-list {
-  display: flex;
-  flex-direction: column;
-  list-style: none;
-  margin: 0;
-  max-height: var(--sz-160);
-  overflow-y: auto;
-  padding: 0;
-}
-
-.pp-workspace-page-item {
-  align-items: center;
-  border-radius: var(--br-4);
-  display: flex;
-  gap: var(--sp-xxs);
-  min-height: var(--sz-28);
-  padding: 0 var(--sp-xs);
-}
-
-.pp-workspace-page-item:hover {
-  background-color: var(--color-background-tertiary);
-}
-
-.pp-workspace-page-item--confirm,
-.pp-workspace-page-item--confirm:hover {
-  background: none;
-  display: block;
-  padding: 0;
-}
-
-.pp-workspace-page-name {
-  background: none;
-  border: 0;
-  color: var(--color-foreground-secondary);
-  cursor: pointer;
-  flex: 1;
+  display: grid;
   font-family: inherit;
   font-size: var(--fs-12);
-  min-width: 0;
-  overflow: hidden;
-  padding: var(--sp-xxs) 0;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pp-workspace-page-item:hover .pp-workspace-page-name {
-  color: var(--color-foreground-primary);
-}
-
-.pp-workspace-page-name--active {
-  color: var(--color-foreground-primary);
   font-weight: var(--fw-medium);
-}
-
-.pp-workspace-page-name:focus-visible {
-  outline: var(--b-2) solid var(--color-accent-primary);
-  outline-offset: var(--sp-xxs);
-}
-
-.pp-workspace-page-input {
-  background-color: var(--color-background-tertiary);
-  border: var(--b-1) solid var(--color-accent-primary);
-  border-radius: var(--br-4);
-  color: var(--color-foreground-primary);
-  font-family: inherit;
-  font-size: var(--fs-12);
-  height: var(--sz-24);
-  padding: 0 var(--sp-xs);
-  user-select: text;
+  height: var(--sz-32);
+  justify-content: center;
+  padding: 0 var(--sp-m);
+  text-transform: uppercase;
   width: 100%;
 }
 
-.pp-workspace-page-delete {
+.pp-workspace-tab:hover {
+  color: var(--color-foreground-primary);
+}
+
+.pp-workspace-tab--selected,
+.pp-workspace-tab--selected:hover {
+  background-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+}
+
+.pp-workspace-tab:focus-visible {
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: calc(-1 * var(--b-2));
+}
+
+/* tab_switcher .tab-text: the label fills its own track and ellipsizes; the
+   uppercase comes from the headline-small typography. */
+.pp-workspace-tab-text {
+  line-height: 14.4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+/* sidebar.scss .layers-tab: 4px of top padding, then the sitemap, the 6px
+   resize strip and the tree. */
+.pp-workspace-layers-tab {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: var(--sp-xs);
+}
+
+/* The page list (sitemap.scss): a fixed 200px block above the layers
+   tree, titled with a 32px bar that folds the list. */
+.pp-workspace-sitemap {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  height: var(--sz-200);
+  position: relative;
+}
+
+.pp-workspace-sitemap--collapsed {
+  height: auto;
+}
+
+/* .sitemap-title: 8px of inline start padding, an 8px top margin and a 4px
+   bottom one, around the 32px row. */
+.pp-workspace-sitemap-title {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  height: var(--sz-32);
+  justify-content: space-between;
+  margin: var(--sp-s) 0 var(--sp-xs);
+  padding-left: var(--sp-s);
+}
+
+.pp-workspace-sitemap-title-button {
   align-items: center;
   background: none;
   border: 0;
-  border-radius: var(--br-4);
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-32);
+  min-width: 0;
+  padding: 0;
+}
+
+/* The chevron points down while the list is open and right once folded. */
+.pp-workspace-sitemap-title-button .pp-workspace-icon {
+  flex-shrink: 0;
+  height: var(--sz-16);
+  transform: rotate(90deg);
+  width: var(--sz-16);
+}
+
+.pp-workspace-sitemap--collapsed .pp-workspace-sitemap-title-button .pp-workspace-icon {
+  transform: rotate(0deg);
+}
+
+.pp-workspace-sitemap-title-text {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  line-height: 14.4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pp-workspace-sitemap-title-button:hover .pp-workspace-sitemap-title-text {
+  color: var(--color-foreground-primary);
+}
+
+.pp-workspace-sitemap-add {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--br-8);
   color: var(--color-icon-default);
   cursor: pointer;
   display: flex;
   flex-shrink: 0;
+  height: var(--sz-32);
+  justify-content: center;
+  padding: 0;
+  width: var(--sz-32);
+}
+
+.pp-workspace-sitemap-add:hover:not(:disabled) {
+  background-color: var(--color-background-tertiary);
+  color: var(--color-foreground-primary);
+}
+
+.pp-workspace-sitemap-add:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.pp-workspace-sitemap-add:focus-visible {
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: calc(-1 * var(--b-2));
+}
+
+/* .sitemap-content: the scrolling list keeps the scrollbar gutter, so the
+   32px rows stay 308px wide; the thin scrollbar matches the CLJS custom
+   scrollbar. */
+.pp-workspace-sitemap-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden auto;
+  scrollbar-color: rgb(170 181 186 / 0.3) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  width: 100%;
+}
+
+.pp-workspace-sitemap-list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* .page-item: a 32px row whose body pads 12px on the right; the hover and
+   selected fills bleed 16px into the scrollbar gutter. */
+.pp-workspace-page-item {
+  min-height: var(--sz-32);
+  position: relative;
+  width: 100%;
+}
+
+.pp-workspace-page-body {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  font-weight: 400;
+  height: var(--sz-32);
+  line-height: 17.16px;
+  padding: 0 var(--sp-m) 0 0;
+  text-align: left;
+  width: 100%;
+}
+
+.pp-workspace-page-icon {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  padding: 0 var(--sp-xs) 0 var(--sp-s);
+}
+
+.pp-workspace-page-icon .pp-workspace-icon {
+  height: var(--sz-16);
+  width: var(--sz-16);
+}
+
+.pp-workspace-page-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: var(--sp-xxs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-workspace-page-item:hover .pp-workspace-page-body,
+.pp-workspace-page-body:focus-visible {
+  background-color: var(--color-background-quaternary);
+  box-shadow: var(--sz-16) 0 0 0 var(--color-background-quaternary);
+  color: var(--color-foreground-primary);
+  outline: none;
+}
+
+.pp-workspace-page-item--selected .pp-workspace-page-body,
+.pp-workspace-page-item--selected:hover .pp-workspace-page-body {
+  background-color: var(--color-background-quaternary);
+  box-shadow: var(--sz-16) 0 0 0 var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+}
+
+/* .page-item-input: a 28px field with the accent border and an 8px
+   radius, inset behind the 28px icon column. */
+.pp-workspace-page-input {
+  background: none;
+  border: var(--b-1) solid var(--color-accent-primary);
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary);
+  font-family: inherit;
+  font-size: var(--fs-12);
+  height: var(--sz-28);
+  margin: 2px 0 2px 28px;
+  padding: 0 var(--sp-xs) 0 6px;
+  user-select: text;
+  width: calc(100% - 28px);
+}
+
+/* .page-delete-btn: an overlay button that shows on hover or focus and
+   never takes room from the label. */
+.pp-workspace-page-delete {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--br-8);
+  color: var(--color-icon-default);
+  cursor: pointer;
+  display: flex;
   height: var(--sz-24);
   justify-content: center;
   opacity: 0;
   padding: 0;
+  position: absolute;
+  right: var(--sp-xs);
+  top: var(--sp-xs);
   width: var(--sz-24);
 }
 
@@ -517,8 +672,8 @@
 }
 
 .pp-workspace-page-delete:hover:not(:disabled) {
-  background-color: var(--color-background-error);
-  color: var(--color-foreground-error);
+  background-color: var(--color-background-secondary);
+  color: var(--color-foreground-primary);
 }
 
 .pp-workspace-page-delete:disabled {
@@ -583,34 +738,138 @@
   margin: var(--sp-xs) 0 0;
 }
 
-.pp-workspace-layers-search {
-  flex-shrink: 0;
-  padding: var(--sp-xs) var(--sp-m);
+/* sidebar.scss .layers-tab-resize-area: the 6px strip between the sitemap
+   and the tree, drawn as a 2px quaternary line. */
+.pp-workspace-sitemap-resize {
+  background-color: var(--color-background-primary);
+  flex: 0 0 auto;
+  height: var(--sz-6);
+  padding: 3px 0 1px;
 }
 
-.pp-workspace-layers-search-input {
-  background-color: var(--color-background-tertiary);
-  border: var(--b-1) solid transparent;
-  border-radius: var(--br-4);
-  color: var(--color-foreground-primary);
-  font-family: inherit;
-  font-size: var(--fs-12);
-  height: var(--sz-28);
-  padding: 0 var(--sp-s);
-  user-select: text;
+.pp-workspace-sitemap-resize-handle {
+  border-bottom: var(--b-2) solid var(--color-background-quaternary);
+  display: block;
+  height: 100%;
+}
+
+/* layers.scss .layers: the tree column below the sitemap. */
+.pp-workspace-layers-toolbox {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+/* .tool-window-bar: a 6px top margin, 12px inline margins and a 4px gap;
+   the title bar keeps 8px under itself. */
+.pp-workspace-tool-window-bar {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--sp-xs);
+  justify-content: space-between;
+  margin: 6px var(--sp-m) 0;
+}
+
+.pp-workspace-tool-window-title {
+  align-items: center;
+  display: flex;
+  height: var(--sz-32);
+  justify-content: space-between;
+  margin-bottom: var(--sp-s);
   width: 100%;
 }
 
-.pp-workspace-layers-search-input:focus {
-  border-color: var(--color-accent-primary);
-  outline: none;
+/* .title-only: the open page name, 12/500 uppercase, indented 8px. */
+.pp-workspace-tool-window-name {
+  color: var(--color-foreground-secondary);
+  display: block;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  line-height: 14.4px;
+  margin-left: var(--sp-s);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.pp-workspace-layers-tree {
-  flex: 1;
+.pp-workspace-tool-window-icon {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--br-8);
+  color: var(--color-icon-default);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  height: var(--sz-32);
+  justify-content: center;
+  padding: 0;
+  width: var(--sz-32);
+}
+
+.pp-workspace-tool-window-icon:hover {
+  background-color: var(--color-background-tertiary);
+  color: var(--color-foreground-primary);
+}
+
+.pp-workspace-tool-window-icon:focus-visible {
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: calc(-1 * var(--b-2));
+}
+
+/* The open search: a 32px field that takes the bar, and the close button
+   after it. */
+.pp-workspace-layer-search {
+  align-items: center;
+  background-color: var(--color-background-secondary);
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary);
+  display: flex;
+  flex: 1 1 auto;
+  gap: var(--sp-xs);
+  height: var(--sz-32);
+  margin-bottom: var(--sp-s);
+  min-width: 0;
+  padding: 0 var(--sp-s);
+}
+
+.pp-workspace-layer-search .pp-workspace-icon {
+  flex-shrink: 0;
+  height: var(--sz-16);
+  width: var(--sz-16);
+}
+
+.pp-workspace-layer-search-input {
+  background: none;
+  border: 0;
+  color: var(--color-foreground-primary);
+  flex: 1 1 auto;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  height: 100%;
+  min-width: 0;
+  outline: none;
+  padding: 0;
+  user-select: text;
+}
+
+/* .tool-window-content: the scrolling tree, 318px wide with the scrollbar
+   gutter kept, so the 36px rows stay 308px wide. */
+.pp-workspace-tool-window-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   min-height: 0;
-  overflow-y: auto;
-  padding: var(--sp-xs) var(--sp-xs) var(--sp-m);
+  overflow: auto;
+  scrollbar-color: rgb(170 181 186 / 0.3) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  width: 100%;
 }
 
 .pp-workspace-layers-empty {
@@ -618,29 +877,34 @@
   padding: var(--sp-m);
 }
 
-/* A layer row: indentation by depth, a chevron slot (leaf rows keep an
-   empty slot so names align) and the ellipsized name. */
+.pp-workspace-element-list {
+  display: grid;
+  position: relative;
+}
+
+/* layer_item.scss .layer-row: a 36px row on the primary background with a
+   2px transparent border; the hover and selected fills bleed 16px to the
+   right. */
 .pp-workspace-layer-row {
   align-items: center;
-  border-left: var(--b-2) solid transparent;
-  border-radius: var(--br-4);
+  background-color: var(--color-background-primary);
+  border: var(--b-2) solid transparent;
+  box-shadow: var(--sz-16) 0 0 0 transparent;
   cursor: pointer;
   display: flex;
-  gap: var(--sp-xxs);
-  height: var(--sz-28);
+  height: var(--sz-36);
   min-width: 0;
-  padding-left: calc(var(--sp-xs) + var(--pp-layer-depth) * 16px);
-  padding-right: var(--sp-xs);
 }
 
 .pp-workspace-layer-row:hover {
-  background-color: var(--color-background-tertiary);
+  background-color: var(--color-background-secondary);
+  box-shadow: var(--sz-16) 0 0 0 var(--color-background-secondary);
 }
 
-.pp-workspace-layer-row[aria-selected="true"] {
+.pp-workspace-layer-row[aria-selected="true"],
+.pp-workspace-layer-row[aria-selected="true"]:hover {
   background-color: var(--color-background-quaternary);
-  border-left-color: var(--color-accent-primary);
-  font-weight: var(--fw-medium);
+  box-shadow: var(--sz-16) 0 0 0 var(--color-background-quaternary);
 }
 
 .pp-workspace-layer-row:focus-visible {
@@ -648,7 +912,33 @@
   outline-offset: calc(-1 * var(--b-2));
 }
 
-.pp-workspace-layer-chevron {
+/* .tab-indentation: the depth step, 24px per level. */
+.pp-workspace-layer-indent {
+  flex-shrink: 0;
+  height: var(--sz-16);
+  min-width: calc(var(--pp-layer-depth, 0) * var(--sz-24));
+}
+
+/* .element-list-body: 32px tall, three columns (controls, name, actions),
+   a 4px gap and the depth step taken off its width. */
+.pp-workspace-layer-body {
+  align-items: center;
+  display: grid;
+  gap: var(--sp-xs);
+  grid-template-columns: auto 1fr auto;
+  height: var(--sz-32);
+  min-width: 140px;
+  width: calc(100% - var(--pp-layer-depth, 0) * var(--sz-24));
+}
+
+/* .button-content: the 24px toggle and the 24px shape icon. */
+.pp-workspace-layer-content {
+  align-items: center;
+  display: flex;
+  height: 100%;
+}
+
+.pp-workspace-layer-toggle {
   align-items: center;
   background: none;
   border: 0;
@@ -656,92 +946,476 @@
   cursor: pointer;
   display: flex;
   flex-shrink: 0;
-  height: var(--sz-16);
+  height: var(--sz-32);
   justify-content: center;
-  padding: 0;
-  width: var(--sz-16);
+  padding: 1px 6px 1px 8px;
+  width: var(--sz-24);
 }
 
-.pp-workspace-layer-chevron--expanded .pp-workspace-icon {
+.pp-workspace-layer-toggle .pp-workspace-icon {
+  height: var(--sz-12);
+  stroke-width: 1.33;
+  width: var(--sz-12);
+}
+
+.pp-workspace-layer-toggle--expanded .pp-workspace-icon {
   transform: rotate(90deg);
 }
 
-.pp-workspace-layer-chevron--leaf {
+.pp-workspace-layer-toggle--leaf {
   cursor: default;
 }
 
+/* .icon-shape: a 24px cell with a 16px icon, secondary until the row is
+   hovered or selected. */
+.pp-workspace-layer-icon {
+  align-items: center;
+  color: var(--color-foreground-secondary);
+  display: flex;
+  flex-shrink: 0;
+  height: var(--sz-32);
+  justify-content: center;
+  padding-left: var(--sp-xs);
+  width: var(--sz-24);
+}
+
+.pp-workspace-layer-icon .pp-workspace-icon {
+  height: var(--sz-16);
+  width: var(--sz-16);
+}
+
+.pp-workspace-layer-row:hover .pp-workspace-layer-icon,
+.pp-workspace-layer-row:hover .pp-workspace-layer-toggle {
+  color: var(--color-accent-primary);
+}
+
+/* .element-name: 12/400 on a 16.8px line, grown, clipped with an
+   ellipsis. */
 .pp-workspace-layer-name {
-  flex: 1;
+  align-content: center;
+  color: var(--color-foreground-secondary);
   font-size: var(--fs-12);
-  min-width: 0;
+  font-weight: 400;
+  height: 100%;
+  line-height: 16.8px;
+  min-width: 20px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* The right header (right_header.scss): 52px with the zoom widget at the
-   end; the options area below stays empty in this slice. */
-.pp-workspace-right-header {
-  align-items: center;
-  display: flex;
-  gap: var(--sp-xs);
-  justify-content: flex-end;
-  min-height: 52px;
-  padding: var(--sp-s) var(--sp-m);
+.pp-workspace-layer-row[aria-selected="true"] .pp-workspace-layer-icon,
+.pp-workspace-layer-row[aria-selected="true"] .pp-workspace-layer-toggle,
+.pp-workspace-layer-row[aria-selected="true"] .pp-workspace-layer-name {
+  color: var(--color-accent-primary);
 }
 
-/* The zoom widget (.zoom-widget + .basic-zoom-bar): a compact - / percent /
-   + group; the percentage opens the drilldown menu. */
+/* The right header (right_header.scss .workspace-header-right): a 48px row
+   with an 8px padding and an 8px gap carrying the presence pills, the zoom
+   widget, the comments/history buttons and the share/viewer links; the
+   separator stretches to push the rest to the end. */
+.pp-workspace-right-header {
+  align-items: center;
+  background-color: var(--color-background-primary);
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--sp-s);
+  height: 48px;
+  padding: var(--sp-s);
+}
+
+/* .users-section + presence.cljs .active-users: the 60x32 padded box with
+   the 48x24 pill inside, and the 24px avatars; the second session overlaps
+   the first by 4px. */
+.pp-workspace-users-section {
+  min-width: 32px;
+  max-width: 72px;
+  padding: var(--sp-xs) 6px;
+  position: relative;
+}
+
+.pp-workspace-active-users {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--br-8);
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  width: 48px;
+}
+
+.pp-workspace-active-users-list {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pp-workspace-active-user {
+  height: 24px;
+  width: 24px;
+}
+
+.pp-workspace-active-user + .pp-workspace-active-user {
+  margin-left: -4px;
+}
+
+.pp-workspace-active-user-initial {
+  align-items: center;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  height: 100%;
+  justify-content: center;
+  width: 100%;
+}
+
+.pp-workspace-header-separator {
+  flex: 1;
+}
+
+.pp-workspace-zoom-section,
+.pp-workspace-comments-section,
+.pp-workspace-history-section {
+  display: flex;
+}
+
+/* The zoom widget (.zoom-widget): a 48x28 pill with only the percentage
+   label; the percentage opens the drilldown menu. */
 .pp-workspace-zoom-widget {
   align-items: center;
   display: flex;
-  gap: var(--sp-xxs);
+  height: var(--sz-28);
+  justify-content: center;
+  width: var(--sz-48);
 }
 
-.pp-workspace-zoom-button,
 .pp-workspace-zoom-value {
   align-items: center;
   background: none;
   border: 0;
-  border-radius: var(--br-4);
+  border-radius: var(--br-8);
   color: var(--color-foreground-secondary);
   cursor: pointer;
   display: flex;
   font-family: inherit;
-  height: var(--sz-28);
-  justify-content: center;
-  padding: 0;
-}
-
-.pp-workspace-zoom-button {
-  width: var(--sz-28);
-}
-
-.pp-workspace-zoom-value {
   font-size: var(--fs-12);
   font-variant-numeric: tabular-nums;
-  min-width: var(--sz-48);
-  padding: 0 var(--sp-xs);
+  height: var(--sz-28);
+  justify-content: center;
+  padding: var(--sp-s) 0;
+  width: var(--sz-48);
 }
 
-.pp-workspace-zoom-button:hover,
 .pp-workspace-zoom-value:hover,
 .pp-workspace-zoom-value[aria-expanded="true"] {
   background-color: var(--color-background-tertiary);
   color: var(--color-foreground-primary);
 }
 
-.pp-workspace-zoom-button:focus-visible,
 .pp-workspace-zoom-value:focus-visible {
   outline: var(--b-2) solid var(--color-accent-primary);
   outline-offset: var(--sp-xxs);
 }
 
+/* .comments-btn, .history-button and .viewer-btn: the 28px icon buttons and
+   links of the header. */
+.pp-workspace-header-button,
+.pp-workspace-viewer-btn {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--br-8);
+  color: var(--color-icon-default);
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  height: var(--sz-28);
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  width: var(--sz-28);
+}
+
+.pp-workspace-header-button:hover,
+.pp-workspace-viewer-btn:hover {
+  background-color: var(--color-background-tertiary);
+}
+
+.pp-workspace-header-button:focus-visible,
+.pp-workspace-viewer-btn:focus-visible {
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: var(--sp-xxs);
+}
+
+.pp-workspace-viewer-btn {
+  text-decoration: none;
+}
+
+/* options.cljs .options-tab-switcher: the 36px nav with the 2px padding
+   and gap on the secondary background, three equal 32px tabs. */
+.pp-workspace-options-tabs-wrap {
+  flex-shrink: 0;
+  padding: 0 var(--sp-m);
+}
+
+.pp-workspace-options-tabs {
+  background-color: var(--color-background-secondary);
+  border-radius: var(--br-8);
+  display: flex;
+  gap: var(--sp-xxs);
+  height: 36px;
+  padding: var(--sp-xxs);
+}
+
+.pp-workspace-options-tabs-list {
+  display: grid;
+  gap: var(--sp-xxs);
+  grid-template-columns: repeat(3, 1fr);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.pp-workspace-options-tabs-item {
+  display: contents;
+}
+
+.pp-workspace-option-tab {
+  align-items: center;
+  background-color: transparent;
+  border: 0;
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: grid;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  height: var(--sz-32);
+  justify-content: center;
+  padding: 0 var(--sp-m);
+  text-transform: uppercase;
+  width: 100%;
+}
+
+.pp-workspace-option-tab:hover {
+  color: var(--color-foreground-primary);
+}
+
+.pp-workspace-option-tab--selected,
+.pp-workspace-option-tab--selected:hover {
+  background-color: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
+}
+
+.pp-workspace-option-tab:focus-visible {
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: calc(-1 * var(--b-2));
+}
+
+.pp-workspace-option-tab-text {
+  line-height: 14.4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+/* The options area keeps the thin scrollbar and its gutter like the left
+   column lists, so the design-options rows stay 284px wide. */
 .pp-workspace-right-options {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--sp-m);
+  scrollbar-color: rgb(170 181 186 / 0.3) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+/* page.cljs .design-options: 8px 12px 0 padding and a column of 8px gaps
+   holding the element sets. */
+.pp-workspace-design-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+  padding: var(--sp-s) var(--sp-m) 0;
+}
+
+.pp-workspace-element-set {
+  display: block;
+}
+
+.pp-workspace-element-title {
+  height: 32px;
+}
+
+/* title_bar.scss .title-bar / .title-only: the 12/500 uppercase headline on
+   an 8px inline start margin. */
+.pp-workspace-title-bar {
+  align-items: center;
+  display: flex;
+  height: 32px;
+  justify-content: space-between;
+  min-height: 32px;
+  width: 100%;
+}
+
+.pp-workspace-title-only {
+  align-items: center;
+  color: var(--color-foreground-secondary);
+  display: grid;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  height: 100%;
+  justify-content: flex-start;
+  line-height: 14.4px;
+  margin: 0 0 0 var(--sp-s);
+  text-transform: uppercase;
+}
+
+/* color_row.scss .color-info: the 32px grid row with the name cell on the
+   left and the optional opacity cell on the right. */
+.pp-workspace-color-info {
+  align-items: center;
+  background-color: var(--color-background-primary);
+  border-radius: var(--br-8);
+  display: grid;
+  gap: var(--sp-xxs);
+  grid-template-columns: 1fr auto;
+  height: 32px;
+}
+
+.pp-workspace-color-name-wrapper {
+  align-items: center;
+  background-color: var(--color-background-tertiary);
+  border: var(--b-1) solid var(--color-background-tertiary);
+  border-radius: var(--br-8) 0 0 var(--br-8);
+  color: var(--color-foreground-primary);
+  display: flex;
+  gap: var(--sp-xs);
+  height: 32px;
+  min-width: 0;
+  width: 100%;
+}
+
+.pp-workspace-color-name-wrapper--no-opacity {
+  border-radius: var(--br-8);
+}
+
+.pp-workspace-color-bullet-wrapper {
+  align-items: center;
+  background-color: transparent;
+  border-radius: var(--br-8) 0 0 var(--br-8);
+  display: flex;
+  height: 32px;
+  padding: 0 var(--sp-xxs) 0 var(--sp-s);
+}
+
+.pp-workspace-color-input-wrapper {
+  align-items: center;
+  display: flex;
+  flex-grow: 1;
+  height: var(--sz-28);
+  padding: 0;
+}
+
+.pp-workspace-color-input {
+  background: none;
+  border: none;
+  border-radius: var(--br-8);
+  color: var(--color-foreground-primary);
+  font-family: inherit;
+  font-size: var(--fs-12);
+  height: var(--sz-28);
+  margin: var(--sp-xxs) 0;
+  outline: none;
+  padding: 0 0 0 6px;
+  width: 100%;
+}
+
+.pp-workspace-opacity-element-wrapper {
+  align-items: center;
+  background-color: var(--color-background-tertiary);
+  border: var(--b-1) solid var(--color-background-tertiary);
+  border-radius: 0 var(--br-8) var(--br-8) 0;
+  display: flex;
+  height: 32px;
+  padding-left: var(--sp-xs);
+  width: 60px;
+}
+
+.pp-workspace-icon-text {
+  align-items: center;
+  color: var(--color-foreground-secondary);
+  display: flex;
+  font-size: var(--fs-12);
+  height: 32px;
+  justify-content: center;
+  margin-right: var(--sp-xs);
+  margin-top: var(--sp-xxs);
+}
+
+.pp-workspace-opacity-input {
+  background: none;
+  border: none;
+  border-radius: 0 var(--br-8) var(--br-8) 0;
+  color: var(--color-foreground-primary);
+  flex-grow: 1;
+  font-family: inherit;
+  font-size: 14px;
+  height: var(--sz-28);
+  margin: var(--sp-xxs) 0;
+  min-width: var(--sz-28);
+  outline: none;
+  padding: 0 0 0 6px;
+  width: 100%;
+}
+
+/* swatch.scss .swatch.small: 16px with the accent-muted border; the two
+   halves of .swatch-opacity, the transparency side checkerboarded with the
+   rounded right corners clipped. */
+.pp-workspace-swatch {
+  border: var(--b-1) solid var(--color-accent-primary-muted);
+  border-radius: var(--br-4);
+  height: 16px;
+  overflow: hidden;
+  width: 16px;
+}
+
+.pp-workspace-swatch-opacity {
+  display: grid;
+  grid-template-columns: auto auto;
+  height: 100%;
+}
+
+.pp-workspace-swatch-solid-side,
+.pp-workspace-swatch-opacity-side {
+  display: block;
+  flex: 1;
+}
+
+.pp-workspace-swatch-opacity-side-solid-color {
+  background: var(--solid-color-overlay);
+  background-size: cover;
+}
+
+.pp-workspace-swatch-opacity-side-transparency {
+  background-image:
+    linear-gradient(var(--solid-color-overlay), var(--solid-color-overlay)),
+    repeating-conic-gradient(rgb(212 212 212) 0% 25%, rgb(255 255 255) 0% 50%);
+  background-position: center, center;
+  background-repeat: no-repeat, repeat;
+  background-size: cover, 8px 8px;
+  clip-path: inset(0 0 0 0 round 0 4px 4px 0);
 }
 
 .pp-workspace-empty {
@@ -1030,11 +1704,6 @@
   height: var(--sz-16);
   stroke: currentColor;
   width: var(--sz-16);
-}
-
-.pp-workspace-saved .pp-workspace-icon {
-  height: var(--sz-12);
-  width: var(--sz-12);
 }
 
 /* The fixed restore control of the hidden UI: click or Escape restores the

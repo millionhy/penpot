@@ -39,7 +39,6 @@ import { WorkspaceMainMenu } from "@/components/workspace-main-menu";
 import { WorkspaceRightSidebar } from "@/components/workspace-right-sidebar";
 import { WorkspaceStylePanel } from "@/components/workspace-style-panel";
 import { WorkspaceTopToolbar } from "@/components/workspace-top-toolbar";
-import { WorkspaceZoomWidget } from "@/components/workspace-zoom-widget";
 import {
   WorkspaceWasmCanvas,
   type WorkspaceCanvasHandle,
@@ -52,6 +51,8 @@ export interface WorkspaceShellProps {
   fileId: string;
   pageId: string;
   file: WorkspaceFile;
+  // The project name above the file name (get-project); null until loaded.
+  projectName: string | null;
 }
 
 // Only one workspace menu is open at a time: the main menu and the zoom
@@ -60,7 +61,12 @@ type WorkspaceMenu =
   | { kind: "main"; anchor: MenuAnchor }
   | { kind: "zoom"; anchor: MenuAnchor };
 
-export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
+export function WorkspaceShell({
+  fileId,
+  pageId,
+  file,
+  projectName,
+}: WorkspaceShellProps) {
   const canEdit = canEditFile(file);
   const router = useRouter();
 
@@ -77,8 +83,8 @@ export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
   // brings it back.
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [menu, setMenu] = useState<WorkspaceMenu | null>(null);
-  // Artboard names show by default, like the CLJS show-artboard-names flag.
-  const [showFrameTitles, setShowFrameTitles] = useState(true);
+  // Artboard names stay off, like the CLJS show-artboard-names flag.
+  const [showFrameTitles, setShowFrameTitles] = useState(false);
   // AD9: the shell owns the active tool; the canvas mirrors it and asks for
   // the move tool when a draw completes or aborts.
   const [activeTool, setActiveTool] = useState<WorkspaceTool>("move");
@@ -173,6 +179,7 @@ export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
           <WorkspaceLeftHeader
             ref={leftHeaderRef}
             file={file}
+            projectName={projectName}
             canEdit={canEdit}
             menuOpen={menu?.kind === "main"}
             onMenuClick={openMenu}
@@ -219,13 +226,12 @@ export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
 
       {hideUI ? null : (
         <WorkspaceRightSidebar
-          header={
-            <WorkspaceZoomWidget
-              canvas={canvasRef}
-              menuAnchor={menu?.kind === "zoom" ? menu.anchor : null}
-              onMenuToggle={toggleZoomMenu}
-            />
-          }
+          canEdit={canEdit}
+          fileId={fileId}
+          pageId={pageId}
+          canvas={canvasRef}
+          zoomMenuAnchor={menu?.kind === "zoom" ? menu.anchor : null}
+          onZoomMenuToggle={toggleZoomMenu}
         >
           <WorkspaceStylePanel canEdit={canEdit} canvas={canvasRef} />
         </WorkspaceRightSidebar>

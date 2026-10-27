@@ -25,7 +25,7 @@
 //   :authentication causes and the generic message otherwise, mirroring
 //   the viewer page.
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { AuthGuard } from "@/components/auth-guard";
 import { ExceptionPage } from "@/components/exception-page";
@@ -37,6 +37,7 @@ import { isExceptionCause } from "@/lib/exception-page";
 import { tr } from "@/lib/i18n";
 import {
   fetchWorkspaceFile,
+  fetchWorkspaceProjectName,
   parseWorkspaceQuery,
   resolvePageId,
 } from "@/lib/workspace";
@@ -70,6 +71,28 @@ function WorkspaceRoute({ params }: { params: URLSearchParams }) {
 
   const fileId = query.fileId;
   const urlPageId = query.pageId;
+  const projectId = query.projectId;
+
+  // The project label above the file name (left_header.cljs). One lookup
+  // per project-id; a failure leaves the label empty.
+  const [projectName, setProjectName] = useState<string | null>(null);
+  useEffect(() => {
+    if (projectId === null) {
+      setProjectName(null);
+      return;
+    }
+    let live = true;
+    fetchWorkspaceProjectName(projectId)
+      .then((name) => {
+        if (live) setProjectName(name);
+      })
+      .catch(() => {
+        if (live) setProjectName(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [projectId]);
 
   // initialize-workspace: one load per file-id. A page-id change on a file
   // already in the store re-resolves the open page without re-downloading
@@ -139,7 +162,14 @@ function WorkspaceRoute({ params }: { params: URLSearchParams }) {
     return <PenpotLoader />;
   }
 
-  return <WorkspaceShell fileId={fileId} pageId={pageId} file={file} />;
+  return (
+    <WorkspaceShell
+      fileId={fileId}
+      pageId={pageId}
+      file={file}
+      projectName={projectName}
+    />
+  );
 }
 
 export default function Page() {

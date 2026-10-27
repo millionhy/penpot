@@ -9,16 +9,17 @@
 // WorkspaceLeftHeaderHandle instead of duplicating the input elsewhere.
 //
 // Deviations from the CLJS original, documented (AD10):
-// - The project name/breadcrumb, the shared badge and the persistence
-//   status variants are not ported; the saved tick stands in for the
-//   persistence widget of this read-only slice.
+// - The shared badge and the persistence widget variants are not ported;
+//   a 6px saved dot stands in for the persistence widget of this
+//   read-only slice.
+// - The project name is passed in (the route resolves it from ?project-id=)
+//   instead of read off the workspace state.
 
 import { useImperativeHandle, useRef, useState, type Ref } from "react";
 
 import {
   MenuIcon,
   PenpotLogoIcon,
-  TickIcon,
 } from "@/components/workspace-icons";
 import { tr } from "@/lib/i18n";
 import { renameWorkspaceFile, type WorkspaceFile } from "@/lib/workspace";
@@ -31,6 +32,8 @@ export interface WorkspaceLeftHeaderHandle {
 
 export interface WorkspaceLeftHeaderProps {
   file: WorkspaceFile;
+  // The containing project (the DRAFTS label above the file name).
+  projectName: string | null;
   canEdit: boolean;
   menuOpen: boolean;
   onMenuClick(anchor: HTMLElement): void;
@@ -39,6 +42,7 @@ export interface WorkspaceLeftHeaderProps {
 
 export function WorkspaceLeftHeader({
   file,
+  projectName,
   canEdit,
   menuOpen,
   onMenuClick,
@@ -111,7 +115,11 @@ export function WorkspaceLeftHeader({
           <PenpotLogoIcon />
         </a>
 
-        <div className="pp-workspace-file">
+        <div className="pp-workspace-project-tree">
+          <div className="pp-workspace-project-name" title={projectName ?? undefined}>
+            {projectName}
+          </div>
+
           {editing ? (
             <input
               className="pp-workspace-file-input"
@@ -146,18 +154,15 @@ export function WorkspaceLeftHeader({
                 }
               }}
             >
-              {file.name}
+              <span
+                className="pp-workspace-status-dot"
+                role="img"
+                title={tr("workspace.header.saved")}
+                aria-label={tr("workspace.header.saved")}
+              />
+              <span className="pp-workspace-file-name-label">{file.name}</span>
             </button>
           )}
-
-          <span
-            className="pp-workspace-saved"
-            role="img"
-            title={tr("workspace.header.saved")}
-            aria-label={tr("workspace.header.saved")}
-          >
-            <TickIcon />
-          </span>
         </div>
 
         {/* Keep DashboardMenu's document mousedown listener from closing

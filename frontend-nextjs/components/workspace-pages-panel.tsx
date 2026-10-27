@@ -9,6 +9,11 @@
 // The panel owns only its UI state: collapsed, the inline rename draft and
 // the pending delete confirmation.
 //
+// Geometry follows sitemap.scss: the 200px section, the 32px title bar with
+// an 8px inline start padding and an 8/4 block margin, the 32px page rows
+// (icon padded 0 4 0 8, label grown and padded 2) and the selected/hover
+// fill that bleeds 16px to the right.
+//
 // Deviations from the CLJS original, documented:
 // - No drag reorder, no separator pages, no context menu and no keyboard
 //   page cycling: this slice lists, selects, creates, renames and deletes.
@@ -27,7 +32,7 @@ import {
   type RefObject,
 } from "react";
 
-import { ChevronIcon, PlusIcon, TrashIcon } from "@/components/workspace-icons";
+import { ChevronIcon, DocumentIcon, PlusIcon, TrashIcon } from "@/components/workspace-icons";
 import type { WorkspaceCanvasHandle } from "@/components/workspace-wasm-canvas";
 import { tr } from "@/lib/i18n";
 import {
@@ -148,32 +153,45 @@ export function WorkspacePagesPanel({
     }
   };
 
+  const onRowKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    page: WorkspacePageInfo,
+  ): void => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectPage(page.id);
+    } else if (event.key === "F2") {
+      event.preventDefault();
+      startRename(page);
+    }
+  };
+
   return (
     <section
-      className="pp-workspace-pages"
+      className={
+        collapsed
+          ? "pp-workspace-sitemap pp-workspace-sitemap--collapsed"
+          : "pp-workspace-sitemap"
+      }
       aria-label={tr("workspace.sidebar.sitemap")}
     >
-      <div className="pp-workspace-pages-header">
+      <div className="pp-workspace-sitemap-title">
         <button
           type="button"
-          className={
-            collapsed
-              ? "pp-workspace-pages-toggle pp-workspace-pages-toggle--collapsed"
-              : "pp-workspace-pages-toggle"
-          }
+          className="pp-workspace-sitemap-title-button"
           aria-expanded={!collapsed}
           aria-label={tr("workspace.sidebar.sitemap")}
           onClick={() => setCollapsed((current) => !current)}
         >
           <ChevronIcon />
+          <span className="pp-workspace-sitemap-title-text">
+            {tr("workspace.sidebar.sitemap")}
+          </span>
         </button>
-        <h2 className="pp-workspace-pages-title">
-          {tr("workspace.sidebar.sitemap")}
-        </h2>
         {canEdit ? (
           <button
             type="button"
-            className="pp-workspace-pages-add"
+            className="pp-workspace-sitemap-add"
             title={tr("workspace.sidebar.sitemap.add-page")}
             aria-label={tr("workspace.sidebar.sitemap.add-page")}
             disabled={busy}
@@ -185,8 +203,8 @@ export function WorkspacePagesPanel({
       </div>
 
       {collapsed ? null : (
-        <div className="pp-workspace-pages-body">
-          <ul className="pp-workspace-pages-list">
+        <div className="pp-workspace-sitemap-content">
+          <ul className="pp-workspace-sitemap-list">
             {pages.map((page) => {
               const active = page.id === state.pageId;
               if (editingId === page.id) {
@@ -250,22 +268,28 @@ export function WorkspacePagesPanel({
               return (
                 <li
                   key={page.id}
-                  className="pp-workspace-page-item"
+                  className={
+                    active
+                      ? "pp-workspace-page-item pp-workspace-page-item--selected"
+                      : "pp-workspace-page-item"
+                  }
                   data-page-id={page.id}
                 >
                   <button
                     type="button"
-                    className={
-                      active
-                        ? "pp-workspace-page-name pp-workspace-page-name--active"
-                        : "pp-workspace-page-name"
-                    }
+                    className="pp-workspace-page-body"
                     aria-current={active ? "page" : undefined}
                     title={page.name}
                     onClick={() => selectPage(page.id)}
                     onDoubleClick={() => startRename(page)}
+                    onKeyDown={(event) => onRowKeyDown(event, page)}
                   >
-                    {page.name}
+                    <span className="pp-workspace-page-icon">
+                      <DocumentIcon />
+                    </span>
+                    <span className="pp-workspace-page-label">
+                      {page.name}
+                    </span>
                   </button>
                   {canEdit && pages.length > 1 ? (
                     <button

@@ -115,6 +115,10 @@ async function boot(): Promise<RendererApp> {
   globals["penpotVersion"] ??= "develop";
   globals["penpotVersionTag"] ??= "develop";
   globals["penpotBuildDate"] ??= "unknown";
+  // The workspace chrome mirrors the CLJS UI, which does not carry the
+  // renderer's "WebGL rendering" label (the compiled default flags enable
+  // :render-wasm-info; disable- removes it).
+  globals["penpotFlags"] ??= "disable-render-wasm-info";
 
   // webpackIgnore keeps webpack away from the specifiers: both files are
   // prebuilt artifacts in public/js and must load as-is, like they do in the
