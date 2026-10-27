@@ -17,10 +17,13 @@
 // viewport cell.
 //
 // Deviations from the CLJS original, documented (AD10):
-// - No sidebar resizer, no responsive collapse and no palette bar.
+// - No sidebar resizer, no responsive collapse and no palette bar. The
+//   manual left-sidebar collapse (:collapse-left-sidebar) is ported: the
+//   whole left column folds into a floating expand button.
 // - The right sidebar carries the zoom widget and the F9.5 style panel; the
 //   rest of the options toolbox stays out of this slice.
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -41,7 +44,7 @@ import {
   WorkspaceWasmCanvas,
   type WorkspaceCanvasHandle,
 } from "@/components/workspace-wasm-canvas";
-import { ExpandIcon } from "@/components/workspace-icons";
+import { ExpandIcon, ChevronIcon } from "@/components/workspace-icons";
 import { tr } from "@/lib/i18n";
 import { canEditFile, type WorkspaceFile, type WorkspaceTool } from "@/lib/workspace";
 
@@ -59,6 +62,7 @@ type WorkspaceMenu =
 
 export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
   const canEdit = canEditFile(file);
+  const router = useRouter();
 
   const canvasRef = useRef<WorkspaceCanvasHandle | null>(null);
   const leftHeaderRef = useRef<WorkspaceLeftHeaderHandle | null>(null);
@@ -68,6 +72,10 @@ export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
   const wasHiddenRef = useRef(false);
 
   const [hideUI, setHideUI] = useState(false);
+  // The manual left-sidebar collapse (dw/toggle-layout-flag
+  // :collapse-left-sidebar): the column unmounts and a floating button
+  // brings it back.
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [menu, setMenu] = useState<WorkspaceMenu | null>(null);
   // Artboard names show by default, like the CLJS show-artboard-names flag.
   const [showFrameTitles, setShowFrameTitles] = useState(true);
@@ -85,6 +93,28 @@ export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
   }, []);
 
   const closeMenu = useCallback((): void => setMenu(null), []);
+
+  const collapseLeft = useCallback((): void => {
+    setMenu(null);
+    setLeftCollapsed(true);
+  }, []);
+
+  const expandLeft = useCallback((): void => setLeftCollapsed(false), []);
+
+  // select-page: the open page lives in ?page-id=, so a switch is a URL
+  // replace on the same route; the route effect re-resolves the page
+  // against the loaded file and the canvas reloads its model.
+  const selectPage = useCallback(
+    (id: string): void => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("page-id") === id) return;
+      params.set("page-id", id);
+      router.replace(`${window.location.pathname}?${params.toString()}`, {
+        scroll: false,
+      });
+    },
+    [router],
+  );
 
   const toggleUI = useCallback((): void => {
     setMenu(null);
@@ -133,10 +163,12 @@ export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
       className={
         hideUI
           ? "pp-workspace-shell pp-workspace-shell--hidden-ui"
-          : "pp-workspace-shell"
+          : leftCollapsed
+            ? "pp-workspace-shell pp-workspace-shell--left-collapsed"
+            : "pp-workspace-shell"
       }
     >
-      {hideUI ? null : (
+      {hideUI || leftCollapsed ? null : (
         <aside className="pp-workspace-left">
           <WorkspaceLeftHeader
             ref={leftHeaderRef}
@@ -145,8 +177,25 @@ export function WorkspaceShell({ fileId, pageId, file }: WorkspaceShellProps) {
             menuOpen={menu?.kind === "main"}
             onMenuClick={openMenu}
           />
-          <WorkspaceLayersPanel />
+          <WorkspaceLayersPanel
+            canEdit={canEdit}
+            canvas={canvasRef}
+            onCollapse={collapseLeft}
+            onSelectPage={selectPage}
+          />
         </aside>
+      )}
+
+      {hideUI || !leftCollapsed ? null : (
+        <button
+          type="button"
+          className="pp-workspace-collapsed-button"
+          title={tr("workspace.sidebar.expand")}
+          aria-label={tr("workspace.sidebar.expand")}
+          onClick={expandLeft}
+        >
+          <ChevronIcon />
+        </button>
       )}
 
       <main className="pp-workspace-viewport">

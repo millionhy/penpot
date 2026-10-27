@@ -37,10 +37,10 @@
 //   move modifier in front of the resize modifier.
 // - Text and unsupported types show no handles: apply-transform-generic
 //   updates the box but not the text position-data, so scaling text would
-//   leave its content behind. Containers still transform their whole
-//   subtree with the same world matrix (no constraint/layout propagation);
-//   the wasm preview follows the matrix and the committed text box stays
-//   consistent with its frame.
+//   leave its content behind. This module only builds the matrix of the
+//   selected shapes: the subtree and the constraint spread of a container
+//   live in lib/workspace-constraints.ts, which the commits call before
+//   they build their changes.
 // - No snap guides, pixel grid, grow-type changes, image-fill bounds
 //   resize, scale-text mode or flip-aware cursor rotation.
 
@@ -821,49 +821,67 @@ export function transformShapePatch(
   return patch;
 }
 
-// The update-file changes of one transform: one mod-obj per shape whose
-// attributes changed, carrying only those attributes.
-export function buildTransformChanges(
-  objects: WorkspaceObjects,
+// One shape of a transform: a resize spreads a different matrix per child
+// (lib/workspace-constraints.ts), so the gesture commits a list rather than
+// one matrix for every id.
+export interface TransformEntry {
+  id: string;
+  matrix: Matrix6;
+  // The rotation delta of a rotate gesture; 0 for a resize.
+  rotation: number;
+}
+
+// The entries of a gesture that moves every id by the same matrix.
+export function transformEntries(
   ids: readonly string[],
   matrix: Matrix6,
   rotationDelta: number,
+): TransformEntry[] {
+  return ids.map((id) => ({ id, matrix, rotation: rotationDelta }));
+}
+
+// The update-file changes of one transform: one mod-obj per shape whose
+// attributes changed, carrying only those attributes. The first entry of an
+// id wins, so a parent that already carries its subtree skips the repeated
+// selection entry.
+export function buildTransformEntryChanges(
+  objects: WorkspaceObjects,
+  entries: readonly TransformEntry[],
   pageId: string,
 ): UpdateFileModObjChange[] {
   const changes: UpdateFileModObjChange[] = [];
   const seen = new Set<string>();
-  for (const id of ids) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const shape = objects[id];
+  for (const entry of entries) {
+    if (seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    const shape = objects[entry.id];
     if (shape === undefined || shape === null) continue;
-    const patch = transformShapePatch(shape, matrix, rotationDelta);
+    const patch = transformShapePatch(shape, entry.matrix, entry.rotation);
     const operations: UpdateFileSetOperation[] = [];
     for (const attr of Object.keys(patch)) {
       operations.push({ type: "set", attr, val: patch[attr] });
     }
     if (operations.length === 0) continue;
-    changes.push({ type: "mod-obj", "page-id": pageId, id, operations });
+    changes.push({ type: "mod-obj", "page-id": pageId, id: entry.id, operations });
   }
   return changes;
 }
 
 // The model application of a committed transform: only the transformed ids
-// are replaced; every other entry keeps its reference.
-export function applyTransformSet(
+// are replaced; every other entry keeps its reference. The first entry of
+// an id wins (see buildTransformEntryChanges).
+export function applyTransformEntries(
   objects: WorkspaceObjects,
-  ids: readonly string[],
-  matrix: Matrix6,
-  rotationDelta: number,
+  entries: readonly TransformEntry[],
 ): WorkspaceObjects {
   const out: WorkspaceObjects = { ...objects };
   const seen = new Set<string>();
-  for (const id of ids) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const shape = out[id];
+  for (const entry of entries) {
+    if (seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    const shape = out[entry.id];
     if (shape === undefined || shape === null) continue;
-    out[id] = applyTransformToShape(shape, matrix, rotationDelta);
+    out[entry.id] = applyTransformToShape(shape, entry.matrix, entry.rotation);
   }
   return out;
 }

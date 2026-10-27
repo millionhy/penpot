@@ -437,11 +437,41 @@ export interface UpdateFileDelObjChange {
   id: string;
 }
 
+// {:type :add-page :id <uuid> :name <string>}: adds an empty page (F9.13).
+// The backend process-change :add-page builds ctp/make-empty-page from the
+// name, so the change carries no objects and the shell clones the root it
+// already knows for its local model.
+export interface UpdateFileAddPageChange {
+  type: "add-page";
+  id: string;
+  name: string;
+}
+
+// {:type :mod-page :id <uuid> :name <string>}: renames a page. Only the name
+// is sent; the background and pixel-grid keys stay untouched.
+export interface UpdateFileModPageChange {
+  type: "mod-page";
+  id: string;
+  name: string;
+}
+
+// {:type :del-page :id <uuid>}: removes the page and its pages-index entry.
+export interface UpdateFileDelPageChange {
+  type: "del-page";
+  id: string;
+}
+
+export type UpdateFilePageChange =
+  | UpdateFileAddPageChange
+  | UpdateFileModPageChange
+  | UpdateFileDelPageChange;
+
 export type UpdateFileChange =
   | UpdateFileAddObjChange
   | UpdateFileModObjChange
   | UpdateFileMovObjectsChange
-  | UpdateFileDelObjChange;
+  | UpdateFileDelObjChange
+  | UpdateFilePageChange;
 
 export interface UpdateFileParams {
   id: string;
@@ -469,13 +499,18 @@ const UUID_VALUE_KEY =
 // Values the CLJS file-data holds as keywords (::sm/one-of in the backend
 // schemas) but this boundary normalizes to strings (the ":" reader handler
 // above): the shape and gradient :type, the stroke enums, the blend mode,
-// the shadow grow type, the shadow :style and the layout-item sizing
-// (fix/auto/fill). A plain "rect" fails ::sm/one-of on arrival and the wasm
-// stroke alignment falls to its default branch, so the writer re-tags them.
+// the shadow grow type, the shadow :style, the layout-item sizing
+// (fix/auto/fill), the layout and layout-item enums, and the constraints.
+// A plain "rect" fails ::sm/one-of on arrival and the wasm stroke alignment
+// falls to its default branch, so the writer re-tags them. A plain string
+// layout value fails validate-shape the same way (schema:layout-attrs and
+// schema:layout-child-attrs are one-of sets of keywords), which made every
+// layout commit answer 500.
 // :style rides the shadow commit (drop-shadow / inner-shadow), which is the
-// only attr of that name in the model.
+// only attr of that name in the model; a grid track carries its enum under
+// :type, so the track lists need no entry of their own.
 const KEYWORD_VALUE_KEY =
-  /^(type|style|stroke-style|stroke-alignment|stroke-cap-start|stroke-cap-end|blend-mode|grow-type|layout-item-h-sizing|layout-item-v-sizing)$/;
+  /^(type|style|stroke-style|stroke-alignment|stroke-cap-start|stroke-cap-end|blend-mode|grow-type|layout-item-h-sizing|layout-item-v-sizing|layout|layout-flex-dir|layout-grid-dir|layout-gap-type|layout-wrap-type|layout-padding-type|layout-align-items|layout-align-content|layout-justify-items|layout-justify-content|layout-item-margin-type|layout-item-align-self|constraints-h|constraints-v)$/;
 const UUID_FORM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function encodeUpdateAttrEntry(key: string, value: unknown): unknown {
@@ -483,12 +518,51 @@ function encodeUpdateAttrEntry(key: string, value: unknown): unknown {
     if (UUID_VALUE_KEY.test(key) && UUID_FORM.test(value)) return uuid(value);
     if (KEYWORD_VALUE_KEY.test(key)) return keyword(value);
   }
+  // layout-grid-cells is a uuid -> grid cell map (schema:grid-cell) whose
+  // keys, :id and :shapes are uuids and whose position / align-self /
+  // justify-self are keywords; the generic recursion would send strings for
+  // all three.
+  if (key === "layout-grid-cells") return encodeGridCellsValue(value);
   // The record-valued attrs keep their instance tags through set/mod-obj
   // as well (the resize gesture updates selrect and points through them).
   if (key === "selrect") return encodeRecordValue("rect", value);
   if (key === "points") return encodePointsValue(value);
   if (key === "transform" || key === "transform-inverse") return encodeMatrixValue(value);
   return encodeUpdateAttrValue(value);
+}
+
+// One grid cell map of a layout frame. The backend validates the whole shape
+// after a mod-obj (changes.cljc process-operations) and schema:grid-cell
+// checks the uuid keys and the two enum keywords, so a string-keyed map would
+// reject the commit; the wasm bridge decodes the same form back for
+// set-grid-layout-cells.
+function encodeGridCellsValue(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return encodeUpdateAttrValue(value);
+  }
+  const map = transit.map();
+  for (const [id, cell] of Object.entries(value as MutableRecord)) {
+    if (cell === null || typeof cell !== "object" || Array.isArray(cell)) continue;
+    const entries: Record<string, unknown> = {};
+    for (const [attr, entry] of Object.entries(cell as MutableRecord)) {
+      entries[attr] = encodeGridCellEntry(attr, entry);
+    }
+    map.set(uuid(id), keywordMap(entries));
+  }
+  return map;
+}
+
+// The uuid links and the enum values of one cell; the numbers and the area
+// name pass through.
+function encodeGridCellEntry(attr: string, value: unknown): unknown {
+  if (attr === "id") return typeof value === "string" ? uuid(value) : value;
+  if (attr === "shapes") {
+    return Array.isArray(value) ? value.map((id) => uuid(String(id))) : value;
+  }
+  if (attr === "position" || attr === "align-self" || attr === "justify-self") {
+    return typeof value === "string" ? keyword(value) : value;
+  }
+  return value;
 }
 
 // The generic val recursion: packed path content rides the tagged binary;
@@ -575,6 +649,26 @@ export function encodeAttrValue(value: unknown): unknown {
 }
 
 function encodeUpdateChange(change: UpdateFileChange): unknown {
+  if (change.type === "add-page") {
+    return keywordMap({
+      type: keyword("add-page"),
+      id: uuid(change.id),
+      name: change.name,
+    });
+  }
+  if (change.type === "mod-page") {
+    return keywordMap({
+      type: keyword("mod-page"),
+      id: uuid(change.id),
+      name: change.name,
+    });
+  }
+  if (change.type === "del-page") {
+    return keywordMap({
+      type: keyword("del-page"),
+      id: uuid(change.id),
+    });
+  }
   if (change.type === "add-obj") {
     return keywordMap({
       type: keyword("add-obj"),

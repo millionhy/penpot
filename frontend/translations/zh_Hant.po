@@ -8172,6 +8172,9 @@ msgstr "頁面"
 msgid "workspace.sidebar.sitemap.add-page"
 msgstr "新增頁面"
 
+msgid "workspace.sidebar.tokens"
+msgstr "權杖"
+
 #: src/app/main/ui/workspace/left_header.cljs:94
 msgid "workspace.sitemap"
 msgstr "網站地圖"

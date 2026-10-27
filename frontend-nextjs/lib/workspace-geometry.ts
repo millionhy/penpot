@@ -165,17 +165,24 @@ function changed(a: number, b: number): boolean {
   return Math.abs(a - b) > EPSILON;
 }
 
-// One mod-obj for a geometry edit, or null when nothing would change (a
-// re-typed value, a missing selrect, a non-transformable shape).
+// The matrix and rotation delta one panel edit becomes. The steps run in the
+// panel order: rotation around the selection center, size around the selrect
+// top-left (the origin the x/y fields show), then a translation that lands
+// the painted origin on the requested x/y. Null when the shape cannot be
+// edited or a step has no geometry to work with.
 //
-// The steps run in the panel order: rotation around the selection center,
-// size around the selrect top-left (the origin the x/y fields show), then a
-// translation that lands the painted origin on the requested x/y.
-export function buildGeometryChange(
+// The commit path reads the matrix directly (the resize spreads it to the
+// subtree, see lib/workspace-constraints.ts); buildGeometryChange keeps the
+// mod-obj built from it.
+export interface GeometryTransform {
+  matrix: Matrix6;
+  rotationDelta: number;
+}
+
+export function geometryTransform(
   shape: WorkspaceShape,
   target: GeometryTarget,
-  pageId: string,
-): UpdateFileModObjChange | null {
+): GeometryTransform | null {
   const current = geometryOf(shape);
   const selrect = selrectOf(shape);
   if (current === null || selrect === null || !isTransformableShape(shape)) return null;
@@ -236,7 +243,19 @@ export function buildGeometryChange(
     }
   }
 
-  const patch = transformShapePatch(shape, matrix, rotationDelta);
+  return { matrix, rotationDelta };
+}
+
+// One mod-obj for a geometry edit, or null when nothing would change (a
+// re-typed value, a missing selrect, a non-transformable shape).
+export function buildGeometryChange(
+  shape: WorkspaceShape,
+  target: GeometryTarget,
+  pageId: string,
+): UpdateFileModObjChange | null {
+  const gesture = geometryTransform(shape, target);
+  if (gesture === null) return null;
+  const patch = transformShapePatch(shape, gesture.matrix, gesture.rotationDelta);
   if (Object.keys(patch).length === 0) return null;
   return buildStyleChange(shape.id, pageId, patch);
 }

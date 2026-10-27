@@ -7483,6 +7483,9 @@ msgstr "页面"
 msgid "workspace.sidebar.sitemap.add-page"
 msgstr "添加页面"
 
+msgid "workspace.sidebar.tokens"
+msgstr "令牌"
+
 #: src/app/main/ui/workspace/left_header.cljs:94
 msgid "workspace.sitemap"
 msgstr "站点地图"

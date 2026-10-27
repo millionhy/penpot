@@ -173,3 +173,12 @@ export function MinusIcon() {
     </Icon>
   );
 }
+
+// delete.svg: the page delete button of the sitemap.
+export function TrashIcon() {
+  return (
+    <Icon>
+      <path d="m2 4h1.333 2 5.334 2 1.333m-1.333 0v9.333c0 .737-.597 1.334-1.334 1.334h-6.666c-.737 0-1.334-.597-1.334-1.334v-9.333m2 0v-1.333c0-.737.597-1.334 1.334-1.334h2.666c.737 0 1.334.597 1.334 1.334v1.333m-4 3.333v4m2.666-4v4" />
+    </Icon>
+  );
+}

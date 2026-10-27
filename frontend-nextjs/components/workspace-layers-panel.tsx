@@ -1,12 +1,17 @@
 "use client";
 
 // The workspace Layers panel (F9.4): the tab switcher of the left sidebar
-// (Layers, Assets, Tokens) and the layers tree. Port of
+// (Layers, Assets, Tokens), the page list and the layers tree. Port of
 // app.main.ui.workspace.sidebar.layers and the left-sidebar tabs.
 //
 // The panel owns its UI state (review correction to AD5): the active tab,
 // the search query and the expanded set are local, so the module store
 // keeps only the file, page, viewport, objects and selection slice.
+//
+// The tabs are built on every render: lib/i18n reads the locale from a
+// module variable, so a module-scope array would keep the labels of the
+// first locale. The Tokens label is workspace.sidebar.tokens, added to the
+// upstream catalogs so the tab follows the locale too.
 //
 // The tree comes from the pure helpers of lib/workspace-layers: build in
 // file order, filter by name keeping the ancestors, then flatten with the
@@ -26,9 +31,12 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type RefObject,
 } from "react";
 
 import { ChevronIcon } from "@/components/workspace-icons";
+import { WorkspacePagesPanel } from "@/components/workspace-pages-panel";
+import type { WorkspaceCanvasHandle } from "@/components/workspace-wasm-canvas";
 import { tr } from "@/lib/i18n";
 import {
   buildLayerTree,
@@ -45,19 +53,32 @@ import {
 
 type TabId = "layers" | "assets" | "tokens";
 
-const TABS: readonly { id: TabId; label: string }[] = [
-  { id: "layers", label: tr("workspace.sidebar.layers") },
-  { id: "assets", label: tr("workspace.toolbar.assets") },
-  // This string is intentionally not translated, as in the CLJS tabs.
-  { id: "tokens", label: "Tokens" },
-];
+export interface WorkspaceLayersPanelProps {
+  canEdit: boolean;
+  canvas: RefObject<WorkspaceCanvasHandle | null>;
+  // Collapse the whole left sidebar (the CLJS :collapse-left-sidebar).
+  onCollapse: () => void;
+  // Open a page: the shell writes ?page-id= so the route re-resolves it.
+  onSelectPage: (id: string) => void;
+}
 
-export function WorkspaceLayersPanel() {
+export function WorkspaceLayersPanel({
+  canEdit,
+  canvas,
+  onCollapse,
+  onSelectPage,
+}: WorkspaceLayersPanelProps) {
   const state = useSyncExternalStore(
     subscribeWorkspace,
     getWorkspaceState,
     getInitialWorkspaceState,
   );
+
+  const tabs: readonly { id: TabId; label: string }[] = [
+    { id: "layers", label: tr("workspace.sidebar.layers") },
+    { id: "assets", label: tr("workspace.toolbar.assets") },
+    { id: "tokens", label: tr("workspace.sidebar.tokens") },
+  ];
 
   const [tab, setTab] = useState<TabId>("layers");
   const [query, setQuery] = useState("");
@@ -117,31 +138,48 @@ export function WorkspaceLayersPanel() {
       className="pp-workspace-layers"
       aria-label={tr("workspace.sidebar.layers")}
     >
-      <div
-        className="pp-workspace-layers-tabs"
-        role="tablist"
-        aria-label={tr("workspace.sidebar.layers")}
-      >
-        {TABS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            role="tab"
-            className={
-              entry.id === tab
-                ? "pp-workspace-layers-tab pp-workspace-layers-tab--active"
-                : "pp-workspace-layers-tab"
-            }
-            aria-selected={entry.id === tab}
-            onClick={() => setTab(entry.id)}
-          >
-            {entry.label}
-          </button>
-        ))}
+      <div className="pp-workspace-layers-tabs">
+        <button
+          type="button"
+          className="pp-workspace-tabs-collapse"
+          title={tr("workspace.sidebar.collapse")}
+          aria-label={tr("workspace.sidebar.collapse")}
+          onClick={onCollapse}
+        >
+          <ChevronIcon />
+        </button>
+        <div
+          className="pp-workspace-layers-tablist"
+          role="tablist"
+          aria-label={tr("workspace.sidebar.layers")}
+        >
+          {tabs.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              className={
+                entry.id === tab
+                  ? "pp-workspace-layers-tab pp-workspace-layers-tab--active"
+                  : "pp-workspace-layers-tab"
+              }
+              aria-selected={entry.id === tab}
+              onClick={() => setTab(entry.id)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === "layers" ? (
         <>
+          <WorkspacePagesPanel
+            canEdit={canEdit}
+            canvas={canvas}
+            onSelectPage={onSelectPage}
+          />
+
           <div className="pp-workspace-layers-search">
             <input
               type="search"

@@ -9,9 +9,9 @@ import { describe, expect, it } from "vitest";
 import { PathData } from "@/lib/transit";
 import {
   IDENTITY_MATRIX,
-  applyTransformSet,
+  applyTransformEntries,
   applyTransformToShape,
-  buildTransformChanges,
+  buildTransformEntryChanges,
   frameCorners,
   inverseMatrix,
   isIdentityMatrix,
@@ -27,6 +27,7 @@ import {
   scaleMatrix,
   selectionGeometry,
   shapeTransformMatrix,
+  transformEntries,
   transformPathBytes,
   transformPoint,
   transformShapePatch,
@@ -34,6 +35,7 @@ import {
   type Matrix6,
   type Point,
   type SelectionGeometry,
+  type TransformEntry,
 } from "@/lib/workspace-transform";
 import type { WorkspaceObjects, WorkspaceShape } from "@/lib/workspace";
 
@@ -585,19 +587,18 @@ describe("transformPathBytes", () => {
 
 // --- Change building ---------------------------------------------------------
 
-describe("buildTransformChanges", () => {
+describe("buildTransformEntryChanges", () => {
   it("emits one mod-obj per shape with only the changed attributes", () => {
     const objects: WorkspaceObjects = {
       "rect-1": rectShape(),
       "rect-2": rectShape({ id: "rect-2" }),
     };
-    const changes = buildTransformChanges(
-      objects,
+    const entries = transformEntries(
       ["rect-1", "rect-1", "missing", "rect-2"],
       translationMatrix(10, 0),
       0,
-      "page-1",
     );
+    const changes = buildTransformEntryChanges(objects, entries, "page-1");
     expect(changes).toHaveLength(2);
     expect(changes[0]).toMatchObject({ type: "mod-obj", "page-id": "page-1", id: "rect-1" });
     expect(changes[0].operations.map((operation) => operation.attr).sort()).toEqual([
@@ -608,9 +609,31 @@ describe("buildTransformChanges", () => {
     expect(changes[1].id).toBe("rect-2");
   });
 
+  it("gives every entry its own matrix", () => {
+    const objects: WorkspaceObjects = {
+      "rect-1": rectShape(),
+      "rect-2": rectShape({ id: "rect-2" }),
+    };
+    const entries: TransformEntry[] = [
+      { id: "rect-1", matrix: translationMatrix(10, 0), rotation: 0 },
+      { id: "rect-2", matrix: translationMatrix(0, 5), rotation: 0 },
+    ];
+    const byId = new Map(
+      buildTransformEntryChanges(objects, entries, "page-1").map((change) => [change.id, change]),
+    );
+    const value = (id: string, attr: string): unknown =>
+      byId.get(id)?.operations.find((operation) => operation.attr === attr)?.val;
+    expect(value("rect-1", "x")).toBe(10);
+    expect(value("rect-2", "y")).toBe(5);
+    // Each entry wrote its own delta and only the attributes it changed.
+    expect(value("rect-1", "y")).toBeUndefined();
+    expect(value("rect-2", "x")).toBeUndefined();
+  });
+
   it("sends nothing for an identity transform", () => {
     const objects: WorkspaceObjects = { "rect-1": rectShape() };
-    expect(buildTransformChanges(objects, ["rect-1"], IDENTITY_MATRIX, 0, "page-1")).toEqual([]);
+    const entries = transformEntries(["rect-1"], IDENTITY_MATRIX, 0);
+    expect(buildTransformEntryChanges(objects, entries, "page-1")).toEqual([]);
     expect(transformShapePatch(rectShape(), IDENTITY_MATRIX, 0)).toEqual({});
   });
 
@@ -624,13 +647,8 @@ describe("buildTransformChanges", () => {
       "transform-inverse": { ...IDENTITY_RECORD },
       content,
     });
-    const changes = buildTransformChanges(
-      { "path-1": path },
-      ["path-1"],
-      translationMatrix(5, 5),
-      0,
-      "page-1",
-    );
+    const entries = transformEntries(["path-1"], translationMatrix(5, 5), 0);
+    const changes = buildTransformEntryChanges({ "path-1": path }, entries, "page-1");
     expect(changes).toHaveLength(1);
     const attrs = changes[0].operations.map((operation) => operation.attr).sort();
     expect(attrs).toEqual(["content", "points", "selrect"]);
@@ -639,15 +657,27 @@ describe("buildTransformChanges", () => {
   });
 });
 
-describe("applyTransformSet", () => {
+describe("applyTransformEntries", () => {
   it("replaces only the transformed shapes and keeps the rest", () => {
     const objects: WorkspaceObjects = {
       "rect-1": rectShape(),
       "rect-2": rectShape({ id: "rect-2" }),
     };
-    const next = applyTransformSet(objects, ["rect-1"], translationMatrix(10, 0), 0);
+    const entries = transformEntries(["rect-1"], translationMatrix(10, 0), 0);
+    const next = applyTransformEntries(objects, entries);
     expect(next["rect-2"]).toBe(objects["rect-2"]);
     expect(next["rect-1"]).not.toBe(objects["rect-1"]);
+    expect(next["rect-1"].x).toBe(10);
+    expect(next["rect-1"].y).toBe(0);
+  });
+
+  it("keeps the first entry of an id", () => {
+    const objects: WorkspaceObjects = { "rect-1": rectShape() };
+    const entries: TransformEntry[] = [
+      { id: "rect-1", matrix: translationMatrix(10, 0), rotation: 0 },
+      { id: "rect-1", matrix: translationMatrix(0, 50), rotation: 0 },
+    ];
+    const next = applyTransformEntries(objects, entries);
     expect(next["rect-1"].x).toBe(10);
     expect(next["rect-1"].y).toBe(0);
   });

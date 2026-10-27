@@ -15,8 +15,12 @@
 //   titles (the CLJS panel renders most of them as icon titles). The shared
 //   po files carry no keys for these enums, so the values are also the
 //   visible labels.
-// - No grid cell editing and no "edit grid" mode: the grid section edits the
-//   direction, the alignment, the gap, the padding and the track lists.
+// - The grid cell menu (F9.12) edits the cell of one child: auto or manual,
+//   the four coordinates and the two self alignments. The canvas cell
+//   edition mode (grid_layout_editor.cljs) and the "area" mode are not
+//   ported. The grid section of the frame edits the direction, the
+//   alignment, the gap, the padding and the track lists, and every
+//   structural edit recomputes the cell map over the new tracks.
 // - The layout-item menu edits the sizing, the margin, the min/max sizes,
 //   align-self and the absolute flag; the z-index input is not ported.
 // - A layout or a constraint change is stored and uploaded, but the client
@@ -31,8 +35,20 @@ import {
   useDraftFields,
 } from "@/components/workspace-style-field";
 import { tr } from "@/lib/i18n";
-import type { WorkspaceShape } from "@/lib/workspace";
-import { isAnyLayout } from "@/lib/workspace-layout";
+import type { WorkspaceObjects, WorkspaceShape } from "@/lib/workspace";
+import {
+  GRID_SELF,
+  assignGrid,
+  gridCellValues,
+  gridPlacementEdit,
+  gridSelfEdit,
+  gridStatePatch,
+  gridTrackEdit,
+  type GridPlacement,
+  type GridSelf,
+  type GridState,
+} from "@/lib/workspace-grid-cells";
+import { isAnyLayout, isGridLayout } from "@/lib/workspace-layout";
 import {
   ALIGN_CONTENT,
   ALIGN_ITEMS,
@@ -67,6 +83,9 @@ import {
 export interface LayoutSectionProps {
   shape: WorkspaceShape;
   parent: WorkspaceShape | null;
+  // The page objects: the grid sections need the children of the frame to
+  // rebuild the cell map (F9.12).
+  objects: WorkspaceObjects;
   disabled: boolean;
   // The attribute commit of the shape (one mod-obj); the section never
   // touches the file.
@@ -89,7 +108,7 @@ function quadLabels(): readonly string[] {
   ];
 }
 
-export function LayoutOptions({ shape, disabled, send }: LayoutSectionProps) {
+export function LayoutOptions({ shape, objects, disabled, send }: LayoutSectionProps) {
   const values = layoutValues(shape);
   const { drafts, setDraft, dropDraft, dropAllDrafts, commitDraft } =
     useDraftFields(send);
@@ -99,6 +118,30 @@ export function LayoutOptions({ shape, disabled, send }: LayoutSectionProps) {
   const commitStructural = (attrs: Record<string, unknown>): void => {
     dropAllDrafts();
     void send(attrs);
+  };
+
+  // The renderer places only the children a cell names, so every structural
+  // grid edit recomputes the map: lib/workspace-grid-cells restores the
+  // partition and places the children the change left without a cell.
+  const commitGrid = (
+    state: GridState,
+    patch: Record<string, unknown> = {},
+    sendTracks = false,
+  ): void => {
+    commitStructural({ ...patch, ...gridStatePatch(state, shape, sendTracks) });
+  };
+
+  // The kind switch reinitializes the layout, like get-layout-initializer.
+  // A new grid also gets the cells its children need, otherwise nothing of
+  // it shows until the first cell edit.
+  const startLayout = (kind: LayoutKind): void => {
+    const patch = layoutPatch(kind);
+    if (kind !== "grid") {
+      commitStructural(patch);
+      return;
+    }
+    const frame: WorkspaceShape = { ...shape, ...patch };
+    commitGrid(assignGrid(frame, objects), patch, true);
   };
 
   const commitGap = (
@@ -146,7 +189,6 @@ export function LayoutOptions({ shape, disabled, send }: LayoutSectionProps) {
     commitDraft(fieldId, raw, paddingPatch(values.paddingType, quad));
   };
 
-  // The kind switch reinitializes the layout, like get-layout-initializer.
   const rows = values.rows;
   const columns = values.columns;
 
@@ -183,14 +225,26 @@ export function LayoutOptions({ shape, disabled, send }: LayoutSectionProps) {
 
   const addTrack = (axis: "rows" | "columns"): void => {
     const tracks: GridTrack[] = [...(axis === "rows" ? rows : columns), defaultTrack()];
-    commitStructural(tracksPatch(axis, tracks));
+    if (!grid) {
+      commitStructural(tracksPatch(axis, tracks));
+      return;
+    }
+    // normalizeCells creates the cells of the new line, then the children
+    // without a cell take the free ones.
+    commitGrid(gridTrackEdit(shape, objects, axis, tracks, null), {}, true);
   };
 
   const removeTrack = (axis: "rows" | "columns", index: number): void => {
     const tracks = (axis === "rows" ? rows : columns).filter(
       (_, position) => position !== index,
     );
-    commitStructural(tracksPatch(axis, tracks));
+    if (!grid) {
+      commitStructural(tracksPatch(axis, tracks));
+      return;
+    }
+    // The cells of the removed line go with it; their children are placed
+    // again, growing the tracks back when there is no room.
+    commitGrid(gridTrackEdit(shape, objects, axis, tracks, index), {}, true);
   };
 
   if (values.kind === null) {
@@ -203,7 +257,7 @@ export function LayoutOptions({ shape, disabled, send }: LayoutSectionProps) {
             className="pp-workspace-style-toggle"
             title={tr("labels.flex-layout")}
             disabled={disabled}
-            onClick={() => commitStructural(layoutPatch("flex"))}
+            onClick={() => startLayout("flex")}
           >
             {tr("labels.flex-layout")}
           </button>
@@ -212,7 +266,7 @@ export function LayoutOptions({ shape, disabled, send }: LayoutSectionProps) {
             className="pp-workspace-style-toggle"
             title={tr("labels.grid-layout")}
             disabled={disabled}
-            onClick={() => commitStructural(layoutPatch("grid"))}
+            onClick={() => startLayout("grid")}
           >
             {tr("labels.grid-layout")}
           </button>
@@ -251,7 +305,7 @@ export function LayoutOptions({ shape, disabled, send }: LayoutSectionProps) {
           ]}
           disabled={disabled}
           mixedLabel={tr("settings.multiple")}
-          onChange={(next) => commitStructural(layoutPatch(next as LayoutKind))}
+          onChange={(next) => startLayout(next as LayoutKind)}
         />
         <SelectField
           label="Direction"
@@ -796,4 +850,167 @@ export function ConstraintsOptions({
 // keeps the predicate next to the attributes it reads.
 export function isLayoutParent(parent: WorkspaceShape | null): boolean {
   return isAnyLayout(parent);
+}
+
+// Whether the shape sits in a grid layout and takes a cell: the cell menu
+// that the CLJS panel mounts for a selected grid child (grid_cell.cljs).
+export function isGridCellParent(parent: WorkspaceShape | null): boolean {
+  return isGridLayout(parent);
+}
+
+export interface GridCellSectionProps {
+  // The selected child; the cells live on `parent`.
+  shape: WorkspaceShape;
+  parent: WorkspaceShape;
+  objects: WorkspaceObjects;
+  disabled: boolean;
+  // The cell edit writes the layout frame, not the child (the CLJS
+  // update-grid-cells does the same).
+  sendParent: (attrs: Record<string, unknown>) => Promise<boolean>;
+}
+
+// The grid cell menu of one child (F9.12): a cell is a rectangle of the
+// track grid that the layout frame stores per child, so every edit rebuilds
+// the frame's map over its current children and commits it as one mod-obj;
+// the canvas then reflows the grid (F9.11).
+export function GridCellOptions({
+  shape,
+  parent,
+  objects,
+  disabled,
+  sendParent,
+}: GridCellSectionProps) {
+  const values = gridCellValues(parent, shape.id);
+  const { drafts, setDraft, dropDraft, commitAction } = useDraftFields(sendParent);
+
+  const selfOptions = GRID_SELF.map((value) => ({ value }));
+
+  const commitPlacement = (placement: GridPlacement): void => {
+    const state = gridPlacementEdit(parent, objects, shape.id, placement);
+    void sendParent(gridStatePatch(state, parent));
+  };
+
+  const commitSelf = (
+    alignSelf: GridSelf | null,
+    justifySelf: GridSelf | null,
+  ): void => {
+    const state = gridSelfEdit(parent, objects, shape.id, { alignSelf, justifySelf });
+    void sendParent(gridStatePatch(state, parent));
+  };
+
+  // One coordinate field: it always lands on a manual cell, like the CLJS
+  // on-grid-coordinates path, which also sets the manual mode.
+  const commitCoordinate = (
+    fieldId: string,
+    raw: string | undefined,
+    slot: "row" | "column" | "rowSpan" | "columnSpan",
+  ): void => {
+    const value = parseNumber(raw ?? "");
+    if (value === null) {
+      dropDraft(fieldId);
+      return;
+    }
+    const rounded = Math.max(1, Math.round(value));
+    commitAction(fieldId, raw, () => {
+      const next = {
+        row: values.row,
+        column: values.column,
+        rowSpan: values.rowSpan,
+        columnSpan: values.columnSpan,
+      };
+      next[slot] = rounded;
+      const state = gridPlacementEdit(parent, objects, shape.id, {
+        mode: "manual",
+        ...next,
+      });
+      return sendParent(gridStatePatch(state, parent));
+    });
+  };
+
+  const coordinates: ReadonlyArray<{
+    fieldId: string;
+    slot: "row" | "column" | "rowSpan" | "columnSpan";
+    label: string;
+    value: number;
+  }> = [
+    { fieldId: "cell-row", slot: "row", label: "Row", value: values.row },
+    { fieldId: "cell-column", slot: "column", label: "Column", value: values.column },
+    { fieldId: "cell-row-span", slot: "rowSpan", label: "Row span", value: values.rowSpan },
+    {
+      fieldId: "cell-column-span",
+      slot: "columnSpan",
+      label: "Column span",
+      value: values.columnSpan,
+    },
+  ];
+
+  return (
+    <section className="pp-workspace-style-section">
+      <h3 className="pp-workspace-style-title">Grid cell</h3>
+
+      <div className="pp-workspace-style-grid">
+        <SelectField
+          label="Mode"
+          value={values.mode}
+          options={[{ value: "auto" }, { value: "manual" }]}
+          disabled={disabled}
+          mixedLabel={tr("settings.multiple")}
+          onChange={(next) =>
+            next === "manual"
+              ? commitPlacement({
+                  mode: "manual",
+                  row: values.row,
+                  column: values.column,
+                  rowSpan: values.rowSpan,
+                  columnSpan: values.columnSpan,
+                })
+              : commitPlacement({ mode: "auto" })
+          }
+        />
+        <SelectField
+          label="Align self"
+          value={values.alignSelf}
+          options={selfOptions}
+          disabled={disabled}
+          mixedLabel={tr("settings.multiple")}
+          onChange={(next) => commitSelf(next as GridSelf, null)}
+        />
+        <SelectField
+          label="Justify self"
+          value={values.justifySelf}
+          options={selfOptions}
+          disabled={disabled}
+          mixedLabel={tr("settings.multiple")}
+          onChange={(next) => commitSelf(null, next as GridSelf)}
+        />
+      </div>
+
+      {values.mode === "manual" ? (
+        <div className="pp-workspace-style-grid">
+          {coordinates.map((field) => (
+            <DraftField
+              key={field.fieldId}
+              fieldId={field.fieldId}
+              type="number"
+              label={field.label}
+              value={String(field.value)}
+              draft={drafts[field.fieldId]}
+              disabled={disabled}
+              min={1}
+              step={1}
+              onDraft={setDraft}
+              onCommit={(fieldId, raw) => commitCoordinate(fieldId, raw, field.slot)}
+              onCancel={dropDraft}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <p className="pp-workspace-style-label">
+        {values.inCell
+          ? `Cell ${values.row}, ${values.column} (${values.rowSpan}x${values.columnSpan})`
+          : "Not in a cell"}
+      </p>
+    </section>
+  );
 }

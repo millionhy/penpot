@@ -8623,6 +8623,9 @@ msgstr "Pages"
 msgid "workspace.sidebar.sitemap.add-page"
 msgstr "Add page"
 
+msgid "workspace.sidebar.tokens"
+msgstr "Tokens"
+
 #: src/app/main/ui/workspace/left_header.cljs:94
 msgid "workspace.sitemap"
 msgstr "Sitemap"

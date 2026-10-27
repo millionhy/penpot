@@ -112,3 +112,14 @@ export function loadDecodedWorkspaceFile(
   }
   return entry;
 }
+
+// Drop the cached decoded file after a write (F9.13): the cache is the load
+// path of a mount or a page switch, and a decoded snapshot taken before a
+// commit would render the old page objects. The next load fetches again.
+export function invalidateDecodedWorkspaceFile(
+  app: RendererApp | null,
+  fileId: string,
+): void {
+  if (app === null) return;
+  decodedFiles.get(app)?.delete(fileId);
+}

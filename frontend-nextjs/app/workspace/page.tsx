@@ -7,8 +7,11 @@
 //
 // Deviations from the CLJS original (app.main.ui.workspace), documented:
 // - Shell slice (F9.4): the sidebars are the left header, the Layers panel
-//   and an empty right skeleton; no palette, context menu, plugin UI, page
-//   switching, layout presets or history yet.
+//   and an empty right skeleton; no palette, context menu, plugin UI, layout
+//   presets or history yet.
+// - F9.13 adds the page list of the left sidebar and its page switch. The
+//   switch is a ?page-id= change: the effect below re-resolves the page on
+//   the loaded file without re-downloading it.
 // - initialize-workspace loads once per file-id; a page-id change on the
 //   loaded file only re-resolves the open page. An unknown page-id falls
 //   back to the first page (lib/workspace records the CLJS redirect).

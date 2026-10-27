@@ -113,10 +113,20 @@
 //   pointercancel instead restores the selection the threshold crossing
 //   replaced.
 // - mod+space pans instead of the CLJS start-zooming drag.
-// - The resize/rotate gesture applies one world matrix to the selection and
-//   its subtrees (no constraint or layout propagation inside frames); text
-//   shapes stay non-interactive and the post-commit wasm handover only
-//   carries the new selrect and path bytes, like the move path.
+// - The resize/rotate gesture applies one world matrix to the selection. A
+//   resize hands it to the renderer and previews and commits the matrices it
+//   answers with (F9.11): the constraint spread and the layout reflow stay in
+//   wasm, one algorithm for the drag, the panel fields and the reflow. A
+//   rotation keeps the local rigid spread of lib/workspace-constraints (the
+//   CLJS rotation algorithm skips the child constraints on purpose), and so
+//   does a wasm without the propagate ABI. Text shapes stay non-interactive
+//   and the post-commit wasm handover carries the whole record, like the
+//   move path.
+// - A layout attribute edit asks the renderer for a reflow right after it
+//   commits, and the returned child positions ride a second update-file
+//   request folded into the same undo entry (F9.11). Drawing, deleting and
+//   reordering shapes inside a layout do not reflow yet: the drop already
+//   places the shape where the layout wants it.
 // - clientToWorld is the alias of the F9.1 pointToViewport (same formula;
 //   see lib/workspace-viewport).
 // - The hover queries run synchronously against the JS-side index on an
@@ -154,6 +164,7 @@ import {
   type Matrix6,
   type ShapeGeometry,
 } from "@/lib/render-wasm/modifiers";
+import { PROPAGATE_INTERNALS, propagateModifiers } from "@/lib/render-wasm/propagate";
 import {
   clearWorkspaceCanvas,
   initializeWorkspaceViewport,
@@ -163,6 +174,7 @@ import {
 } from "@/lib/render-wasm/workspace-render";
 import {
   loadDecodedWorkspaceFile,
+  invalidateDecodedWorkspaceFile,
   workspacePageObjects,
 } from "@/lib/render-wasm/workspace-data";
 import {
@@ -173,6 +185,7 @@ import {
   uploadShapeGeometry,
 } from "@/lib/render-wasm/shape-upload";
 import { isMacos } from "@/lib/shortcuts";
+import { ZERO_UUID } from "@/lib/file-data";
 import { cmdEncoded } from "@/lib/rpc";
 import { encodeUpdateFile, type UpdateFileChange } from "@/lib/transit";
 import {
@@ -204,24 +217,50 @@ import {
   topNestedFrameAt,
 } from "@/lib/workspace-move";
 import { buildRelocateChanges } from "@/lib/workspace-relocate";
-import { buildGeometryChange, type GeometryTarget } from "@/lib/workspace-geometry";
+import {
+  buildGeometryChange,
+  geometryTransform,
+  type GeometryTarget,
+} from "@/lib/workspace-geometry";
+import { acceptedSubtreeEntries, gestureEntries } from "@/lib/workspace-constraints";
 import { buildStyleChange } from "@/lib/workspace-style";
+import {
+  applyReflow,
+  reflowChanges,
+  reflowEntries,
+  reflowTargetIds,
+  type ReflowUpdate,
+} from "@/lib/workspace-reflow";
 import type { ShapeUpdate } from "@/lib/workspace-multi";
 import { buildVerticalOrderChanges, type VerticalOrderLocation } from "@/lib/workspace-order";
+import {
+  addPageChange,
+  deletePageChange,
+  emptyPage,
+  normalizePageName,
+  pageInfos,
+  renamePageChange,
+  uniquePageName,
+  validPageName,
+  withPageAdded,
+  withPageDeleted,
+  withPageRenamed,
+} from "@/lib/workspace-pages";
 import {
   applyUpdateChanges,
   canRedo,
   canUndo,
   createUndoState,
   invertChanges,
+  mergeUndo,
   pushUndo,
   redoStep,
   undoStep,
   type UndoState,
 } from "@/lib/workspace-undo";
 import {
-  applyTransformSet,
-  buildTransformChanges,
+  applyTransformEntries,
+  buildTransformEntryChanges,
   isIdentityMatrix,
   matrixRecord,
   resizeGesture,
@@ -232,6 +271,7 @@ import {
   type ResizeHandler,
   type RotationCorner,
   type SelectionGeometry,
+  type TransformEntry,
 } from "@/lib/workspace-transform";
 import {
   areaInitialSelection,
@@ -261,6 +301,7 @@ import {
   setWorkspaceState,
   setWorkspaceViewport,
   toggleSelection,
+  type WorkspaceState,
 } from "@/lib/workspace-store";
 import {
   clientToWorld,
@@ -308,15 +349,60 @@ const AREA_MIN_SIZE = 10;
 // The onToolChange fallback until the shell wires the toolbar (F9.5 T6).
 const NOOP_TOOL_CHANGE = (): void => {};
 
+// The subtree entries of one gesture (F9.10 + F9.11). A resize sends the
+// world matrix of its roots to the renderer as the "child" kind and takes
+// the matrices it answers with: the constraint spread and the layout reflow
+// are one algorithm there, shared with the drag and the attribute edits. A
+// rotation keeps the local rigid spread (set-wasm-rotation-modifiers skips
+// the child constraints on purpose, and the overlay previews that spread),
+// and so does a wasm without the propagate ABI.
+function gestureSubtreeEntries(
+  app: RendererApp | null,
+  objects: WorkspaceObjects,
+  roots: readonly string[],
+  matrix: Matrix6,
+  rotation: number,
+  propagate: boolean,
+): TransformEntry[] {
+  const accepted = roots.filter((id) => {
+    const shape = objects[id];
+    return shape !== undefined && shape !== null && isTransformableShape(shape);
+  });
+  if (accepted.length === 0) return [];
+  // An identity gesture changes nothing, and the renderer reads identity as
+  // "reflow this": asking it mid-gesture would snap a layout's children to
+  // their flow positions before the user lets go. Answer the local spread,
+  // which is the same no-op.
+  if (isIdentityMatrix(matrix)) {
+    return gestureEntries(objects, accepted, matrix, rotation, isTransformableShape);
+  }
+  if (propagate && rotation === 0 && app !== null) {
+    try {
+      return acceptedSubtreeEntries(
+        objects,
+        propagateModifiers(
+          app,
+          accepted.map((id) => ({ id, matrix })),
+        ),
+      );
+    } catch (cause: unknown) {
+      console.warn("[workspace] could not propagate the transform in wasm:", cause);
+    }
+  }
+  return gestureEntries(objects, accepted, matrix, rotation, isTransformableShape);
+}
+
 // The resize/rotate gesture (F9.6): the selection geometry captured at the
 // press (the selection cannot change mid-gesture), the handle or rotation
-// corner, the id set the world matrix applies to and the last preview the
-// release commits. Null outside a running transform gesture.
+// corner, the selected ids the world matrix applies to and the last preview
+// the release commits. Null outside a running transform gesture.
 interface TransformGestureState {
   geometry: SelectionGeometry;
   handler: ResizeHandler | null;
   corner: RotationCorner | null;
-  ids: string[];
+  // The selection at the press: the gesture matrix applies to it, the
+  // subtree and the constraints spread from it (F9.10).
+  roots: string[];
   matrix: Matrix6 | null;
   rotation: number;
 }
@@ -403,6 +489,13 @@ export interface WorkspaceCanvasHandle {
   // F9.8: one vertical-order command over the current selection; the main
   // menu and the Ctrl/Cmd+arrow handlers reach the effect-owned command.
   orderSelection(location: VerticalOrderLocation): void;
+  // F9.13: the page actions of the left sidebar. Each one commits a single
+  // page change through the shared write path (recordUndo false: the undo
+  // stack has no page inverse) and resolves null/false when the file is
+  // read-only, a commit is already in flight or the backend rejects it.
+  createPage(): Promise<string | null>;
+  renamePage(id: string, name: string): Promise<boolean>;
+  deletePage(id: string): Promise<boolean>;
 }
 
 export interface WorkspaceWasmCanvasProps {
@@ -458,6 +551,9 @@ function WorkspaceWasmCanvasImpl({
   // The move drag needs the internal modifier ABI; the load effect gates
   // it once per load (see the load sequence below).
   const dragEnabledRef = useRef(false);
+  // F9.11: the geometry propagation ABI (_propagate_modifiers). A rebuild
+  // without it keeps the local constraint spread and skips the reflow.
+  const propagateEnabledRef = useRef(false);
   // The commit bookkeeping of the write path (F9.3 T3, AD5/AD11): the
   // interaction effect outlives prop changes, so the ids it commits with
   // and the guards all live in refs the load effect refreshes — the edit
@@ -534,17 +630,24 @@ function WorkspaceWasmCanvasImpl({
   // already in flight or the session id is missing; throws when the request
   // fails (the callers own their error reporting and local rollback).
   const sendUpdateFile = useCallback(
-    async (changes: UpdateFileChange[], recordUndo = true): Promise<number | null> => {
+    async (
+      changes: UpdateFileChange[],
+      recordUndo: boolean | "merge" = true,
+      undoBase?: WorkspaceObjects | null,
+    ): Promise<number | null> => {
       const sessionId = sessionIdRef.current;
       if (sessionId === null || commitPendingRef.current) return null;
       // The inverse is derived from the model the commit was built on, so
       // the snapshot and the selection are taken before the request. The
       // inversion runs before the request too: a change that cannot be
-      // undone must not reach the file.
-      const before = recordUndo ? objectsRef.current : null;
-      const selectionBefore = recordUndo ? [...getWorkspaceState().selection] : [];
+      // undone must not reach the file. A merged request may name its own
+      // base: a reflow trails an attribute edit that already reached the
+      // model, and undo must land on the state before that edit.
+      const record = recordUndo !== false;
+      const before = record ? (undoBase !== undefined ? undoBase : objectsRef.current) : null;
+      const selectionBefore = record ? [...getWorkspaceState().selection] : [];
       const undoChanges =
-        recordUndo && before !== null ? invertChanges(before, changes) : [];
+        record && before !== null ? invertChanges(before, changes) : [];
       commitPendingRef.current = true;
       try {
         const body = encodeUpdateFile({
@@ -568,15 +671,24 @@ function WorkspaceWasmCanvasImpl({
         // rejects a revn ABOVE the stored one (files_update.clj), so a
         // lagging submit stays accepted.
         revnRef.current = Math.max(revnRef.current, revn + 1);
+        // The decoded cache of lib/render-wasm/workspace-data still holds
+        // the file as it stood before this commit. Drop it, so a page
+        // switch or a reload re-reads the file from the backend (a page
+        // created above lands there, a renamed page shows its new name).
+        invalidateDecodedWorkspaceFile(appRef.current, fileIdRef.current);
         // F9.7: one successful request is one undo entry, whatever the
         // number of changes (a move plus its reparent stays one step).
         if (undoChanges.length > 0) {
-          undoRef.current = pushUndo(undoRef.current, {
+          const entry = {
             changes: [...changes],
             undoChanges,
             selectionBefore,
             selectionAfter: selectionBefore,
-          });
+          };
+          undoRef.current =
+            recordUndo === "merge"
+              ? mergeUndo(undoRef.current, entry)
+              : pushUndo(undoRef.current, entry);
           setUndoAvailability(canUndo(undoRef.current), canRedo(undoRef.current));
         }
         return revn;
@@ -585,6 +697,144 @@ function WorkspaceWasmCanvasImpl({
       }
     },
     [],
+  );
+
+  // F9.11: the shell half of a layout reflow. The renderer owns the layout
+  // algorithm (reflow_flex_layout / reflow_grid_layout), so the shell marks
+  // the edited containers with an identity transform — the "reflow this"
+  // mark — and takes the matrices it answers with. Those become one
+  // update-file request that merges into the attribute edit that asked for
+  // it, plus the same matrices applied to the model and pushed to wasm. The
+  // inverse is built from `before`, the model as it stood before the edit,
+  // so one undo step returns both the attributes and the child positions.
+  // A missing ABI, a failing call or a reflow that moves nothing leaves the
+  // committed attributes alone.
+  const commitReflow = useCallback(
+    async (
+      before: WorkspaceObjects,
+      after: WorkspaceObjects,
+      updates: readonly ReflowUpdate[],
+    ): Promise<void> => {
+      if (!propagateEnabledRef.current) return;
+      const app = appRef.current;
+      if (app === null) return;
+      try {
+        const ids = reflowTargetIds(after, updates);
+        if (ids.length === 0) return;
+        const transforms = propagateModifiers(app, reflowEntries(ids));
+        const changes = reflowChanges(after, transforms, pageIdRef.current);
+        if (changes.length === 0) return;
+        const revn = await sendUpdateFile(changes, "merge", before);
+        if (revn === null) return;
+        const next = applyReflow(after, transforms);
+        objectsRef.current = next;
+        indexRef.current = createWorkspaceIndex(next);
+        setWorkspaceObjects(next);
+        try {
+          const shapes: WorkspaceShape[] = [];
+          for (const [id] of transforms) {
+            const shape = next[id];
+            if (shape !== undefined && shape !== null) shapes.push(shape);
+          }
+          uploadShapeGeometry(app, shapes);
+        } catch (cause: unknown) {
+          console.warn("[workspace] could not sync the reflow to wasm:", cause);
+        }
+      } catch (cause: unknown) {
+        // The attributes are committed and the file keeps them; only the
+        // reflowed positions are behind.
+        console.warn("[workspace] could not reflow the layout:", cause);
+      }
+    },
+    [sendUpdateFile],
+  );
+
+  // F9.13: the page actions of the left sidebar. The backend has no page
+  // RPC: create, rename and delete are the :add-page / :mod-page /
+  // :del-page changes of update-file, so each action commits through the
+  // shared write path and mirrors the same change into the store's file.
+  // recordUndo stays false: lib/workspace-undo inverts shape changes from
+  // the page model and has no page inverse.
+  const createPage = useCallback(async (): Promise<string | null> => {
+    if (!canEditRef.current) return null;
+    const current = getWorkspaceState().file;
+    if (current === null) return null;
+    const id = crypto.randomUUID();
+    const name = uniquePageName(pageInfos(current).map((page) => page.name));
+    try {
+      const revn = await sendUpdateFile([addPageChange(id, name)], false);
+      if (revn === null) return null;
+      // The backend builds the page with ctp/make-empty-page; the local
+      // copy clones the open page's root frame (a page root carries no
+      // children) so the JS model has the page before the next load.
+      // Re-read the file: a commit may have landed while the RPC ran.
+      const latest = getWorkspaceState().file ?? current;
+      const root = pageObjects(latest, getWorkspaceState().pageId)[ZERO_UUID] ?? null;
+      setWorkspaceState({ file: withPageAdded(latest, emptyPage(id, name, root)) });
+      return id;
+    } catch (cause: unknown) {
+      console.error("[workspace] page create failed:", cause);
+      setWorkspaceState({ error: cause });
+      return null;
+    }
+  }, [sendUpdateFile]);
+
+  // mod-page :name. The page map keeps its objects reference, so the
+  // canvas load effect (keyed on the open page objects) does not reload
+  // and the viewport, the selection and the undo stack survive.
+  const renamePage = useCallback(
+    async (id: string, name: string): Promise<boolean> => {
+      if (!canEditRef.current) return false;
+      const trimmed = normalizePageName(name);
+      if (!validPageName(trimmed)) return false;
+      const current = getWorkspaceState().file;
+      if (current === null) return false;
+      const page = (current.data["pages-index"] ?? {})[id];
+      if (page === undefined || page === null) return false;
+      if (page.name === trimmed) return true;
+      try {
+        const revn = await sendUpdateFile([renamePageChange(id, trimmed)], false);
+        if (revn === null) return false;
+        const latest = getWorkspaceState().file ?? current;
+        setWorkspaceState({ file: withPageRenamed(latest, id, trimmed) });
+        return true;
+      } catch (cause: unknown) {
+        console.error("[workspace] page rename failed:", cause);
+        setWorkspaceState({ error: cause });
+        return false;
+      }
+    },
+    [sendUpdateFile],
+  );
+
+  // del-page. The last page stays (the sidebar hides the button; the CLJS
+  // sitemap refuses to empty the file too). Deleting the open page moves
+  // the selection to the first remaining one in the same store write, so
+  // no render sees the open page gone.
+  const deletePage = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (!canEditRef.current) return false;
+      const current = getWorkspaceState().file;
+      if (current === null) return false;
+      const pages = current.data.pages ?? [];
+      if (pages.length <= 1 || !pages.includes(id)) return false;
+      try {
+        const revn = await sendUpdateFile([deletePageChange(id)], false);
+        if (revn === null) return false;
+        const latest = getWorkspaceState().file ?? current;
+        const patch: Partial<WorkspaceState> = { file: withPageDeleted(latest, id) };
+        if (getWorkspaceState().pageId === id) {
+          patch.pageId = (latest.data.pages ?? []).find((pageId) => pageId !== id) ?? null;
+        }
+        setWorkspaceState(patch);
+        return true;
+      } catch (cause: unknown) {
+        console.error("[workspace] page delete failed:", cause);
+        setWorkspaceState({ error: cause });
+        return false;
+      }
+    },
+    [sendUpdateFile],
   );
 
   // One write path for the imperative commands: the same stateRef plus
@@ -684,6 +934,10 @@ function WorkspaceWasmCanvasImpl({
               console.warn("[workspace] could not sync the style to wasm:", cause);
             }
           }
+          // F9.11: a layout attribute re-places the children. wasm holds the
+          // new record now, so the reflow is one request away. A failure
+          // there never fails the committed edit.
+          await commitReflow(currentObjects, next, [{ id, attrs }]);
           return true;
         } catch (cause: unknown) {
           console.error("[workspace] style commit failed:", cause);
@@ -735,6 +989,10 @@ function WorkspaceWasmCanvasImpl({
               }
             }
           }
+          // F9.11: the layout edits of the batch ask for one reflow each,
+          // after the batch reached wasm. A failure there never fails the
+          // committed edits.
+          await commitReflow(currentObjects, after, entries);
           return true;
         } catch (cause: unknown) {
           console.error("[workspace] style batch failed:", cause);
@@ -747,6 +1005,9 @@ function WorkspaceWasmCanvasImpl({
       // the local model and the wasm record. A target equal to the current
       // geometry sends nothing and resolves true: the wanted state already
       // holds, so the panel must not flash its generic error.
+      //
+      // F9.10: the same matrix spreads to the subtree, so a frame resized
+      // from the panel moves its children by their constraints too.
       updateShapeGeometry: async (id, target) => {
         if (!canEditRef.current) return false;
         const objects = objectsRef.current;
@@ -755,8 +1016,21 @@ function WorkspaceWasmCanvasImpl({
         if (shape === undefined || shape === null) return false;
         const change = buildGeometryChange(shape, target, pageIdRef.current);
         if (change === null) return true;
+        const gesture = geometryTransform(shape, target);
+        const descendants =
+          gesture === null
+            ? []
+            : gestureSubtreeEntries(
+                appRef.current,
+                objects,
+                [id],
+                gesture.matrix,
+                gesture.rotationDelta,
+                propagateEnabledRef.current,
+              ).filter((entry) => entry.id !== id);
+        const extra = buildTransformEntryChanges(objects, descendants, pageIdRef.current);
         try {
-          const revn = await sendUpdateFile([change]);
+          const revn = await sendUpdateFile(extra.length === 0 ? [change] : [change, ...extra]);
           if (revn === null) return false;
           // Re-read: the model may have been replaced while the RPC ran. The
           // patch carries absolute geometry, so it lands on either snapshot.
@@ -766,7 +1040,7 @@ function WorkspaceWasmCanvasImpl({
             return false;
           }
           const patched = applyUpdateChanges({ [id]: currentShape }, [change])[id];
-          const next = { ...currentObjects, [id]: patched };
+          const next = applyTransformEntries({ ...currentObjects, [id]: patched }, descendants);
           objectsRef.current = next;
           indexRef.current = createWorkspaceIndex(next);
           setWorkspaceObjects(next);
@@ -775,7 +1049,12 @@ function WorkspaceWasmCanvasImpl({
             try {
               // The whole record: set_object carries the selrect, points,
               // rotation and transform a selrect-only push would drop.
-              uploadShapeGeometry(app, [patched]);
+              const shapes: WorkspaceShape[] = [patched];
+              for (const entry of descendants) {
+                const moved = next[entry.id];
+                if (moved !== undefined && moved !== null) shapes.push(moved);
+              }
+              uploadShapeGeometry(app, shapes);
             } catch (cause: unknown) {
               console.warn("[workspace] could not sync the new geometry to wasm:", cause);
             }
@@ -790,8 +1069,11 @@ function WorkspaceWasmCanvasImpl({
       undo: () => historyRef.current?.undo(),
       redo: () => historyRef.current?.redo(),
       orderSelection: (location) => orderRef.current?.(location),
+      createPage,
+      renamePage,
+      deletePage,
     }),
-    [applyViewport, sendUpdateFile],
+    [applyViewport, commitReflow, createPage, deletePage, renamePage, sendUpdateFile],
   );
 
   // Completion signals for tests and diagnosis: data-rendered flips on the
@@ -806,6 +1088,18 @@ function WorkspaceWasmCanvasImpl({
       document.removeEventListener("penpot:wasm:tiles-complete", onTiles);
     };
   }, []);
+
+  // The load key of the canvas: the open page map, not the whole file. A
+  // page rename (or a change to another page of the sitemap) then leaves
+  // the canvas alone, so the viewport, the selection and the undo stack
+  // survive it; a page switch still changes pageId and reloads.
+  const canvasPage = (file.data["pages-index"] ?? {})[pageId] ?? null;
+  const canvasObjects = canvasPage?.objects ?? null;
+  const canvasBackground =
+    typeof canvasPage?.background === "string" ? canvasPage.background : DEFAULT_BACKGROUND;
+  const canvasCanEdit = canEditFile(file);
+  const canvasRevn = typeof file.revn === "number" ? file.revn : 0;
+  const canvasVern = typeof file.vern === "number" ? file.vern : 0;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -831,6 +1125,7 @@ function WorkspaceWasmCanvasImpl({
     delete canvas.dataset.shapes;
     stateRef.current = null;
     dragEnabledRef.current = false;
+    propagateEnabledRef.current = false;
     // F9.7: the stack is per load (see lib/workspace-undo); a page switch
     // reloads the model, so no entry may survive it.
     undoRef.current = createUndoState();
@@ -840,9 +1135,9 @@ function WorkspaceWasmCanvasImpl({
     // guards and the session id minted once per mount.
     fileIdRef.current = fileId;
     pageIdRef.current = pageId;
-    canEditRef.current = canEditFile(file);
-    revnRef.current = typeof file.revn === "number" ? file.revn : 0;
-    vernRef.current = typeof file.vern === "number" ? file.vern : 0;
+    canEditRef.current = canvasCanEdit;
+    revnRef.current = canvasRevn;
+    vernRef.current = canvasVern;
     if (sessionIdRef.current === null) {
       sessionIdRef.current = crypto.randomUUID();
     }
@@ -868,6 +1163,17 @@ function WorkspaceWasmCanvasImpl({
         dragEnabledRef.current = missing.length === 0;
         if (missing.length > 0) {
           console.warn(`[render-wasm] drag disabled, missing internals: ${missing.join(", ")}`);
+        }
+
+        // F9.11: the geometry propagation ABI drives the resize spread and
+        // the layout reflow. A rebuild without it keeps the local constraint
+        // spread of F9.10 and commits no reflow.
+        const missingPropagate = missingInternals(app, PROPAGATE_INTERNALS);
+        propagateEnabledRef.current = missingPropagate.length === 0;
+        if (missingPropagate.length > 0) {
+          console.warn(
+            `[render-wasm] geometry propagation disabled, missing internals: ${missingPropagate.join(", ")}`,
+          );
         }
 
         // try-init of viewport-wasm.cljs: one attempt plus three retries
@@ -901,7 +1207,7 @@ function WorkspaceWasmCanvasImpl({
         // The page objects of the JS-side file (the fit math and the
         // interaction hit-testing) and the page background; both come from
         // the store's file.
-        const objects = pageObjects(file, pageId);
+        const objects = canvasObjects ?? {};
         objectsRef.current = objects;
         indexRef.current = createWorkspaceIndex(objects);
         // AD10: the store carries the same reference the overlay draws from
@@ -917,9 +1223,7 @@ function WorkspaceWasmCanvasImpl({
         setHoverShapeId(null);
         setHoverTopFrameId(null);
         setAreaSelect(null);
-        const page = (file.data["pages-index"] ?? {})[pageId];
-        const background =
-          typeof page?.background === "string" ? page.background : DEFAULT_BACKGROUND;
+        const background = canvasBackground;
 
         // The initial fit over the JS-side objects; the canvas was already
         // laid out when the effect ran.
@@ -955,7 +1259,15 @@ function WorkspaceWasmCanvasImpl({
     return () => {
       disposed = true;
     };
-  }, [fileId, pageId, file]);
+  }, [
+    canvasBackground,
+    canvasCanEdit,
+    canvasObjects,
+    canvasRevn,
+    canvasVern,
+    fileId,
+    pageId,
+  ]);
 
   // The wheel handlers of actions.cljs, bound to the canvas. React's
   // onWheel is passive, so the listener is attached by hand to keep
@@ -1295,9 +1607,22 @@ function WorkspaceWasmCanvasImpl({
 
       gesture.matrix = matrix;
       gesture.rotation = rotation;
+      // The same entries the release commits drive the preview. From F9.11 a
+      // resize takes the renderer's answer (constraints plus layout reflow);
+      // a rotation keeps the local rigid spread.
+      const objects = objectsRef.current;
+      if (objects === null) return;
+      const entries = gestureSubtreeEntries(
+        app,
+        objects,
+        gesture.roots,
+        matrix,
+        rotation,
+        propagateEnabledRef.current,
+      );
       configureModifiers(
         app,
-        gesture.ids.map((id) => [id, matrix] as const),
+        entries.map((entry) => [entry.id, entry.matrix] as const),
       );
       setTransformPreview(matrixRecord(matrix));
     };
@@ -1325,14 +1650,11 @@ function WorkspaceWasmCanvasImpl({
       const selection = getWorkspaceState().selection;
       const geometry = selectionGeometry(objects, selection);
       if (geometry === null) return;
-      // The transform set is the selection plus its subtrees, filtered to
-      // the types the generic transform supports: a text child keeps its
-      // geometry (no position-data reflow, AD6).
-      const ids = resolveMoveSet(selection, objects).filter((id) => {
-        const shape = objects[id];
-        return shape !== undefined && shape !== null && isTransformableShape(shape);
-      });
-      if (ids.length === 0) return;
+      // The roots are the selection: the commit and the preview spread the
+      // matrix to their subtrees with the constraint rules
+      // (lib/workspace-constraints), filtered to the types the generic
+      // transform supports (a text child keeps its geometry, AD6).
+      if (selection.length === 0) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -1350,7 +1672,7 @@ function WorkspaceWasmCanvasImpl({
         geometry,
         handler,
         corner,
-        ids,
+        roots: [...selection],
         matrix: null,
         rotation: 0,
       };
@@ -1410,8 +1732,13 @@ function WorkspaceWasmCanvasImpl({
     // through the shared write path, then the JS model swap and the wasm
     // geometry handover. A zero matrix or an unchanged model sends nothing;
     // a failure resets the preview over the untouched base geometry.
+    //
+    // F9.10/F9.11: every shape of the gesture takes the matrix the renderer
+    // answered with — the roots with the gesture matrix, a container's
+    // children by their constraints and a layout frame's children by its
+    // reflow. All of them ride one request.
     const commitTransform = async (
-      ids: string[],
+      roots: string[],
       matrix: Matrix6,
       rotation: number,
     ): Promise<void> => {
@@ -1420,13 +1747,15 @@ function WorkspaceWasmCanvasImpl({
         cancelTransformPreview();
         return;
       }
-      const changes = buildTransformChanges(
+      const entries = gestureSubtreeEntries(
+        appRef.current,
         objects,
-        ids,
+        roots,
         matrix,
         rotation,
-        pageIdRef.current,
+        propagateEnabledRef.current,
       );
+      const changes = buildTransformEntryChanges(objects, entries, pageIdRef.current);
       if (changes.length === 0) {
         cancelTransformPreview();
         return;
@@ -1440,7 +1769,7 @@ function WorkspaceWasmCanvasImpl({
         // The model swaps before the preview cleanup, in one task: the
         // canvas never renders between the preview and the committed
         // state (the same handover as the move commit).
-        const next = applyTransformSet(objects, ids, matrix, rotation);
+        const next = applyTransformEntries(objects, entries);
         objectsRef.current = next;
         indexRef.current = createWorkspaceIndex(next);
         setWorkspaceObjects(next);
@@ -1457,8 +1786,7 @@ function WorkspaceWasmCanvasImpl({
             cleanModifiers(pushApp);
             const changed = new Set(changes.map((change) => change.id));
             const shapes: WorkspaceShape[] = [];
-            for (const id of ids) {
-              if (!changed.has(id)) continue;
+            for (const id of changed) {
               const shape = next[id];
               if (shape !== undefined && shape !== null) shapes.push(shape);
             }
@@ -2187,10 +2515,10 @@ function WorkspaceWasmCanvasImpl({
         const gesture = interaction.transformGesture;
         const matrix = gesture === null ? null : gesture.matrix;
         const rotation = gesture === null ? 0 : gesture.rotation;
-        const ids = gesture === null ? [] : gesture.ids;
+        const roots = gesture === null ? [] : gesture.roots;
         endGesture();
-        if (!cancelled && matrix !== null && ids.length > 0 && !isIdentityMatrix(matrix)) {
-          void commitTransform(ids, matrix, rotation);
+        if (!cancelled && matrix !== null && roots.length > 0 && !isIdentityMatrix(matrix)) {
+          void commitTransform(roots, matrix, rotation);
         } else {
           cancelTransformPreview();
         }

@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.3 完成；F9 workspace：F9.1–F9.9 与 F9.3 伴随变更完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.3 完成；F9 workspace：F9.1–F9.12 与 F9.3 伴随变更完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
@@ -42,7 +42,7 @@
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | 🔧 | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；切成 F7.1–F7.4 四片（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入完成；F7.4 完整 API 上下文依赖 F9），见下与第 4 节 |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）完成；余下按 7.25 路线补浏览器冒烟，最后是 F7.4 workspace 插件代理；Web Worker + 协作光标等留 F8 后 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；余下按 7.25 路线补浏览器冒烟，最后是 F7.4 workspace 插件代理；Web Worker + 协作光标等留 F8 后 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
@@ -319,7 +319,13 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   F9.3 伴随变更完成（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，
   见 7.33）；drop-index 完成（flex 插入/重排、绘制插入、mov index，见 7.34）；
   F9.9 样式面板扩展完成（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，
-  见 7.36–7.37）；余下补浏览器冒烟，最后是 F7.4 workspace 插件代理；
+  见 7.36–7.37）；F9.10 子级传播与约束完成（resize 按 constraints-h/v 重排直接
+  子级、rotate 刚性带动子树、面板改动同样传播，见 7.38）；F9.11 布局 reflow 完成
+  （约束与重排统一走 wasm 的 propagate，布局属性编辑后自动重排子级，见 7.39）；
+  F9.12 grid cells 编辑入口完成（面板的 Grid cell 段、cell map 的分区维护、
+  transit 的 uuid/keyword 编码，见 7.40）；
+  余下补浏览器冒烟，
+  最后是 F7.4 workspace 插件代理；
   Web Worker
   （缩略图/索引/导入）+ 协作光标 + 其余绘制/布尔/编辑/token 子流程仍在 F3–F8 验证后推进。
 
@@ -365,7 +371,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  █████████████████████████████░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.8、F9.3 伴随变更、drop-index 与 F9.9 样式面板扩展完成：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板、缩放手柄、撤销/重做、z-order、伴随变更、布局内插入与重排、布局/约束段与多选批量)
+阶段 F  █████████████████████████████░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.11、F9.3 伴随变更、drop-index、F9.10 子级传播、F9.11 布局 reflow 与 F9.12 grid cells 入口完成：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板、缩放手柄、撤销/重做、z-order、伴随变更、布局内插入与重排、布局/约束段与多选批量、resize 约束传播、布局重排走 wasm 传播)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
@@ -2080,6 +2086,272 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   回落英文）。本轮未做浏览器复测。
 - 下一步：F9.9 余下的是 grid cells 与布局 reflow 的移植（要做可视化重排才需要），
   以及 resize 的约束传播。
+
+### 7.38 本轮（2026-10-26，第三十七批：F9.10 resize/rotate 的子级传播与约束）
+
+- 目标：补 7.37 登记的第一条已知限制。此前的 resize/rotate 只给「选区 + 整棵子树」
+  同一个世界矩阵，`constraints-h/v` 存了但永远不生效。
+- 新增 `lib/workspace-constraints.ts`（27 例，含 1 例 cycle 防御）：
+  - `constraintAxisMap` 是 `constraint-modifier` 的单轴版，用父级 selrect 的前后差
+    把约束折成 `x' = scale*x + offset`：left/top 保起始偏移，right/bottom 保结束
+    偏移，leftright/topbottom 两侧都保（子级跟着父级一起长），center 保中心偏移，
+    scale 直接跟随父级自身的映射（`offset = afterStart - scale*beforeStart`，父级
+    起点移动时也对齐）。
+  - `constraintChildMatrix` 合并两轴；未知约束值返回 null，调用方退回手势矩阵。
+    「约束不改变子级」返回单位矩阵，子级真的不动，不会退化成跟随手势矩阵。
+  - `gestureEntries(objects, roots, matrix, rotationDelta, accepts?)` 产出一次手势
+    的全部 `{id, matrix, rotation}`：选区按手势矩阵，容器的直接子级按约束矩阵，更
+    深的层级沿用最近祖先的矩阵；有 rotationDelta 时整棵子树刚性旋转并带上角度增量。
+    `accepts` 与手势的变换集合过滤同一批形状（text 子级仍保持几何，见 7.30 AD6）。
+- 默认值照 `default-constraints-h/v`：父级是 frame 的第一层子级 left/top，其余
+  scale。布局 frame 的流式子级按 `calc-child-modifiers` 强制 left/top（不移植
+  reflow，所以只能保住偏移）；`layout-item-absolute` 与 hidden 的子级按自己的约束。
+- `lib/workspace-transform.ts`：新增 `TransformEntry`、`transformEntries`、
+  `buildTransformEntryChanges`、`applyTransformEntries`，按 id 去重且首个条目生效；
+  删掉只能传单一矩阵的 `buildTransformChanges` / `applyTransformSet`。
+- `lib/workspace-geometry.ts`：把面板 x/y/W/H/旋转的矩阵计算抽成
+  `geometryTransform`，`buildGeometryChange` 改为在它上面取补丁，语义不变。
+- 画布：手势状态里 `ids`（扩张后的集合）改为 `roots`（按下时的选区）。预览与提交
+  都走 `gestureEntries`，所以拖动中看到的子级位置就是落下后的位置；
+  `updateShapeGeometry` 复用同一入口，面板改帧尺寸/角度也会带动子级。一次
+  `sendUpdateFile` 带全部 mod-obj，撤销自动覆盖子级。
+- 与 CLJS 的有意偏差：
+  - 只有轴对齐容器（rotation 0、无 flip）按约束铺开，旋转或翻转的形状把手势矩阵
+    交给子级。CLJS 在父级坐标系里对子级四边形运算，而 shell 只存六元变换，表达
+    不了「旋转子级做非等比缩放」的错切。
+  - 约束逐层生效：旋转根的孙子级仍按自己那个轴对齐父级的约束算。
+  - 约束作用在子级 selrect 上，因此子级自身带旋转时沿世界轴缩放（与 7.36 面板
+    尺寸字段同一种取舍）。
+- 已知限制（本轮明确记录）：
+  - 布局 frame 仍不 reflow（见 7.37），所以布局子级只保偏移，不会被布局重新排版。
+    更正（7.39）：这条只对 shell 自算路径成立；wasm 的 `propagate_modifiers`
+    一直会 reflow，本轮已改走那条路径。
+  - 没有 modifier 链与 `ignore-constraints`：shell 从不单独变换容器本身。
+- 验证：`pnpm vitest run` 60 文件 1395 例全过；`pnpm typecheck` 退出 0；
+  `pnpm lint` 无告警；`pnpm build` 通过（/workspace 41.2 kB，First Load JS 237 kB）。
+  本轮未做浏览器复测。
+- 下一步：布局 reflow 与 grid cells 的移植（视觉重排需要）；之后补浏览器冒烟
+  （7.25 路线），最后是 F7.4 workspace 插件代理。
+
+### 7.39 本轮（2026-10-26，第三十八批：F9.11 布局 reflow，约束与重排统一走 wasm）
+
+- 调研结论（先查后写）：布局重排与约束的唯一算法在渲染器。
+  `render-wasm/src/shapes/modifiers.rs` 的 `propagate_modifiers` 把 identity 矩阵当作
+  reflow 标记；`propagate_children` 按形状类型选约束（布局 frame 的流式子级强制
+  left/top、绝对定位子级用自己的、普通 frame 用 left/top、group 用 scale），
+  `constraints.rs` 算缩放与位移，`reflow_flex_layout` / `reflow_grid_layout` 负责
+  重排，layout reflow 按深度降序执行。CLJS 的 `update-layout-positions` 只是发
+  `(ctm/reflow-modifiers)` 再把返回矩阵写回。F9.10 的
+  `lib/workspace-constraints.ts` 因此是与 wasm 重复的实现，本轮降级为「wasm 缺
+  `_propagate_modifiers` 时的兜底」。
+- 新增 `lib/render-wasm/propagate.ts`（13 例）：`_propagate_modifiers` 的 ABI 封装。
+  输入每条 44 字节（uuid 4×u32 + 矩阵 6×f32 + kind u32），kind 1 = 继续下传，
+  0 = 已由渲染器铺开的结果；输出 u32 条数 + 每条 10×u32（uuid + 矩阵）。单个
+  BUFFERU8 槽位由调用消费，读完 `_free_bytes()`；`u32ToUuid` 与 `uuidToU32` 互补。
+- 新增 `lib/workspace-reflow.ts`（14 例）：`attrsAskReflow` 只认 `layout` 与
+  `layout-*`（约束属性不触发，它在 resize 路径上）；`reflowTargetIds` 过滤根板、
+  已删除形状并按首次出现去重；`reflowEntries` 发单位矩阵；`reflowChanges` /
+  `applyReflow` 把返回矩阵折成 mod-obj 与本地 apply（未移动的形状不产生变更）。
+- `lib/workspace-undo.ts`：新增 `mergeUndo`（6 例）。reflow 是属性编辑之后的第二个
+  update-file，一次编辑必须一步撤销：redo 追加、undo 前置，selection 沿用第一条。
+- `lib/workspace-constraints.ts`：新增 `acceptedSubtreeEntries`（5 例），把渲染器
+  返回的条目过滤成本 shell 能变换的形状（text 与 blocked 按 AD6 剔除），被剔除的
+  容器连带剔除子树；渲染器按哈希序返回，所以从被剔除的 id 向下走。
+- 画布接线：
+  - `sendUpdateFile(changes, recordUndo | "merge", undoBase?)`：merge 折叠进上一条；
+    undoBase 让 reflow 的逆补丁基于「编辑前」的模型，撤销后子级位置与旧布局一致。
+  - `gestureSubtreeEntries`：resize（含面板尺寸字段）发 `propagateModifiers` 并
+    预览它返回的矩阵；rotate 仍走本地刚性传播（CLJS 旋转算法本就不用子级约束）；
+    wasm 缺入口时整体退回 F9.10 路径。
+  - `commitReflow`：属性编辑成功后用 identity 请求重排，把返回矩阵作为第二次
+    update-file（合并撤销）落地，再 apply 到模型并用 `uploadShapeGeometry` 推回
+    wasm。`updateShapeAttrs` / `updateShapesAttrs` 两个写路径都接上。
+- 与 CLJS 的有意偏差：
+  - 没有 `snap-pixel-grid` 开关，`pixel_precision` 固定 0（不吸附）。
+  - 布局内新增/删除/重排形状不额外触发 reflow：drop-index 已把形状放在布局要的位置。
+  - reflow 失败只告警：属性已经进文件，不改回，也不把失败算到那次编辑上。
+- 验证：`pnpm vitest run` 62 文件 1433 例全过；`pnpm typecheck` 退出 0；
+  `pnpm lint` 无告警；`pnpm build` 通过（/workspace 42.2 kB，First Load JS 238 kB）。
+  未做浏览器复测（需要登录会话）。
+- 下一步：grid cells 的编辑入口（面板尚未暴露 cells）；之后补浏览器冒烟
+  （7.25 路线），最后是 F7.4 workspace 插件代理。
+
+### 7.40 本轮（2026-10-27，第三十九批：F9.12 grid cells 编辑入口）
+
+- 调研结论（先查后写）：cell map 只能由前端维护。
+  - `render-wasm/src/shapes/modifiers/grid_layout.rs` 的 `create_cell_data` 只摆放
+    出现在 `grid_data.cells` 里的孩子，其余 `continue`；cell 的 `column_end` /
+    `row_end` 越出 tracks 时整格被跳过。所以没有 cells 的 grid 什么都不摆。
+  - backend 的 mod-obj 直接落盘（`common/src/app/common/files/changes.cljc`
+    `process-operations` 只做 `validate-shape`），不会补跑 `assign-cells`；
+    `assign-cells` 只在 libs 同步的 `patch-layout-props` 里跑。
+  - `schema:grid-cell` 要求 uuid 键、uuid `:id`/`:shapes`、keyword
+    `:position`/`:align-self`/`:justify-self`（`common/src/app/common/types/shape/layout.cljc`）。
+  - CLJS 菜单在 `frontend/src/app/main/ui/workspace/sidebar/options/menus/grid_cell.cljs`：
+    auto/manual/area 单选、坐标、两个 self 对齐；编辑写父 frame 的
+    `layout-grid-cells`（`dwsl/update-grid-cells`）。wire 键名见
+    `frontend/src/app/render_wasm/api.cljs` 的 `set-grid-layout-cells`。
+- 新增 `frontend-nextjs/lib/workspace-grid-cells.ts`（42 例）：
+  - 读：`gridCellsOf`（cells-seq，按行序，坏记录回落到 1×1 auto）、
+    `gridCellValues`（面板值；span>1 或 area 读作 manual）。
+  - 写：`cellWire` / `cellsMap`（kebab-case 记录键）、`normalizeCells`
+    （分区不变式：越界的格子丢掉、越界的 span 裁剪、缺的格子补齐）、
+    `removeTrackAt`（删线：该线上的格子消失，其后的前移，跨线 span 减一）。
+  - 放置：`placeShape`（矩形替换覆盖区，复用起点格子的 id 与 self 对齐）、
+    `autoShape`（格子回到 auto 并释放 span）、`assignCells`（清掉离开布局/
+    绝对定位/重复的孩子，把孤儿按阅读序放进空闲 auto 格子，不够就按
+    `layout-grid-dir` 加一条 track）、`assignGrid` / `flowChildIds`。
+  - 面板入口：`gridTrackEdit`、`gridPlacementEdit`、`gridSelfEdit`、
+    `gridStatePatch`（track 长度变化或显式要求时才发 track 列表）。
+  - 与 CLJS 的有意偏差：不重排已在 auto 格子的孩子（只补孤儿，挪一个不会
+    打乱其余）；用矩形替换 `resize-cell-area`（不移植
+    `common/geom/shapes/grid_areas.cljc`）；只支持末尾追加 track；不移植
+    area 模式与画布内的格子编辑（`grid_layout_editor.cljs`）。
+- `lib/transit.ts`：`layout-grid-cells` 不走通用递归。新增
+  `encodeGridCellsValue` / `encodeGridCellEntry`，把 map 键、`id`、`shapes`
+  写成 `~u`，把两个 self 对齐与 position 写成 keyword。通用递归会发
+  「字符串键 + 字符串 uuid + 字符串枚举」，backend 的 `validate-shape` 会
+  拒掉整次提交。追加 3 例验证 uuid 键/链接、keyword 枚举、area-name 直传与
+  回读。
+- 面板接线：
+  - `components/workspace-layout-options.tsx`：`LayoutSectionProps` 增
+    `objects`；切到 grid（`startLayout`）时立刻 `assignGrid` 并随 patch 发
+    tracks；加/删 track 改走 `gridTrackEdit` + `commitGrid(..., true)`，让
+    cells 始终是 tracks 的合法分区。
+  - 新增 `GridCellOptions`（Grid cell 段）：Mode（auto/manual）、四个坐标
+    （DraftField，提交时置 manual）、Align self / Justify self，底部显示
+    `Cell r, c (rs x cs)` 或 `Not in a cell`。
+  - `components/workspace-style-panel.tsx`：新增 `sendParent`（cell 写在父
+    frame 上）与 `showGridCell = isGridCellParent(parent) && !绝对定位`；
+    `WorkspaceStylePanel` 先收窄 `state.objects` 再下传。
+  - 触发链复用 F9.11：`updateShapeAttrs`→`set_object`（前缀 `layout` 命中
+    `WASM_ATTR_PREFIXES`）→`commitReflow` 以 `"merge"` 合并撤销，一次撤销
+    回退属性与子级位置。
+- 测试发现并修掉的缺陷：`assignWith` 原先从 `context.current` 取 tracks，
+  删 track 时 `gridTrackEdit` 返回的仍是旧 rows（面板会发出长度不变的
+  patch，删线不生效）。改为接收调用方传入的 track 列表，按 `assigned` 的
+  长度补齐；`gridPlacementEdit` 的 manual 分支同步改用 `growTracks`。
+- 验证：`npx vitest run` 63 文件 1478 例全过；`npx tsc --noEmit` 退出 0；
+  `npx next lint` 无告警；`npx next build` 通过（/workspace 44.9 kB，
+  First Load JS 241 kB）。未做浏览器复测（需要登录会话）。
+- 下一步：按 7.25 路线补浏览器冒烟（含 grid 面板：切 grid、加删 track、
+  改坐标与 self 对齐，确认 wasm 重排与一次撤销）；最后是 F7.4 workspace
+  插件代理。
+
+---
+
+### 7.41 本轮（2026-10-27，第四十批：F9.12 浏览器冒烟）
+
+- 做法：沿用 7.25/7.34 的 headless Chrome + CDP 路线（不引 playwright）。
+  临时脚本 `.git/f912-smoke.mjs`（不入库），链 Next dev :3450 → nginx :9001
+  的静态资源 → backend :6060，用测试账号登录后一次性新建文件跑完整条链路，
+  28 条断言，截图 `.git/f912-smoke.png`。
+- 冒烟清单（28/28 通过）：
+  1. 登录。受控输入只能用「真实点击聚焦 + `Input.insertText`」：直接写
+     `el.value` 会被 React 回写清空，原型 setter + `input` 事件也到不了
+     `onChange`；`setSelectionRange` 在 `type=email` / `type=number` 上抛
+     `InvalidStateError`，改选区失败时置空即可。
+  2. `/dashboard/files` 缺 `project-id` 时整页返回 null，从 sidebar 的
+     `drafts-link` 进。
+  3. 画 Board + 两个 Rectangle。frame 行默认折叠，要点开 chevron 才见子级；
+     画完子级后列表又回到折叠，需再展开。
+  4. 切 grid：1 行 2 列；加一列 → 3 列；删末列 → 回 2 列（cells 随 tracks
+     重建，两个孩子仍在各自格子里）。
+  5. 子级面板出现 Grid cell：`Cell 1, 1 (1x1)`，Mode / Align self /
+     Justify self 三个 select 就位。
+  6. Mode=manual 保持 1,1；Row=2 后文案变 `Cell 2, 1 (1x1)`，
+     `selection-outline` 的 points 从 `300,140 …` 变 `300,380 …`，wasm 重排
+     确实落地。
+  7. 一次 Ctrl+Z：文案回 `Cell 1, 1`，points 逐字回到撤销前的值（`merge`
+     撤销把属性和子级位置一起回退）。
+  8. 再改 Row=2、Justify self=end；刷新同一 URL 后 Layout=grid、
+     `Cell 2, 1 (1x1)`、Justify self=end：backend 真的收下了 cells 与
+     keyword 枚举。
+  9. 控制台无 render-wasm / transit / RPC / validate 错误。
+- 冒烟挖出的缺陷（F9.9 起一直存在）：布局与约束的枚举值以字符串发送。
+  `lib/transit.ts` 的 `KEYWORD_VALUE_KEY` 只覆盖 `layout-item-*-sizing`，
+  `layout`、`layout-grid-dir`、`layout-gap-type`、`layout-padding-type`、
+  `layout-align-items/content`、`layout-justify-items/content`、
+  `layout-item-margin-type`、`layout-item-align-self`、`constraints-h/v`
+  全是裸字符串。backend 的 `validate-shape`（`schema:layout-attrs` /
+  `schema:layout-child-attrs` 是 `::sm/one-of` key 集合）整批拒掉，
+  `update-file` 返 500，面板只显示「出现了问题」。此前只有 vitest（mock
+  RPC）覆盖，所以没暴露。修法：把这些键并入 `KEYWORD_VALUE_KEY`（grid
+  track 的枚举在 `type` 键上，已被覆盖）；`lib/transit.test.ts` 追加
+  「布局 / layout-item / 约束枚举写成 keyword」一例，含回读比对。
+- 验证：`npx vitest run` 63 文件 1479 例全过；`npx tsc --noEmit` 退出 0；
+  `npx next lint` 无告警；冒烟 28/28 通过，脚本退出 0。
+- 一次性文件：每次冒烟在 Drafts 里新建 `New File N`（本次
+  `ad9d5693-49bf-81be-8008-da095335ffa6`），未删，方便人工复核。
+- 下一步：F7.4 workspace 插件代理。
+
+---
+
+### 7.42 本轮（2026-10-27，第四十一批：F9.13 页面管理、侧栏国际化与折叠）
+
+- 两条诉求：workspace 左侧增加 page 管理并把 Layers/Assets/Tokens 页签国际化；
+  左侧功能区支持点击折叠。
+- 页签一直英文的根因：`workspace-layers-panel.tsx` 的 `TABS` 是模块作用域常量，
+  `tr()` 在模块导入时求值一次，locale 切换后不会重算；Tokens 更是上游 CLJS
+  本就不翻译的字面量。做法：tabs 移到组件内每次渲染求值，新的
+  `workspace.sidebar.tokens` 补进 en/zh_CN/zh_Hant 三个 po（`Tokens` / `令牌` /
+  `權杖`），再跑 `node scripts/extract-translations.mjs` 重新生成目录
+  （en 935 键全覆盖；zh_cn 803、zh_hant 919，缺键按既有规则回退英文）。
+- 页面 CRUD 没有独立 RPC：全部走 `update-file` 的 `:add-page` / `:mod-page` /
+  `:del-page`（backend `process-change`，新增页由 `ctp/make-empty-page` 造
+  「Root Frame」）。为此：
+  - `lib/transit.ts` 增三种变更类型与编码（uuid id、name 明文）；
+    `lib/transit.test.ts` 补两例（note：writer 会缓存重复键值，断言只对首个
+    变更检查 `"~:type","~:add-page"`，后两个只查值）。
+  - 新建 `lib/workspace-pages.ts`：`pageInfos` / `uniquePageName`（"Page N"
+    首个空位）/ `normalizePageName` / `validPageName` / `emptyPage`（克隆当前页
+    root 并清空 children）/ `withPageAdded|Renamed|Deleted` 与三个 change
+    builder；配套 11 例测试。
+  - `components/workspace-wasm-canvas.tsx` 的 handle 增 `createPage` /
+    `renamePage` / `deletePage`：复用 `sendUpdateFile` 的 in-flight 闸门与 revn
+    守卫，`recordUndo = false`。写入成功后 `invalidateDecodedWorkspaceFile`
+    丢掉 `lib/render-wasm/workspace-data` 的 decoded 缓存，否则切页/重挂载会
+    拿到提交前的旧 shapes。
+  - 删除当前页时，store 在同一次写入里把 pageId 落到剩余第一页，避免出现
+    「pageId 指向已删页」的中间渲染（`workspace-undo` 对页面变更显式抛错，
+    页面操作不进撤销栈）。
+- 新建 `components/workspace-pages-panel.tsx`：标题栏折叠（`aria-expanded`）、
+  `workspace.sidebar.sitemap` 标题、加号（`workspace.sidebar.sitemap.add-page`，
+  仅 canEdit）、页面行（当前页 `aria-current="page"`）、双击行内改名（Enter
+  提交、Esc 取消、blur 提交、空白/同名静默丢弃）、垃圾桶 + 行内确认
+  （`modals.delete-page.title/body`、`labels.delete/cancel`），仅剩一页时隐藏
+  删除。行上带 `data-page-id`，冒烟与调试用。
+- 折叠分两层，都按 CLJS 语义：
+  - 整栏折叠（`dw/toggle-layout-flag :collapse-left-sidebar`）：`workspace-shell`
+    的 `leftCollapsed` 卸掉左列，shell 改 `grid-template-areas:
+    "viewport right-sidebar"`，浮出 `.pp-workspace-collapsed-button`（top 48px，
+    右向 chevron），点击复原；折叠按钮放在 tabs 行首（`ChevronIcon` 旋转
+    180°），对应 CLJS 的 `collapse-button*`。
+  - Pages 区标题折叠：面板内 `collapsed`，收起后只留标题行。
+- 切页走 `?page-id=`：`selectPage` 用 `URLSearchParams(window.location.search)`
+  改参数后 `router.replace(..., { scroll: false })`；`app/workspace/page.tsx`
+  的既有 effect 在文件已加载时只重设 `pageId`，不重新下载。
+- 加载 effect 的依赖从整个 `file` 收紧为「当前页 objects + background +
+  canEdit/revn/vern」：改名或改别的页不再触发整页重载，viewport、选择与撤销栈
+  得以保留；切页仍然因 `pageId` 变化而重载。
+- 图标 `TrashIcon` 取自 `frontend/resources/images/icons/delete.svg`；
+  `styles/workspace.css` 增折叠网格、浮动按钮、tabs 折叠按钮与 Pages 区样式
+  （列表最高 160px 内滚，删除按钮 hover 显形）。
+- 偏离（已登记在代码注释）：不做拖动排序、分隔页、右键菜单与键盘翻页；删除
+  确认是行内而非 modal；折叠状态不持久化（CLJS 用 persisted-state）；新建后不
+  自动进入改名（CLJS 会）；页面变更不进撤销栈；生成名固定英文 "Page N"。
+- 浏览器冒烟（`.git/f913-smoke.mjs`，不入库，25/25 通过）：登录 → 新建文件 →
+  页签文案（账号语言 zh-CN，实测「图层/素材/令牌」，证明已跟随语言）→ 新建页
+  并自动打开（URL 跟随）→ 双击改名 Home 并确认 `mod-page` 请求 200 → 刷新后
+  两页与 Home 选中态保留 → 切回 Page 1 → Pages 标题折叠/展开 → 整栏折叠（左栏
+  消失、浮动按钮出现、canvas 宽度 788→1106 即 +318）→ 展开回 318px → 打开 Home
+  后删除（确认文案与词条一致，pageId 落到 Page 1、URL 跟随）→ 刷新后只剩一页；
+  无 update-file 失败、无 render-wasm/transit/RPC 控制台错误。截图
+  `.git/f913-collapsed.png`、`.git/f913-smoke.png`。
+- 验证：`npx vitest run` 64 文件 1493 例全过；`npx tsc --noEmit` 退出 0；
+  `npx next lint` 无告警；冒烟脚本退出 0。
+- 一次性文件：本次 `ad9d5693-49bf-81be-8008-da0df15c683a`，未删。
+- 下一步：F7.4 workspace 插件代理。
 
 ---
 

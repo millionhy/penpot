@@ -27,8 +27,10 @@
 //   modifier pipeline, so a layout attribute change is stored and uploaded
 //   but the children move on the next modifier of the parent, not at once.
 //   Grid cells (layout-grid-cells) are not edited by the panel.
-// - The constraints are stored but a resize does not propagate them:
-//   lib/workspace-transform.ts deliberately transforms the selection only.
+// - The constraints are stored here and applied by the transform commits:
+//   lib/workspace-constraints.ts ports the axis map of
+//   geom/shapes/constraints.cljc and spreads it over the children of a
+//   resized container (F9.10).
 //
 // The labels of the enum controls are hardcoded English, like the
 // layout_container.cljs titles the CLJS panel renders (it uses icon titles

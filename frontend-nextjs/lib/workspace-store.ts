@@ -10,8 +10,9 @@
 // Only the read-only slice F9.1 needs lives here; F9.2 adds the
 // selection/hover/area slice; F9.3 adds the JS model reference and the
 // live drag translation; F9.5 the draw preview; F9.6 the transform
-// preview; F9.7 the undo availability flags. Page switching, history and
-// the rest of workspace-local arrive with the next slices.
+// preview; F9.7 the undo availability flags. F9.13 switches pages by
+// swapping pageId (the route and the canvas follow it); the rest of
+// workspace-local arrives with the next slices.
 
 import type { WorkspaceDrawTool, WorkspaceFile, WorkspaceObjects } from "@/lib/workspace";
 import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";

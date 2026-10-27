@@ -331,6 +331,43 @@ describe("encodeUpdateFile", () => {
     expect(decodeTransit<UpdateFileParams>(doc)).toEqual(params);
   });
 
+  it("re-tags the layout, layout-item and constraint enums", () => {
+    const params: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 7,
+      vern: 2,
+      changes: [
+        {
+          type: "mod-obj",
+          "page-id": PAGE_ID,
+          id: SHAPE_ID,
+          operations: [
+            { type: "set", attr: "layout", val: "grid" },
+            { type: "set", attr: "layout-grid-dir", val: "row" },
+            { type: "set", attr: "layout-gap-type", val: "multiple" },
+            { type: "set", attr: "layout-padding-type", val: "simple" },
+            { type: "set", attr: "layout-align-items", val: "stretch" },
+            { type: "set", attr: "layout-justify-content", val: "space-between" },
+            { type: "set", attr: "layout-item-margin-type", val: "multiple" },
+            { type: "set", attr: "layout-item-align-self", val: "end" },
+            { type: "set", attr: "constraints-h", val: "leftright" },
+            { type: "set", attr: "constraints-v", val: "top" },
+          ],
+        },
+      ],
+    };
+
+    const doc = encodeUpdateFile(params);
+    // schema:layout-attrs, schema:layout-child-attrs and the constraint types
+    // are one-of sets of keywords: a plain "grid" fails validate-shape and
+    // the backend answers 500 (found by the workspace browser smoke).
+    expect(doc).toContain('"~:val","~:grid"');
+    expect(doc).toContain('"~:space-between"');
+    expect(doc).toContain('"~:leftright"');
+    expect(decodeTransit<UpdateFileParams>(doc)).toEqual(params);
+  });
+
   it("round-trips through the reader into the original JS shape", () => {
     const doc = encodeUpdateFile(moveParams(new PathData(packedMoveBytes())));
     const decoded = decodeTransit<UpdateFileParams>(doc);
@@ -737,5 +774,121 @@ describe("encodeUpdateFile add-obj", () => {
     expect(doc.startsWith('["~#shape",')).toBe(true);
     expect(doc).toContain('"~#rect"');
     expect(doc).toContain('"~:rect"');
+  });
+});
+
+// schema:grid-cell (common/src/app/common/types/shape/layout.cljc) keys the
+// layout-grid-cells map by uuid and holds :id / :shapes as uuids and
+// :position / :align-self / :justify-self as keywords. The backend validates
+// the whole shape after a mod-obj (changes.cljc process-operations), so a
+// string-keyed map would reject the commit; the writer encodes the cell map
+// itself instead of the generic attribute recursion.
+describe("encodeUpdateFile layout-grid-cells", () => {
+  const FILE_ID = "00000000-0000-0000-0000-0000000000c1";
+  const SESSION_ID = "00000000-0000-0000-0000-0000000000c2";
+  const PAGE_ID = "00000000-0000-0000-0000-0000000000c3";
+  const FRAME_ID = "00000000-0000-0000-0000-0000000000c4";
+  const CHILD_ID = "00000000-0000-0000-0000-0000000000c5";
+  const CELL_ID = "00000000-0000-0000-0000-0000000000c6";
+
+  function cellParams(): UpdateFileParams {
+    return {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 9,
+      vern: 2,
+      changes: [
+        {
+          type: "mod-obj",
+          "page-id": PAGE_ID,
+          id: FRAME_ID,
+          operations: [
+            {
+              type: "set",
+              attr: "layout-grid-cells",
+              val: {
+                [CELL_ID]: {
+                  id: CELL_ID,
+                  row: 1,
+                  "row-span": 2,
+                  column: 2,
+                  "column-span": 3,
+                  position: "manual",
+                  "align-self": "center",
+                  "justify-self": "end",
+                  shapes: [CHILD_ID],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it("writes the uuid keys and links and the enum keywords", () => {
+    const doc = encodeUpdateFile(cellParams());
+    // The map key: a ~u tagged uuid, not a bare string key.
+    expect(doc).toContain(`"~u${CELL_ID}",["^ `);
+    expect(doc).toContain(`"~:shapes",["~u${CHILD_ID}"]`);
+    expect(doc).toContain('"~:position","~:manual"');
+    expect(doc).toContain('"~:align-self","~:center"');
+    expect(doc).toContain('"~:justify-self","~:end"');
+  });
+
+  it("round-trips the cell map for the panel reads", () => {
+    const params = cellParams();
+    expect(decodeTransit<UpdateFileParams>(encodeUpdateFile(params))).toEqual(params);
+  });
+
+  it("keeps the area name and the numbers as they are", () => {
+    const params = cellParams();
+    const change = params.changes[0];
+    if (change.type !== "mod-obj") throw new Error("expected a mod-obj change");
+    const cell = (change.operations[0].val as Record<string, Record<string, unknown>>)[CELL_ID];
+    cell["area-name"] = "header";
+    const doc = encodeUpdateFile(params);
+    expect(doc).toContain('"~:area-name","header"');
+    expect(decodeTransit<UpdateFileParams>(doc)).toEqual(params);
+  });
+});
+
+// The page changes of add-empty-page / mod-page / del-page
+// (common/src/app/common/files/changes_builder.cljc): the page id is a uuid
+// and the name is a plain string the backend uses to build the empty page.
+describe("encodeUpdateFile page changes", () => {
+  const FILE_ID = "00000000-0000-0000-0000-0000000000d1";
+  const SESSION_ID = "00000000-0000-0000-0000-0000000000d2";
+  const PAGE_ID = "00000000-0000-0000-0000-0000000000d3";
+
+  function pageParams(): UpdateFileParams {
+    return {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 11,
+      vern: 3,
+      changes: [
+        { type: "add-page", id: PAGE_ID, name: "Page 2" },
+        { type: "mod-page", id: PAGE_ID, name: "Home" },
+        { type: "del-page", id: PAGE_ID },
+      ],
+    };
+  }
+
+  it("writes the change types, the uuid id and the name", () => {
+    const doc = encodeUpdateFile(pageParams());
+    // The writer caches the repeated keys and values, so only the first
+    // change spells the type key and the id out; the other two refer to
+    // the cached entries by index.
+    expect(doc).toContain('"~:type","~:add-page"');
+    expect(doc).toContain('"~:mod-page"');
+    expect(doc).toContain('"~:del-page"');
+    expect(doc).toContain(`"~u${PAGE_ID}"`);
+    expect(doc).toContain('"~:name","Page 2"');
+  });
+
+  it("round-trips for the local model writes", () => {
+    const params = pageParams();
+    expect(decodeTransit<UpdateFileParams>(encodeUpdateFile(params))).toEqual(params);
   });
 });

@@ -14,6 +14,7 @@ import {
   canUndo,
   createUndoState,
   invertChanges,
+  mergeUndo,
   pushUndo,
   redoStep,
   UNDO_LIMIT,
@@ -478,5 +479,71 @@ describe("applyUpdateChanges", () => {
     expect(undone[FRAME_A]).toEqual(before[FRAME_A]);
     expect(undone[ZERO_UUID].shapes).toEqual([FRAME_A]);
     expect(undone[FRAME_B].shapes).toEqual([]);
+  });
+});
+
+// F9.11: a layout reflow trails its attribute edit as a second commit; the
+// merge keeps one user edit as one step, and the two directions replay in
+// the order each needs.
+describe("mergeUndo", () => {
+  // The id of a mod-obj change; the fixtures only build those.
+  const ids = (changes: readonly UpdateFileChange[]): string[] =>
+    changes.map((change) => (change.type === "mod-obj" ? change.id : change.type));
+
+  const attrs: UndoEntry = {
+    changes: [{ type: "mod-obj", "page-id": PAGE_ID, id: FRAME_A, operations: [] }],
+    undoChanges: [{ type: "mod-obj", "page-id": PAGE_ID, id: FRAME_A, operations: [] }],
+    selectionBefore: [FRAME_A],
+    selectionAfter: [FRAME_A],
+  };
+  const reflow: UndoEntry = {
+    changes: [{ type: "mod-obj", "page-id": PAGE_ID, id: RECT, operations: [] }],
+    undoChanges: [{ type: "mod-obj", "page-id": PAGE_ID, id: RECT, operations: [] }],
+    selectionBefore: [RECT],
+    selectionAfter: [RECT],
+  };
+
+  it("folds the second commit into the entry just pushed", () => {
+    const state = mergeUndo(pushUndo(createUndoState(), attrs), reflow);
+
+    expect(state.entries).toHaveLength(1);
+    expect(state.index).toBe(0);
+  });
+
+  it("replays the edit then its reflow on redo", () => {
+    const state = mergeUndo(pushUndo(createUndoState(), attrs), reflow);
+
+    expect(ids(state.entries[0].changes)).toEqual([FRAME_A, RECT]);
+  });
+
+  it("reverts the reflow before the edit on undo", () => {
+    const state = mergeUndo(pushUndo(createUndoState(), attrs), reflow);
+
+    expect(ids(state.entries[0].undoChanges)).toEqual([RECT, FRAME_A]);
+  });
+
+  it("keeps the selection the first commit captured", () => {
+    const state = mergeUndo(pushUndo(createUndoState(), attrs), reflow);
+
+    expect(state.entries[0].selectionBefore).toEqual([FRAME_A]);
+    expect(state.entries[0].selectionAfter).toEqual([FRAME_A]);
+  });
+
+  it("leaves an older entry alone", () => {
+    const state = mergeUndo(
+      pushUndo(pushUndo(createUndoState(), entry("older")), attrs),
+      reflow,
+    );
+
+    expect(state.entries).toHaveLength(2);
+    expect(state.entries[0].selectionBefore).toEqual(["older"]);
+    expect(state.entries[1].changes).toHaveLength(2);
+  });
+
+  it("pushes when there is no entry to merge into", () => {
+    const state = mergeUndo(createUndoState(), reflow);
+
+    expect(state.index).toBe(0);
+    expect(state.entries[0]).toBe(reflow);
   });
 });

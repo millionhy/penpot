@@ -14,8 +14,9 @@
 //   keeps one file-wide stack; that is a later slice if page switching
 //   needs it.
 // - There are no undo groups or transactions: every committed request is
-//   one entry. The F9 write paths are discrete (a gesture release, one draw,
-//   one style edit), so there is nothing to accumulate yet.
+//   one entry. The one exception is a layout reflow (F9.11): it trails the
+//   attribute edit that asked for it as a second request, so mergeUndo
+//   folds it into that edit and one user action stays one step.
 // - Selection restore is tracked as before/after arrays; the after value is
 //   captured when undo runs, so redo returns to the selection the user had
 //   before undoing.
@@ -69,6 +70,26 @@ export function pushUndo(state: UndoState, entry: UndoEntry): UndoState {
   const overflow = kept.length - UNDO_LIMIT;
   const entries = overflow > 0 ? kept.slice(overflow) : kept;
   return { entries, index: entries.length - 1 };
+}
+
+// Fold one commit into the entry just pushed (F9.11). A reflow arrives as a
+// second update-file request after the attribute edit that caused it, but
+// the user made one edit: undo must revert both. The redo changes append
+// (the edit, then its reflow) and the undo changes prepend (the reflow
+// first, then the edit), while the selection stays the one the first
+// request captured. A stack without an entry to merge into simply pushes.
+export function mergeUndo(state: UndoState, entry: UndoEntry): UndoState {
+  if (state.index < 0) return pushUndo(state, entry);
+  const current = state.entries[state.index];
+  const merged: UndoEntry = {
+    changes: [...current.changes, ...entry.changes],
+    undoChanges: [...entry.undoChanges, ...current.undoChanges],
+    selectionBefore: current.selectionBefore,
+    selectionAfter: current.selectionAfter,
+  };
+  const entries = [...state.entries];
+  entries[state.index] = merged;
+  return { entries, index: state.index };
 }
 
 export interface UndoStep {
@@ -143,6 +164,14 @@ export function invertChanges(
         // the inverse would need the deleted snapshot. Fail loudly rather
         // than record an undo that cannot restore it.
         throw new Error("workspace-undo: a del-obj commit has no inverse");
+      case "add-page":
+      case "mod-page":
+      case "del-page":
+        // The sidebar commits page changes outside the stack (F9.13,
+        // lib/workspace-pages): applyUpdateChanges works over one page's
+        // objects and could neither restore a deleted page nor re-add one to
+        // the file, so a page change must never reach the inverse.
+        throw new Error("workspace-undo: a page change has no model inverse");
       case "mov-objects": {
         // One change per shape, carrying the position it had in its
         // previous parent. A grouped append would lose the stacking when a

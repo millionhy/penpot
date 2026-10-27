@@ -43,8 +43,10 @@ import { useState, useSyncExternalStore, type RefObject } from "react";
 import { MinusIcon, PlusIcon } from "@/components/workspace-icons";
 import {
   ConstraintsOptions,
+  GridCellOptions,
   LayoutItemOptions,
   LayoutOptions,
+  isGridCellParent,
   isLayoutParent,
 } from "@/components/workspace-layout-options";
 import type { WorkspaceCanvasHandle } from "@/components/workspace-wasm-canvas";
@@ -62,7 +64,7 @@ import {
   useDraftFields,
 } from "@/components/workspace-style-field";
 import { tr } from "@/lib/i18n";
-import type { WorkspaceShape } from "@/lib/workspace";
+import type { WorkspaceObjects, WorkspaceShape } from "@/lib/workspace";
 import {
   MIN_SIZE,
   geometryEditable,
@@ -70,6 +72,7 @@ import {
   type GeometryTarget,
 } from "@/lib/workspace-geometry";
 import { measureLocks } from "@/lib/workspace-layout-attrs";
+import { isPositionAbsolute } from "@/lib/workspace-layout";
 import {
   addBlur,
   addFill,
@@ -120,6 +123,9 @@ interface ShapeOptionsProps {
   // The parent record of the shape, for the layout and constraint sections
   // (a missing parent reads as the root board).
   parent: WorkspaceShape | null;
+  // The page objects: the grid cell section rebuilds the parent's cell map
+  // over its children (F9.12).
+  objects: WorkspaceObjects;
   canEdit: boolean;
   canvas: RefObject<WorkspaceCanvasHandle | null>;
 }
@@ -127,7 +133,7 @@ interface ShapeOptionsProps {
 // The sections of one selected shape. The caller keys this component on the
 // shape id, so every selection change drops the drafts, the pending flag and
 // the error.
-function ShapeOptions({ shape, parent, canEdit, canvas }: ShapeOptionsProps) {
+function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsProps) {
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -162,6 +168,14 @@ function ShapeOptions({ shape, parent, canEdit, canvas }: ShapeOptionsProps) {
 
   const send = (attrs: Record<string, unknown>): Promise<boolean> =>
     run((handle) => handle.updateShapeAttrs(shape.id, attrs));
+
+  // The grid cell section edits the layout frame the child sits in: a cell
+  // is part of the frame's layout-grid-cells map, not of the child.
+  const sendParent = (attrs: Record<string, unknown>): Promise<boolean> => {
+    const frame = parent;
+    if (frame === null) return Promise.resolve(false);
+    return run((handle) => handle.updateShapeAttrs(frame.id, attrs));
+  };
 
   // The draft bookkeeping is shared with the layout, constraints and
   // multi-selection sections (components/workspace-style-field).
@@ -213,6 +227,9 @@ function ShapeOptions({ shape, parent, canEdit, canvas }: ShapeOptionsProps) {
   const locks = measureLocks(shape, parent);
   const showLayout = shape.type === "frame";
   const showLayoutItem = isLayoutParent(parent);
+  // The grid cell menu, for a grid child the layout actually places; an
+  // absolute (or hidden) child has no cell to edit.
+  const showGridCell = isGridCellParent(parent) && !isPositionAbsolute(shape);
 
   const commitOpacity = (fieldId: string, raw: string | undefined): void => {
     if (isInvalid(fieldId, raw)) return;
@@ -486,6 +503,7 @@ function ShapeOptions({ shape, parent, canEdit, canvas }: ShapeOptionsProps) {
         <LayoutOptions
           shape={shape}
           parent={parent}
+          objects={objects}
           disabled={disabled}
           send={send}
         />
@@ -495,14 +513,26 @@ function ShapeOptions({ shape, parent, canEdit, canvas }: ShapeOptionsProps) {
         <LayoutItemOptions
           shape={shape}
           parent={parent}
+          objects={objects}
           disabled={disabled}
           send={send}
+        />
+      ) : null}
+
+      {showGridCell && parent !== null ? (
+        <GridCellOptions
+          shape={shape}
+          parent={parent}
+          objects={objects}
+          disabled={disabled}
+          sendParent={sendParent}
         />
       ) : null}
 
       <ConstraintsOptions
         shape={shape}
         parent={parent}
+        objects={objects}
         disabled={disabled}
         send={send}
       />
@@ -1027,22 +1057,25 @@ export function WorkspaceStylePanel({
   }
 
   const id = state.selection[0];
-  const shape = state.objects === null ? undefined : state.objects[id];
+  const objects = state.objects;
+  if (objects === null) {
+    return <p className="pp-workspace-empty">{tr("labels.empty")}</p>;
+  }
+  const shape = objects[id];
   if (shape === undefined) {
     return <p className="pp-workspace-empty">{tr("labels.empty")}</p>;
   }
 
   const parentId = shape["parent-id"];
   const parent =
-    state.objects === null || typeof parentId !== "string"
-      ? null
-      : (state.objects[parentId] ?? null);
+    typeof parentId !== "string" ? null : (objects[parentId] ?? null);
 
   return (
     <ShapeOptions
       key={id}
       shape={shape}
       parent={parent}
+      objects={objects}
       canEdit={canEdit}
       canvas={canvas}
     />

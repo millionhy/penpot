@@ -182,4 +182,18 @@ describe("active locale", () => {
     const hantPlural = Array.isArray(hantEntry) ? hantEntry[1] : String(hantEntry);
     expect(tr("labels.num-of-files", 5)).toBe(format(hantPlural, [5]));
   });
+
+  // The left-sidebar tabs and the page panel resolve their labels on every
+  // render; these keys are the ones the sidebar reads (workspace.sidebar.tokens
+  // is the catalog entry added for the tabs, the CLJS kept a literal).
+  it("translates the sidebar tabs and the page panel", () => {
+    setActiveLocale("zh_cn");
+    expect(tr("workspace.sidebar.layers")).toBe("图层");
+    expect(tr("workspace.sidebar.tokens")).toBe("令牌");
+    expect(tr("workspace.sidebar.sitemap")).toBe("页面");
+    expect(tr("workspace.sidebar.sitemap.add-page")).toBe("添加页面");
+
+    setActiveLocale("zh_hant");
+    expect(tr("workspace.sidebar.tokens")).toBe("權杖");
+  });
 });
