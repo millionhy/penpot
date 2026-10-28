@@ -23,7 +23,7 @@
 
 import { tr } from "@/lib/i18n";
 import { initPluginFlags } from "@/lib/plugin-flags";
-import { createPluginContext } from "@/lib/plugin-context";
+import { createPluginContext, startPluginWorkspaceEvents } from "@/lib/plugin-context";
 import {
   fetchManifest,
   getPlugin,
@@ -55,6 +55,9 @@ export function waitForRuntime(): Promise<void> {
 export async function startPluginRuntime(): Promise<void> {
   if (started) return;
   started = true;
+  // The finite events read a snapshot of the workspace store; take the
+  // baseline before any plugin can register a listener.
+  startPluginWorkspaceEvents();
   try {
     const runtime = await import("@penpot/plugins-runtime");
     runtime.initPluginsRuntime((pluginId) => createPluginContext(pluginId));

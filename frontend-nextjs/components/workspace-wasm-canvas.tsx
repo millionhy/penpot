@@ -141,6 +141,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -189,6 +190,12 @@ import {
   uploadShapeGeometry,
 } from "@/lib/render-wasm/shape-upload";
 import { isMacos } from "@/lib/shortcuts";
+import { notifyPluginContentSaved } from "@/lib/plugin-context";
+import {
+  registerWorkspaceBridge,
+  type PluginDrawBox,
+  type PluginViewportSnapshot,
+} from "@/lib/workspace-bridge";
 import { ZERO_UUID } from "@/lib/file-data";
 import { cmdEncoded } from "@/lib/rpc";
 import { encodeUpdateFile, type UpdateFileChange } from "@/lib/transit";
@@ -336,6 +343,10 @@ import {
 
 // clr/canvas, the background of a page without one.
 const DEFAULT_BACKGROUND = "#E8E9EA";
+
+// A plugin history block that never finishes stops folding after this long,
+// so one forgotten undoBlockFinish cannot swallow the user's later edits.
+const UNDO_BLOCK_TIMEOUT_MS = 10_000;
 
 // The wheel accumulator of actions.cljs (one mutable ref): the scroll
 // deltas and the compound zoom scale, each with its own rAF id.
@@ -514,9 +525,28 @@ export interface WorkspaceCanvasHandle {
   // page change through the shared write path (recordUndo false: the undo
   // stack has no page inverse) and resolves null/false when the file is
   // read-only, a commit is already in flight or the backend rejects it.
-  createPage(): Promise<string | null>;
+  // createPage takes the id the plugin API already minted; a missing one is
+  // minted here.
+  createPage(id?: string): Promise<string | null>;
   renamePage(id: string, name: string): Promise<boolean>;
   deletePage(id: string): Promise<boolean>;
+  // F7.4: the plugin bridge commands. They share the write path and the
+  // viewport slice above, so a plugin edit is one undo entry and one
+  // update-file request, like the panel commands.
+  createShape(
+    id: string,
+    type: "frame" | "rect" | "ellipse",
+    box: PluginDrawBox,
+  ): Promise<boolean>;
+  alignObjects(ids: readonly string[], axis: AlignAxis): Promise<boolean>;
+  distributeObjects(ids: readonly string[], axis: DistributeAxis): Promise<boolean>;
+  beginUndoBlock(): void;
+  endUndoBlock(): void;
+  viewport(): PluginViewportSnapshot | null;
+  setZoom(zoom: number): void;
+  setCenter(center: { x: number; y: number }): void;
+  zoomReset(): void;
+  zoomIntoView(ids: readonly string[]): void;
 }
 
 export interface WorkspaceWasmCanvasProps {
@@ -643,6 +673,10 @@ function WorkspaceWasmCanvasImpl({
     undo: () => void;
     redo: () => void;
   } | null>(null);
+  // F7.4: an open plugin undo block. The first commit inside it records one
+  // entry and the later ones fold into it, so one undo returns the whole
+  // plugin transaction.
+  const undoBlockRef = useRef<{ openedAt: number; recorded: boolean } | null>(null);
   // F9.8: the vertical-order command of the current load, owned by the
   // interaction effect like the history step.
   const orderRef = useRef<((location: VerticalOrderLocation) => void) | null>(null);
@@ -722,13 +756,29 @@ function WorkspaceWasmCanvasImpl({
     ): Promise<number | null> => {
       const sessionId = sessionIdRef.current;
       if (sessionId === null || commitPendingRef.current) return null;
+      // An open plugin undo block folds every commit after its first into
+      // one undo entry; a block past its timeout is dropped, so a plugin
+      // that never finishes cannot swallow the user's later edits.
+      if (
+        undoBlockRef.current !== null &&
+        Date.now() - undoBlockRef.current.openedAt > UNDO_BLOCK_TIMEOUT_MS
+      ) {
+        undoBlockRef.current = null;
+      }
+      const block = undoBlockRef.current;
+      const mode: boolean | "merge" =
+        block !== null && recordUndo === true
+          ? block.recorded
+            ? "merge"
+            : true
+          : recordUndo;
       // The inverse is derived from the model the commit was built on, so
       // the snapshot and the selection are taken before the request. The
       // inversion runs before the request too: a change that cannot be
       // undone must not reach the file. A merged request may name its own
       // base: a reflow trails an attribute edit that already reached the
       // model, and undo must land on the state before that edit.
-      const record = recordUndo !== false;
+      const record = mode !== false;
       const before = record ? (undoBase !== undefined ? undoBase : objectsRef.current) : null;
       const selectionBefore = record ? [...getWorkspaceState().selection] : [];
       const undoChanges =
@@ -771,11 +821,17 @@ function WorkspaceWasmCanvasImpl({
             selectionAfter: selectionBefore,
           };
           undoRef.current =
-            recordUndo === "merge"
+            mode === "merge"
               ? mergeUndo(undoRef.current, entry)
               : pushUndo(undoRef.current, entry);
           setUndoAvailability(canUndo(undoRef.current), canRedo(undoRef.current));
+          // The first recorded commit of a plugin block opens its entry;
+          // the later ones folded into it above.
+          if (block !== null) block.recorded = true;
         }
+        // handle-state-change "contentsave": the commit is persisted, so
+        // the plugin callbacks run (debounced, without arguments).
+        notifyPluginContentSaved();
         return revn;
       } finally {
         commitPendingRef.current = false;
@@ -910,11 +966,16 @@ function WorkspaceWasmCanvasImpl({
   // shared write path and mirrors the same change into the store's file.
   // recordUndo stays false: lib/workspace-undo inverts shape changes from
   // the page model and has no page inverse.
-  const createPage = useCallback(async (): Promise<string | null> => {
+  const createPage = useCallback(async (requestedId?: string): Promise<string | null> => {
     if (!canEditRef.current) return null;
     const current = getWorkspaceState().file;
     if (current === null) return null;
-    const id = crypto.randomUUID();
+    // The plugin API mints the id so its page proxy can answer before the
+    // commit lands; a page that already exists is left alone.
+    if (requestedId !== undefined && (current.data.pages ?? []).includes(requestedId)) {
+      return requestedId;
+    }
+    const id = requestedId ?? crypto.randomUUID();
     const name = uniquePageName(pageInfos(current).map((page) => page.name));
     try {
       const revn = await sendUpdateFile([addPageChange(id, name)], false);
@@ -1003,9 +1064,33 @@ function WorkspaceWasmCanvasImpl({
     setWorkspaceViewport(next);
   }, []);
 
-  useImperativeHandle(
-    ref,
-    () => ({
+  const handle = useMemo<WorkspaceCanvasHandle>(() => {
+    // reset-zoom: land on zoom 1 around the current center. Shared by the
+    // menu command and the plugin viewport proxy.
+    const resetZoom = (): void => {
+      const state = stateRef.current;
+      if (state !== null) {
+        applyViewport(zoomBy(state, rectCenter(state.vbox), 1 / state.zoom));
+      }
+    };
+    // fit-to-shapes (padding 40): the selection command and the plugin
+    // zoomIntoView over an explicit id list.
+    const fitToIds = (ids: readonly string[]): void => {
+      const state = stateRef.current;
+      const objects = objectsRef.current;
+      if (state === null || objects === null) return;
+      const shapes: WorkspaceShape[] = [];
+      for (const id of ids) {
+        const shape = objects[id];
+        if (shape !== undefined && shape !== null) shapes.push(shape);
+      }
+      const srect = shapesRect(shapes);
+      if (srect === null) return;
+      const next = fitViewport(state.vport, srect, 40);
+      if (next !== null) applyViewport(next);
+    };
+
+    return {
       // increase-zoom / decrease-zoom around the box center.
       zoomIn: () => {
         const state = stateRef.current;
@@ -1016,12 +1101,8 @@ function WorkspaceWasmCanvasImpl({
         if (state !== null) applyViewport(zoomBy(state, rectCenter(state.vbox), 1 / 1.3));
       },
       // reset-zoom: land on zoom 1 around the current center.
-      resetZoom: () => {
-        const state = stateRef.current;
-        if (state !== null) {
-          applyViewport(zoomBy(state, rectCenter(state.vbox), 1 / state.zoom));
-        }
-      },
+      resetZoom,
+      zoomReset: resetZoom,
       // zoom-to-fit-all over the root children (padding 160).
       zoomToFitAll: () => {
         const state = stateRef.current;
@@ -1034,20 +1115,7 @@ function WorkspaceWasmCanvasImpl({
       },
       // zoom-to-selected-shape over the current selection (padding 40); an
       // empty selection is a no-op (the menu disables the item).
-      zoomToSelection: () => {
-        const state = stateRef.current;
-        const objects = objectsRef.current;
-        if (state === null || objects === null) return;
-        const shapes: WorkspaceShape[] = [];
-        for (const id of getWorkspaceState().selection) {
-          const shape = objects[id];
-          if (shape !== undefined && shape !== null) shapes.push(shape);
-        }
-        const srect = shapesRect(shapes);
-        if (srect === null) return;
-        const next = fitViewport(state.vport, srect, 40);
-        if (next !== null) applyViewport(next);
-      },
+      zoomToSelection: () => fitToIds(getWorkspaceState().selection),
       // AD7 (F9.5): one mod-obj with one set per attribute; the local model
       // applies the same attrs before the promise resolves, then the
       // wasm-visible subset is pushed. A wasm failure never fails the
@@ -1232,20 +1300,108 @@ function WorkspaceWasmCanvasImpl({
         commitTranslationMoves(
           distributeMoves(objectsRef.current ?? {}, getWorkspaceState().selection, axis),
         ),
+      // F7.4: api.cljs create-shape. One add-obj under the page root at the
+      // plugin box; the id comes from the caller so its proxy can answer
+      // before the commit. The CLJS does not select the new shape either.
+      createShape: async (id, type, box) => {
+        if (!canEditRef.current) return false;
+        const objects = objectsRef.current;
+        if (objects === null) return false;
+        const parentId = ZERO_UUID;
+        const parent = objects[parentId];
+        if (parent === undefined || parent === null) return false;
+        const shape = createDrawShape(type, box, parentId, id);
+        const change: UpdateFileChange = {
+          type: "add-obj",
+          id: shape.id,
+          obj: shape,
+          "page-id": pageIdRef.current,
+          "frame-id": parentId,
+          "parent-id": parentId,
+        };
+        try {
+          const revn = await sendUpdateFile([change]);
+          if (revn === null) return false;
+          // The local mirror of add-shape: insert under the root and rebuild
+          // the hit-testing index. Re-read: a commit may have landed while
+          // the RPC ran.
+          const next = applyAddShape(objectsRef.current ?? objects, shape, parentId);
+          objectsRef.current = next;
+          indexRef.current = createWorkspaceIndex(next);
+          setWorkspaceObjects(next);
+          const app = appRef.current;
+          if (app !== null) {
+            try {
+              uploadNewShape(app, shape, next[parentId]);
+            } catch (cause: unknown) {
+              console.warn("[workspace] could not sync the new shape to wasm:", cause);
+            }
+          }
+          return true;
+        } catch (cause: unknown) {
+          console.error("[workspace] shape create failed:", cause);
+          setWorkspaceState({ error: cause });
+          return false;
+        }
+      },
+      // F7.4: the plugin align/distribute over an explicit id list; the same
+      // commit the panel commands use.
+      alignObjects: (ids, axis) =>
+        commitTranslationMoves(alignMoves(objectsRef.current ?? {}, ids, axis)),
+      distributeObjects: (ids, axis) =>
+        commitTranslationMoves(distributeMoves(objectsRef.current ?? {}, ids, axis)),
+      // F7.4: one plugin history block. sendUpdateFile records the first
+      // commit and folds the rest into it; the timestamp drops a block a
+      // plugin forgets to finish.
+      beginUndoBlock: () => {
+        undoBlockRef.current = { openedAt: Date.now(), recorded: false };
+      },
+      endUndoBlock: () => {
+        undoBlockRef.current = null;
+      },
+      viewport: () => {
+        const state = stateRef.current;
+        if (state === null) return null;
+        return { zoom: state.zoom, vbox: { ...state.vbox } };
+      },
+      // set-zoom: the plugin sends an absolute zoom, the viewport math takes
+      // a factor around the box center.
+      setZoom: (zoom) => {
+        const state = stateRef.current;
+        if (state === null || !(zoom > 0)) return;
+        applyViewport(zoomBy(state, null, zoom / state.zoom));
+      },
+      // update-viewport-position: shift the box so its center lands on the
+      // requested world point.
+      setCenter: (center) => {
+        const state = stateRef.current;
+        if (state === null) return;
+        const current = rectCenter(state.vbox);
+        applyViewport(scrollBy(state, center.x - current.x, center.y - current.y));
+      },
+      zoomIntoView: fitToIds,
       createPage,
       renamePage,
       deletePage,
-    }),
-    [
-      applyViewport,
-      commitReflow,
-      commitTranslationMoves,
-      createPage,
-      deletePage,
-      renamePage,
-      sendUpdateFile,
-    ],
-  );
+    };
+  }, [
+    applyViewport,
+    commitReflow,
+    commitTranslationMoves,
+    createPage,
+    deletePage,
+    renamePage,
+    sendUpdateFile,
+  ]);
+
+  useImperativeHandle(ref, () => handle, [handle]);
+
+  // F7.4: the plugin proxies of lib/plugin-context reach the same object the
+  // shell drives; objects() is the live JS model of the interaction layer.
+  useEffect(() => {
+    registerWorkspaceBridge({ ...handle, objects: () => objectsRef.current });
+    return () => registerWorkspaceBridge(null);
+  }, [handle]);
 
   // Completion signals for tests and diagnosis: data-rendered flips on the
   // wasm tiles event (the progressive render finished a pass), data-shapes

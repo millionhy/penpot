@@ -45,6 +45,7 @@ import {
 } from "@/components/workspace-wasm-canvas";
 import { ExpandIcon, ChevronIcon } from "@/components/workspace-icons";
 import { tr } from "@/lib/i18n";
+import { registerWorkspacePageOpener } from "@/lib/workspace-navigation";
 import { canEditFile, type WorkspaceFile, type WorkspaceTool } from "@/lib/workspace";
 
 export interface WorkspaceShellProps {
@@ -121,6 +122,13 @@ export function WorkspaceShell({
     },
     [router],
   );
+
+  // F7.4: the plugin page proxies switch pages through openWorkspacePage;
+  // the shell owns the URL replace, so it registers the opener here.
+  useEffect(() => {
+    registerWorkspacePageOpener(selectPage);
+    return () => registerWorkspacePageOpener(null);
+  }, [selectPage]);
 
   const toggleUI = useCallback((): void => {
     setMenu(null);
