@@ -255,6 +255,155 @@ export function CloseIcon() {
   );
 }
 
+// The align bar of the style panel (align.cljs): the six axes and the two
+// distribution buttons, in the CLJS order.
+export function AlignLeftIcon() {
+  return (
+    <Icon>
+      <path d="m1.333 1.333v13.334m3.334-7.334c0-1.103.896-2 2-2h6.666c1.104 0 2 .897 2 2v1.334c0 1.104-.896 2-2 2h-6.666c-1.104 0-2-.896-2-2z" />
+    </Icon>
+  );
+}
+
+export function AlignHorizontalCenterIcon() {
+  return (
+    <Icon>
+      <path d="m8 .667v4.666m0 5.334v4.666m-5.333-8c0-1.103.896-2 2-2h3.333 3.333c1.104 0 2 .897 2 2v1.334c0 1.104-.896 2-2 2h-3.333-3.333c-1.104 0-2-.896-2-2z" />
+    </Icon>
+  );
+}
+
+export function AlignRightIcon() {
+  return (
+    <Icon>
+      <path d="m14.667 1.333v13.334m-14-7.334c0-1.103.896-2 2-2h6.666c1.104 0 2 .897 2 2v1.334c0 1.104-.896 2-2 2h-6.666c-1.104 0-2-.896-2-2z" />
+    </Icon>
+  );
+}
+
+// distribute-horizontally.svg.
+export function DistributeHorizontallyIcon() {
+  return (
+    <Icon>
+      <path d="M2.667 1.333v13.334zm10.666 0v13.334zm-5 2c1.104 0 2 .897 2 2v5.334a2 2 0 01-2 2h-.666a2 2 0 01-2-2V5.333c0-1.103.896-2 2-2h.666z" />
+    </Icon>
+  );
+}
+
+export function AlignTopIcon() {
+  return (
+    <Icon>
+      <path d="m14.667 1.333h-13.334m7.334 3.334c1.104 0 2 .896 2 2v6.666c0 1.104-.896 2-2 2h-1.334c-1.103 0-2-.896-2-2v-6.666c0-1.104.897-2 2-2z" />
+    </Icon>
+  );
+}
+
+export function AlignVerticalCenterIcon() {
+  return (
+    <Icon>
+      <path d="m5.333 8h-4.666m14.666 0h-4.666m-2-5.333c1.104 0 2 .896 2 2v3.333 3.333c0 1.104-.896 2-2 2h-1.334c-1.103 0-2-.896-2-2v-3.333-3.333c0-1.104.897-2 2-2z" />
+    </Icon>
+  );
+}
+
+export function AlignBottomIcon() {
+  return (
+    <Icon>
+      <path d="m14.667 14.667h-13.334m7.334-14c1.104 0 2 .896 2 2v6.666c0 1.104-.896 2-2 2h-1.334c-1.103 0-2-.896-2-2v-6.666c0-1.104.897-2 2-2z" />
+    </Icon>
+  );
+}
+
+// distribute-vertical-spacing.svg.
+export function DistributeVerticallyIcon() {
+  return (
+    <Icon>
+      <path d="m1.333 2.667h13.334m-13.334 10.666h13.334m-11.334-5.666c0-1.104.896-2 2-2h5.334c1.103 0 2 .896 2 2v.666c0 1.104-.897 2-2 2h-5.334c-1.104 0-2-.896-2-2z" />
+    </Icon>
+  );
+}
+
+// shown.svg: the eye of the layer row.
+export function ShownIcon() {
+  return (
+    <Icon>
+      <path d="m15 8.02c-1.396-2.701-4.014-4.52-7.012-4.52-2.981 0-5.586 1.798-6.988 4.473 1.402 2.729 4.007 4.527 6.988 4.527 2.998 0 5.616-1.819 7.012-4.48zm-7-.77c.414 0 .75.336.75.75s-.336.75-.75.75-.75-.336-.75-.75.336-.75.75-.75z" />
+    </Icon>
+  );
+}
+
+// eye-off.svg: the eye of a hidden layer.
+export function EyeOffIcon() {
+  return (
+    <Icon>
+      <path d="M7.411 4.104c.237-.028.475-.042.714-.041 2.623 0 4.725 1.632 5.625 3.937a6.502 6.502 0 0 1-.875 1.568M5.043 4.917C3.895 5.617 3.006 6.702 2.5 8c.9 2.305 3.001 3.938 5.625 3.938a5.874 5.874 0 0 0 3.082-.856M6.932 6.807a1.69 1.69 0 0 0 .757 2.824 1.686 1.686 0 0 0 1.63-.437M3.625 3.5l9 9" />
+    </Icon>
+  );
+}
+
+// lock.svg / unlock.svg: the layer flags and the size lock.
+export function LockIcon() {
+  return (
+    <Icon>
+      <path d="m12.148 8.667h-.815-6.666-.815c-.655 0-1.185.597-1.185 1.333v3.333c0 .737.53 1.334 1.185 1.334h8.296c.655 0 1.185-.597 1.185-1.334v-3.333c0-.736-.53-1.333-1.185-1.333zm-7.481 0v-4c0-.884.35-1.732.976-2.357.625-.625 1.473-.977 2.357-.977s1.732.352 2.357.977c.626.625.976 1.473.976 2.357v4" />
+    </Icon>
+  );
+}
+
+export function UnlockIcon() {
+  return (
+    <Icon>
+      <path d="m12.148 8.667h-7.481-.815c-.655 0-1.185.597-1.185 1.333v3.333c0 .737.53 1.334 1.185 1.334h8.296c.655 0 1.185-.597 1.185-1.334v-3.333c0-.736-.53-1.333-1.185-1.333zm-7.481 0v-4c-.001-.827.305-1.624.859-2.238.554-.613 1.317-.999 2.139-1.082s1.646.142 2.312.633c.666.49 1.125 1.21 1.29 2.02" />
+    </Icon>
+  );
+}
+
+// size-vertical.svg / size-horizontal.svg: the frame orientation of the presets
+// row.
+export function SizeVerticalIcon() {
+  return (
+    <Icon>
+      <path d="m10.667 1.167c.828 0 1.5.672 1.5 1.5v10.666c0 .828-.672 1.5-1.5 1.5h-5.334c-.828 0-1.5-.672-1.5-1.5v-10.666c0-.828.672-1.5 1.5-1.5z" />
+    </Icon>
+  );
+}
+
+export function SizeHorizontalIcon() {
+  return (
+    <Icon>
+      <path d="m1.167 5.333c0-.828.672-1.5 1.5-1.5h10.666c.828 0 1.5.672 1.5 1.5v5.334c0 .828-.672 1.5-1.5 1.5h-10.666c-.828 0-1.5-.672-1.5-1.5z" />
+    </Icon>
+  );
+}
+
+// fit-content.svg: the presets-row button that hugs the children (17px
+// viewBox in the original).
+export function FitContentIcon() {
+  return (
+    <Icon viewBox="512.5 295.5 17 17" width={17} height={17}>
+      <path d="M526.500,301.500L523.500,301.500M523.500,301.500L523.500,298.500M523.500,301.500L527.500,297.500M526.500,306.500L523.500,306.500M523.500,306.500L523.500,309.500M523.500,306.500L527.500,310.500M515.500,301.500L518.500,301.500M518.500,301.500L518.500,298.500M518.500,301.500L514.500,297.500M515.500,306.500L518.500,306.500M518.500,306.500L518.500,309.500M518.500,306.500L514.500,310.500" />
+    </Icon>
+  );
+}
+
+// rotation.svg: the rotation field of the measures block.
+export function RotationIcon() {
+  return (
+    <Icon>
+      <path d="m2 2v6 6h6 6m-6 0c0-3.314-2.686-6-6-6" />
+    </Icon>
+  );
+}
+
+// clip-content.svg: the clip toggle of the measures block.
+export function ClipContentIcon() {
+  return (
+    <Icon>
+      <path d="M2.5 10v3.5m0 0H6m-3.5 0H1m1.5 0V15m11-9V2.5m0 0H10m3.5 0H15m-1.5 0V1m0 9v3.5m0 0H10m3.5 0H15m-1.5 0V15m-11-9V2.5m0 0H6m-3.5 0H1m1.5 0V1" />
+    </Icon>
+  );
+}
+
 // puzzle.svg: the plugins button of the toolbar.
 export function PuzzleIcon() {
   return (

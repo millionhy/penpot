@@ -122,10 +122,15 @@ const RULER_THEME = {
 } as const;
 
 // hex->u32argb with opacity 1, the ARGB u32 the wasm ABI takes
-// (sr-clr/hex->u32argb in the CLJS original).
+// (sr-clr/hex->u32argb in the CLJS original). Expands the 3/4-digit
+// shorthand so "#fff" reads 0xFFFFFFFF, not 0xFF000FFF.
 function hexToArgbU32(hex: string): number {
-  const value = Number.parseInt(hex.slice(1), 16);
-  return (0xff << 24) | value;
+  let value = hex.slice(1);
+  if (value.length === 3 || value.length === 4) {
+    value = [...value].map((c) => c + c).join("");
+  }
+  const argb = Number.parseInt(value, 16);
+  return value.length === 6 ? (0xff << 24) | argb : argb;
 }
 
 // set-rulers-colors!: push the ruler chrome colors into the wasm UI state.
@@ -144,6 +149,53 @@ export function setWorkspaceRulerColors(app: RendererApp): void {
     hexToArgbU32(RULER_THEME.accent),
   );
   call(app, KEY.requestRender, "set-rulers-colors");
+}
+
+// set-rulers-offsets!: the tick-label offset of the ruler scale, the
+// viewport effect of rulers-state/display-state*. Selecting a single root
+// frame shifts the scale to the frame origin; otherwise the selected
+// shapes' shared parent frame origin applies. A null offset answers 0, like
+// the compiled (:x selected-frame) on nil.
+export function setWorkspaceRulersOffsets(
+  app: RendererApp,
+  offsetX: number,
+  offsetY: number,
+): void {
+  call(app, KEY.setRulersOffsets, offsetX || 0, offsetY || 0);
+}
+
+// The selection rect of the ruler band: a CLJS PersistentArrayMap, since
+// the compiled set-rulers-selection! reads :x/:y/:width/:height through
+// the ILookup protocol (same shape rule as vboxMap). Null clears the band.
+export interface RulerSelectionRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function setWorkspaceRulersSelection(
+  app: RendererApp,
+  rect: RulerSelectionRect | null,
+): void {
+  if (rect === null) {
+    call(app, KEY.setRulersSelection, null);
+  } else {
+    call(
+      app,
+      KEY.setRulersSelection,
+      arrayMap(app, [
+        [keyword(app, "x"), rect.x],
+        [keyword(app, "y"), rect.y],
+        [keyword(app, "width"), rect.width],
+        [keyword(app, "height"), rect.height],
+      ]),
+    );
+  }
+  // The compiled viewport re-presents through render-from-backbuffer! here;
+  // this port has no backbuffer surface, so the full render path stands in
+  // (the same substitution as set-rulers-visible).
+  call(app, KEY.requestRender, "set-rulers-selection");
 }
 
 // set-view-box: push zoom/vbox into the renderer. No-ops unless the context

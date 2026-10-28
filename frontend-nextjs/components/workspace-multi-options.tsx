@@ -1,9 +1,10 @@
 "use client";
 
-// The multi-selection options of the workspace style panel (F9.9). Replaces
-// the "N selected" message with the batch editing menus the CLJS multi
-// selection shows (shapes/multiple.cljs): the layer flags, opacity, radius,
-// shadow, blur, constraints and the layout-item sizing.
+// The multi-selection options of the workspace style panel (F9.9, extended
+// by F9.14). Replaces the "N selected" message with the batch editing menus
+// the CLJS multi selection shows (shapes/multiple.cljs): the alignment and
+// distribution buttons, the layer row (blend mode, opacity, the two flags),
+// radius, shadow, blur, constraints and the layout-item sizing.
 //
 // A value the shapes disagree on reads as "Mixed": the field empties and
 // shows the shared catalog placeholder, and a select shows a disabled mixed
@@ -18,7 +19,15 @@
 
 import { useState, type RefObject } from "react";
 
-import { MinusIcon, PlusIcon } from "@/components/workspace-icons";
+import {
+  EyeOffIcon,
+  LockIcon,
+  MinusIcon,
+  PlusIcon,
+  ShownIcon,
+  UnlockIcon,
+} from "@/components/workspace-icons";
+import { WorkspaceAlignOptions } from "@/components/workspace-align-options";
 import {
   DraftField,
   SelectField,
@@ -36,6 +45,7 @@ import {
 import {
   blurAddUpdates,
   blurClearUpdates,
+  blendUpdates,
   constraintUpdates,
   flagUpdates,
   opacityUpdates,
@@ -47,6 +57,7 @@ import {
   sizingUpdates,
   type ShapeUpdate,
 } from "@/lib/workspace-multi";
+import { BLEND_MODES, blendModeOf } from "@/lib/workspace-blend-modes";
 import { radiusOf, shapeOpacity, shadowsOf } from "@/lib/workspace-style";
 
 export interface WorkspaceMultiOptionsProps {
@@ -81,8 +92,12 @@ export function WorkspaceMultiOptions({
 
   const disabled = !canEdit || pending;
 
-  const run = async (updates: readonly ShapeUpdate[]): Promise<void> => {
-    if (updates.length === 0) return;
+  // The one commit path: disable the controls, run the canvas action and keep
+  // the failure inline. The attribute batches and the alignment gestures
+  // share it.
+  const runHandle = async (
+    action: (handle: WorkspaceCanvasHandle) => Promise<boolean>,
+  ): Promise<void> => {
     const handle = canvas.current;
     if (handle === null) {
       setFailed(true);
@@ -91,13 +106,18 @@ export function WorkspaceMultiOptions({
     setPending(true);
     setFailed(false);
     try {
-      const ok = await handle.updateShapesAttrs(updates);
+      const ok = await action(handle);
       if (!ok) setFailed(true);
     } catch {
       setFailed(true);
     } finally {
       setPending(false);
     }
+  };
+
+  const run = (updates: readonly ShapeUpdate[]): Promise<void> => {
+    if (updates.length === 0) return Promise.resolve();
+    return runHandle((handle) => handle.updateShapesAttrs(updates));
   };
 
   const parentOf = (shape: WorkspaceShape): WorkspaceShape | null => {
@@ -109,6 +129,9 @@ export function WorkspaceMultiOptions({
   // The flags: undefined means mixed, which the button treats as off.
   const hidden = sharedFlag(shapes, "hidden");
   const blocked = sharedFlag(shapes, "blocked");
+  // A select cannot show two values at once: a mixed blend mode reads as the
+  // disabled placeholder option.
+  const blend = sharedValue(shapes, blendModeOf);
 
   // Opacity and radius share a value only when every shape agrees.
   const opacity = sharedValue(shapes, shapeOpacity);
@@ -165,37 +188,39 @@ export function WorkspaceMultiOptions({
         {tr("inspect.multiple-selected", shapes.length)}
       </h3>
 
+      <WorkspaceAlignOptions
+        objects={objects}
+        ids={ids}
+        disabled={disabled}
+        onAlign={(axis) => void runHandle((handle) => handle.alignSelection(axis))}
+        onDistribute={(axis) =>
+          void runHandle((handle) => handle.distributeSelection(axis))
+        }
+      />
+
       <div className="pp-workspace-style-layer">
-        <button
-          type="button"
-          className="pp-workspace-style-toggle"
-          title={hidden === true ? tr("labels.show") : tr("labels.hide")}
+        {/* layer.cljs shows the blend select with no label; the section name
+            names it for assistive tech. */}
+        <select
+          className="pp-workspace-style-select pp-workspace-style-blend"
+          value={blend ?? ""}
           disabled={disabled}
-          onClick={() => void run(flagUpdates(shapes, "hidden", hidden !== true))}
+          aria-label={tr("workspace.options.layer-options.layer-section")}
+          onChange={(event) =>
+            void run(blendUpdates(shapes, event.currentTarget.value))
+          }
         >
-          {hidden === true ? tr("labels.show") : tr("labels.hide")}
-        </button>
-        <button
-          type="button"
-          className="pp-workspace-style-toggle"
-          title={blocked === true ? tr("labels.unlock") : tr("labels.lock")}
-          disabled={disabled}
-          onClick={() => void run(flagUpdates(shapes, "blocked", blocked !== true))}
-        >
-          {blocked === true ? tr("labels.unlock") : tr("labels.lock")}
-        </button>
-      </div>
-
-      {failed ? (
-        <p className="pp-workspace-style-error" role="alert">
-          {tr("errors.generic")}
-        </p>
-      ) : null}
-
-      <section className="pp-workspace-style-section">
-        <h3 className="pp-workspace-style-title">
-          {tr("workspace.options.opacity")}
-        </h3>
+          {blend === undefined ? (
+            <option value="" disabled>
+              {mixed}
+            </option>
+          ) : null}
+          {BLEND_MODES.map((mode) => (
+            <option key={mode.value} value={mode.value}>
+              {tr(mode.labelKey)}
+            </option>
+          ))}
+        </select>
         <DraftField
           fieldId="multi-opacity"
           type="number"
@@ -212,7 +237,33 @@ export function WorkspaceMultiOptions({
           onCommit={(_, raw) => commitOpacity(raw)}
           onCancel={() => setOpacityDraft(undefined)}
         />
-      </section>
+        <button
+          type="button"
+          className="pp-workspace-style-icon-button"
+          aria-label={tr("workspace.options.layer-options.toggle-layer")}
+          title={hidden === true ? tr("labels.show") : tr("labels.hide")}
+          disabled={disabled}
+          onClick={() => void run(flagUpdates(shapes, "hidden", hidden !== true))}
+        >
+          {hidden === true ? <EyeOffIcon /> : <ShownIcon />}
+        </button>
+        <button
+          type="button"
+          className="pp-workspace-style-icon-button"
+          aria-label={blocked === true ? tr("labels.unlock") : tr("labels.lock")}
+          title={blocked === true ? tr("labels.unlock") : tr("labels.lock")}
+          disabled={disabled}
+          onClick={() => void run(flagUpdates(shapes, "blocked", blocked !== true))}
+        >
+          {blocked === true ? <LockIcon /> : <UnlockIcon />}
+        </button>
+      </div>
+
+      {failed ? (
+        <p className="pp-workspace-style-error" role="alert">
+          {tr("errors.generic")}
+        </p>
+      ) : null}
 
       {radiusShapes.length === 0 ? null : (
         <section className="pp-workspace-style-section">

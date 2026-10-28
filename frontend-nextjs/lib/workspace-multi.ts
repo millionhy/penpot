@@ -74,6 +74,17 @@ export function opacityUpdates(
   return shapes.map((shape) => ({ id: shape.id, attrs: { opacity: value } }));
 }
 
+// The blend-mode of menus/layer.cljs: one mode for every shape.
+export function blendUpdates(
+  shapes: readonly WorkspaceShape[],
+  mode: string,
+): ShapeUpdate[] {
+  return shapes.map((shape) => ({
+    id: shape.id,
+    attrs: { "blend-mode": mode },
+  }));
+}
+
 // shape-radius-to-all-corners of menus/border_radius.cljs: the four radii
 // move together. Only rect and frame carry the attribute (the same type set
 // the single-shape radius section shows).

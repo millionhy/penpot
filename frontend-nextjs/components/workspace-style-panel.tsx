@@ -1,13 +1,15 @@
 "use client";
 
-// The workspace style panel (F9.5, extended by F9.9): the right-sidebar
-// options for the selected shapes. Port of the CLJS options toolbox
-// (sidebar/options/menus/{measures,layer,fill,stroke,shadow,blur,
-// border_radius,layout_container,layout_item,constraints}.cljs): the
-// size/position/rotation fields, the layer flags, the layout container and
-// layout item menus, the constraints, opacity, fills, strokes, shadows, the
-// layer blur and the rect/frame radius. A multi selection swaps the single
-// shape sections for components/workspace-multi-options.
+// The workspace style panel (F9.5, extended by F9.9 and F9.14): the
+// right-sidebar options for the selected shapes. Port of the CLJS options
+// toolbox (sidebar/options/menus/{align,layer,measures,fill,stroke,
+// color_selection,shadow,blur,frame_grid,exports,layout_container,
+// layout_item,constraints}.cljs): the alignment and distribution buttons, the
+// blend mode and the layer flags, the size/position/rotation/radius fields, the
+// frame presets, the layout container and layout item menus, the constraints,
+// the fills, strokes, selected colors, shadows, the layer blur, the frame
+// guides and the export specs, plus layout helpers. A multi selection swaps
+// the single shape sections for components/workspace-multi-options.
 //
 // A controlled view over the store with local drafts (AD8): text, number and
 // color edits keep a draft and commit on blur or Enter; Escape restores the
@@ -21,26 +23,50 @@
 // never imports the file. A read-only file disables every control and keeps
 // the values visible.
 //
+// The panel follows the CLJS section order of a frame selection: align, layer
+// (blend, opacity, eye, lock), measures (presets, proportion lock, radius,
+// clip), layout, grid cell, layout item, constraints, fill, stroke, selected
+// colors, shadow, blur, guides and exports.
+//
 // Deviations from the CLJS original, documented (AD12):
-// - No blend mode, grids or exports yet.
 // - Gradients and image strokes are read-only rows that can be removed,
 //   never edited.
 // - Radius uses four inputs for rect/frame, without the single-corner toggle
 //   and without the circle case.
-// - The measures block has no proportion lock, no frame presets and the
-//   layout-driven disabling is partial: it locks x/y for a flow child and
-//   the axes an auto or fill sizing owns, from measureLocks. It hides for
-//   the types the geometry helpers cannot rewrite (text, svg-raw, blocked
-//   shapes).
+// - The layout-driven disabling is partial: it locks x/y for a flow child and
+//   the axes an auto or fill sizing owns, from measureLocks. The measures
+//   block hides for the types the geometry helpers cannot rewrite (text,
+//   svg-raw, blocked shapes).
+// - The guides rows persist :grids and the export rows persist :exports, but
+//   the wasm bridge draws no grid and ships no export entry point: the download
+//   button stays disabled.
 // - The shadow menu edits one shadow per row with a style select, and the
 //   blur menu only knows the layer blur.
 // - The multi selection edits the shared values through
-//   components/workspace-multi-options and shows the mixed values as the
-//   "multiple" placeholder; it has no layer ordering or alignment rows.
+//   components/workspace-multi-options: the alignment row, the blend/opacity/
+//   eye/lock layer row and the mixed values as the "multiple" placeholder.
+// - The fill menu carries the frame-only "show in export" flag of fill.cljs;
+//   the multi selection has no equivalent row.
 
 import { useState, useSyncExternalStore, type CSSProperties, type RefObject } from "react";
 
-import { MinusIcon, PlusIcon } from "@/components/workspace-icons";
+import {
+  ClipContentIcon,
+  EyeOffIcon,
+  FitContentIcon,
+  LockIcon,
+  MinusIcon,
+  PlayIcon,
+  PlusIcon,
+  ShownIcon,
+  SizeHorizontalIcon,
+  SizeVerticalIcon,
+  UnlockIcon,
+} from "@/components/workspace-icons";
+import { WorkspaceAlignOptions } from "@/components/workspace-align-options";
+import { WorkspaceColorSelection } from "@/components/workspace-color-selection";
+import { WorkspaceExports } from "@/components/workspace-exports";
+import { WorkspaceFrameGrid } from "@/components/workspace-frame-grid";
 import {
   ConstraintsOptions,
   GridCellOptions,
@@ -51,6 +77,7 @@ import {
 } from "@/components/workspace-layout-options";
 import type { WorkspaceCanvasHandle } from "@/components/workspace-wasm-canvas";
 import { WorkspaceMultiOptions } from "@/components/workspace-multi-options";
+import { colorUpdates } from "@/lib/workspace-selected-colors";
 import {
   DraftField,
   attrOf,
@@ -73,6 +100,9 @@ import {
 } from "@/lib/workspace-geometry";
 import { measureLocks } from "@/lib/workspace-layout-attrs";
 import { isPositionAbsolute } from "@/lib/workspace-layout";
+import { BLEND_MODES, blendModeOf } from "@/lib/workspace-blend-modes";
+import { SIZED_PRESETS } from "@/lib/workspace-size-presets";
+import { boundsOf, unionBounds } from "@/lib/workspace-align";
 import {
   addBlur,
   addFill,
@@ -109,6 +139,7 @@ import {
 import {
   getInitialWorkspaceState,
   getWorkspaceState,
+  setSelection,
   subscribeWorkspace,
 } from "@/lib/workspace-store";
 
@@ -211,6 +242,15 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
   const hidden = shapeHidden(shape);
   const blocked = shapeBlocked(shape);
   const opacity = String(Math.round(shapeOpacity(shape) * 100));
+  // layer.cljs reads the blend mode with :normal as the missing default, and
+  // the proportion lock and the two frame flags as plain booleans.
+  const blendMode = blendModeOf(shape);
+  const proportionLock = shape["proportion-lock"] === true;
+  const showContent = shape["show-content"] !== false;
+  const hideInViewer = shape["hide-in-viewer"] === true;
+  // The fill menu's export flag (menus/fill.cljs): the stored attribute is
+  // the opposite of the checked state, and only a frame carries it.
+  const hideOnExport = shape["hide-on-export"] === true;
   const fills = fillsOf(shape);
   const strokes = strokesOf(shape);
   const radii = radiusOf(shape);
@@ -235,6 +275,55 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
     if (isInvalid(fieldId, raw)) return;
     const value = parseNumber(raw as string) as number;
     commitDraft(fieldId, raw, { opacity: clamp01(value / 100) });
+  };
+
+  // The presets row of the measures menu (frame only): a pick writes the
+  // width and the height in one geometry commit.
+  const pickPreset = (width: number, height: number): void => {
+    dropAllDrafts();
+    void run((handle) =>
+      handle.updateShapeGeometry(shape.id, { width, height }),
+    );
+  };
+
+  // change-orientation: portrait means height >= width, landscape the other
+  // way round; the sides swap only when they point the wrong way.
+  const pickOrientation = (orientation: "vert" | "horiz"): void => {
+    if (geometry === null) return;
+    const horizontal = geometry.width >= geometry.height;
+    if ((orientation === "horiz") === horizontal) return;
+    dropAllDrafts();
+    void run((handle) =>
+      handle.updateShapeGeometry(shape.id, {
+        width: geometry.height,
+        height: geometry.width,
+      }),
+    );
+  };
+
+  // selected-fit-content: the frame shrinks (or grows) to the box that wraps
+  // its children. A rotated frame keeps its geometry (the resize would need
+  // the rotated frame axes) and a frame without children does nothing.
+  const fitContent = (): void => {
+    if (geometry === null || geometry.rotation !== 0) return;
+    const children: WorkspaceShape[] = [];
+    for (const child of Object.values(objects)) {
+      if (child !== null && child["frame-id"] === shape.id) children.push(child);
+    }
+    const boxes = children
+      .map((child) => boundsOf(child))
+      .filter((box): box is NonNullable<typeof box> => box !== null);
+    const union = unionBounds(boxes);
+    if (union === null) return;
+    dropAllDrafts();
+    void run((handle) =>
+      handle.updateShapeGeometry(shape.id, {
+        x: union.x,
+        y: union.y,
+        width: Math.max(union.width, MIN_SIZE),
+        height: Math.max(union.height, MIN_SIZE),
+      }),
+    );
   };
 
   const commitFillColor = (
@@ -323,9 +412,20 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
     if (isInvalid(fieldId, raw)) return;
     const value = parseNumber(raw as string) as number;
     if (field === "width") {
-      commitMeasureDraft(fieldId, raw, { width: Math.max(value, MIN_SIZE) });
+      const width = Math.max(value, MIN_SIZE);
+      // The proportion lock scales the other side around the typed one.
+      const target: GeometryTarget = { width };
+      if (proportionLock && geometry !== null && geometry.width > 0) {
+        target.height = Math.max(MIN_SIZE, (geometry.height * width) / geometry.width);
+      }
+      commitMeasureDraft(fieldId, raw, target);
     } else if (field === "height") {
-      commitMeasureDraft(fieldId, raw, { height: Math.max(value, MIN_SIZE) });
+      const height = Math.max(value, MIN_SIZE);
+      const target: GeometryTarget = { height };
+      if (proportionLock && geometry !== null && geometry.height > 0) {
+        target.width = Math.max(MIN_SIZE, (geometry.width * height) / geometry.height);
+      }
+      commitMeasureDraft(fieldId, raw, target);
     } else if (field === "x") {
       commitMeasureDraft(fieldId, raw, { x: value });
     } else if (field === "y") {
@@ -400,24 +500,72 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
 
   return (
     <div className="pp-workspace-style">
+      <WorkspaceAlignOptions
+        objects={objects}
+        ids={[shape.id]}
+        disabled={disabled}
+        onAlign={(axis) => {
+          dropAllDrafts();
+          void run((handle) => handle.alignSelection(axis));
+        }}
+        onDistribute={(axis) => {
+          dropAllDrafts();
+          void run((handle) => handle.distributeSelection(axis));
+        }}
+      />
+
       <div className="pp-workspace-style-layer">
+        {/* layer.cljs shows the blend select with no label; the section name
+            names it for assistive tech. */}
+        <select
+          className="pp-workspace-style-select pp-workspace-style-blend"
+          value={blendMode}
+          disabled={disabled}
+          aria-label={tr("workspace.options.layer-options.layer-section")}
+          onChange={(event) =>
+            commitNow({ "blend-mode": event.currentTarget.value })
+          }
+        >
+          {BLEND_MODES.map((mode) => (
+            <option key={mode.value} value={mode.value}>
+              {tr(mode.labelKey)}
+            </option>
+          ))}
+        </select>
+        <DraftField
+          fieldId="opacity"
+          type="number"
+          label={tr("workspace.options.opacity")}
+          value={opacity}
+          draft={drafts.opacity}
+          disabled={disabled}
+          min={0}
+          max={100}
+          step={1}
+          unit="%"
+          onDraft={setDraft}
+          onCommit={commitOpacity}
+          onCancel={dropDraft}
+        />
         <button
           type="button"
-          className="pp-workspace-style-toggle"
+          className="pp-workspace-style-icon-button"
+          aria-label={tr("workspace.options.layer-options.toggle-layer")}
           title={hidden ? tr("labels.show") : tr("labels.hide")}
           disabled={disabled}
           onClick={() => commitNow({ hidden: !hidden })}
         >
-          {hidden ? tr("labels.show") : tr("labels.hide")}
+          {hidden ? <EyeOffIcon /> : <ShownIcon />}
         </button>
         <button
           type="button"
-          className="pp-workspace-style-toggle"
+          className="pp-workspace-style-icon-button"
+          aria-label={blocked ? tr("labels.unlock") : tr("labels.lock")}
           title={blocked ? tr("labels.unlock") : tr("labels.lock")}
           disabled={disabled}
           onClick={() => commitNow({ blocked: !blocked })}
         >
-          {blocked ? tr("labels.unlock") : tr("labels.lock")}
+          {blocked ? <LockIcon /> : <UnlockIcon />}
         </button>
       </div>
 
@@ -429,7 +577,79 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
 
       {geometry === null ? null : (
         <section className="pp-workspace-style-section">
-          <div className="pp-workspace-style-grid">
+          {shape.type === "frame" ? (
+            <div className="pp-workspace-style-presets">
+              <label className="pp-workspace-style-field pp-workspace-style-presets-select">
+                <span className="pp-workspace-style-label">
+                  {tr("workspace.options.size-presets")}
+                </span>
+                <select
+                  className="pp-workspace-style-select pp-workspace-style-select--field"
+                  value={
+                    SIZED_PRESETS.find(
+                      (preset) =>
+                        preset.width === Math.round(geometry.width) &&
+                        preset.height === Math.round(geometry.height),
+                    )?.name ?? ""
+                  }
+                  disabled={disabled}
+                  aria-label={tr("workspace.options.size-presets")}
+                  onChange={(event) => {
+                    const preset = SIZED_PRESETS.find(
+                      (item) => item.name === event.currentTarget.value,
+                    );
+                    if (preset?.width === undefined || preset.height === undefined) return;
+                    pickPreset(preset.width, preset.height);
+                  }}
+                >
+                  <option value="" disabled>
+                    {tr("workspace.options.size-presets")}
+                  </option>
+                  {SIZED_PRESETS.map((preset) => (
+                    <option key={preset.name} value={preset.name}>
+                      {`${preset.name} (${preset.width} x ${preset.height})`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="pp-workspace-style-radio" role="group">
+                <button
+                  type="button"
+                  className="pp-workspace-style-icon-button"
+                  aria-pressed={geometry.height >= geometry.width}
+                  aria-label={tr("workspace.options.grid.params.height")}
+                  title={tr("workspace.options.grid.params.height")}
+                  disabled={disabled}
+                  onClick={() => pickOrientation("vert")}
+                >
+                  <SizeVerticalIcon />
+                </button>
+                <button
+                  type="button"
+                  className="pp-workspace-style-icon-button"
+                  aria-pressed={geometry.width > geometry.height}
+                  aria-label={tr("workspace.options.grid.params.width")}
+                  title={tr("workspace.options.grid.params.width")}
+                  disabled={disabled}
+                  onClick={() => pickOrientation("horiz")}
+                >
+                  <SizeHorizontalIcon />
+                </button>
+              </div>
+              <button
+                type="button"
+                className="pp-workspace-style-icon-button"
+                aria-label={tr("workspace.options.fit-content")}
+                title={tr("workspace.options.fit-content")}
+                disabled={disabled}
+                onClick={fitContent}
+              >
+                <FitContentIcon />
+              </button>
+            </div>
+          ) : null}
+
+          <div className="pp-workspace-style-row">
             <DraftField
               fieldId="measure-width"
               type="number"
@@ -456,6 +676,28 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
               onCommit={(fieldId, raw) => commitMeasure(fieldId, raw, "height")}
               onCancel={dropDraft}
             />
+            <button
+              type="button"
+              className="pp-workspace-style-icon-button"
+              aria-pressed={proportionLock}
+              aria-label={
+                proportionLock
+                  ? tr("workspace.options.size.unlock")
+                  : tr("workspace.options.size.lock")
+              }
+              title={
+                proportionLock
+                  ? tr("workspace.options.size.unlock")
+                  : tr("workspace.options.size.lock")
+              }
+              disabled={disabled}
+              onClick={() => commitNow({ "proportion-lock": !proportionLock })}
+            >
+              {proportionLock ? <LockIcon /> : <UnlockIcon />}
+            </button>
+          </div>
+
+          <div className="pp-workspace-style-row">
             <DraftField
               fieldId="measure-x"
               type="number"
@@ -480,6 +722,9 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
               onCommit={(fieldId, raw) => commitMeasure(fieldId, raw, "y")}
               onCancel={dropDraft}
             />
+          </div>
+
+          <div className="pp-workspace-style-row">
             <DraftField
               fieldId="measure-rotation"
               type="number"
@@ -495,7 +740,73 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
               onCommit={(fieldId, raw) => commitMeasure(fieldId, raw, "rotation")}
               onCancel={dropDraft}
             />
+            {showRadius
+              ? [
+                  {
+                    key: "r1",
+                    label: tr("workspace.options.radius-top-left"),
+                    value: radii[0],
+                  },
+                  {
+                    key: "r2",
+                    label: tr("workspace.options.radius-top-right"),
+                    value: radii[1],
+                  },
+                  {
+                    key: "r3",
+                    label: tr("workspace.options.radius-bottom-right"),
+                    value: radii[2],
+                  },
+                  {
+                    key: "r4",
+                    label: tr("workspace.options.radius-bottom-left"),
+                    value: radii[3],
+                  },
+                ].map((corner, slot) => (
+                  <DraftField
+                    key={corner.key}
+                    fieldId={`radius-${corner.key}`}
+                    type="number"
+                    label={corner.label}
+                    value={String(corner.value)}
+                    draft={drafts[`radius-${corner.key}`]}
+                    disabled={disabled}
+                    min={0}
+                    step={0.1}
+                    onDraft={setDraft}
+                    onCommit={(fieldId, raw) => commitRadius(slot, fieldId, raw)}
+                    onCancel={dropDraft}
+                  />
+                ))
+              : null}
           </div>
+
+          {shape.type === "frame" ? (
+            <div className="pp-workspace-style-row pp-workspace-style-clip">
+              <button
+                type="button"
+                className="pp-workspace-style-icon-button"
+                aria-pressed={!showContent}
+                aria-label={tr("workspace.options.clip-content")}
+                title={tr("workspace.options.clip-content")}
+                disabled={disabled}
+                onClick={() => commitNow({ "show-content": showContent })}
+              >
+                <ClipContentIcon />
+              </button>
+              <button
+                type="button"
+                className="pp-workspace-style-icon-button"
+                aria-pressed={!hideInViewer}
+                aria-label={tr("workspace.options.show-in-viewer")}
+                title={tr("workspace.options.show-in-viewer")}
+                disabled={disabled}
+                onClick={() => commitNow({ "hide-in-viewer": !hideInViewer })}
+              >
+                <PlayIcon />
+              </button>
+            </div>
+          ) : null}
         </section>
       )}
 
@@ -536,27 +847,6 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
         disabled={disabled}
         send={send}
       />
-
-      <section className="pp-workspace-style-section">
-        <h3 className="pp-workspace-style-title">
-          {tr("workspace.options.opacity")}
-        </h3>
-        <DraftField
-          fieldId="opacity"
-          type="number"
-          label={tr("workspace.options.opacity")}
-          value={opacity}
-          draft={drafts.opacity}
-          disabled={disabled}
-          min={0}
-          max={100}
-          step={1}
-          unit="%"
-          onDraft={setDraft}
-          onCommit={commitOpacity}
-          onCancel={dropDraft}
-        />
-      </section>
 
       {showPaint ? (
         <section className="pp-workspace-style-section">
@@ -627,6 +917,26 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
               </div>
             );
           })}
+
+          {shape.type === "frame" ? (
+            <label
+              className="pp-workspace-style-check pp-workspace-style-check--labeled"
+              title={tr("workspace.options.show-fill-on-export")}
+            >
+              <input
+                type="checkbox"
+                checked={!hideOnExport}
+                disabled={disabled}
+                aria-label={tr("workspace.options.show-fill-on-export")}
+                onChange={(event) =>
+                  commitNow({ "hide-on-export": !event.currentTarget.checked })
+                }
+              />
+              <span className="pp-workspace-style-label">
+                {tr("workspace.options.show-fill-on-export")}
+              </span>
+            </label>
+          ) : null}
         </section>
       ) : null}
 
@@ -723,6 +1033,19 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
             );
           })}
         </section>
+      ) : null}
+
+      {/* The selected-colors menu, after the paints: every distinct color of
+          the shape with the rows that use it (F9.14). */}
+      {showPaint ? (
+        <WorkspaceColorSelection
+          shapes={[shape]}
+          disabled={disabled}
+          onEdit={(usages, edit) =>
+            run((handle) => handle.updateShapesAttrs(colorUpdates([shape], usages, edit)))
+          }
+          onSelectShapes={(ids) => setSelection(ids)}
+        />
       ) : null}
 
       <section className="pp-workspace-style-section">
@@ -978,52 +1301,13 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
         )}
       </section>
 
-      {showRadius ? (
-        <section className="pp-workspace-style-section">
-          <h3 className="pp-workspace-style-title">
-            {tr("workspace.options.radius")}
-          </h3>
-          <div className="pp-workspace-style-radius">
-            {[
-              {
-                key: "r1",
-                label: tr("workspace.options.radius-top-left"),
-                value: radii[0],
-              },
-              {
-                key: "r2",
-                label: tr("workspace.options.radius-top-right"),
-                value: radii[1],
-              },
-              {
-                key: "r3",
-                label: tr("workspace.options.radius-bottom-right"),
-                value: radii[2],
-              },
-              {
-                key: "r4",
-                label: tr("workspace.options.radius-bottom-left"),
-                value: radii[3],
-              },
-            ].map((corner, slot) => (
-              <DraftField
-                key={corner.key}
-                fieldId={`radius-${corner.key}`}
-                type="number"
-                label={corner.label}
-                value={String(corner.value)}
-                draft={drafts[`radius-${corner.key}`]}
-                disabled={disabled}
-                min={0}
-                step={0.1}
-                onDraft={setDraft}
-                onCommit={(fieldId, raw) => commitRadius(slot, fieldId, raw)}
-                onCancel={dropDraft}
-              />
-            ))}
-          </div>
-        </section>
+      {/* The guides menu of a frame, then the export specs of any shape, at
+          the end of the panel like the CLJS options toolbox (F9.14). */}
+      {shape.type === "frame" ? (
+        <WorkspaceFrameGrid shape={shape} disabled={disabled} send={send} />
       ) : null}
+
+      <WorkspaceExports shape={shape} disabled={disabled} send={send} />
     </div>
   );
 }

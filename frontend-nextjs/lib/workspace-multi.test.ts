@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { ZERO_UUID } from "@/lib/file-data";
 import type { WorkspaceShape } from "@/lib/workspace";
 import {
+  blendUpdates,
   blurAddUpdates,
   blurClearUpdates,
   constraintUpdates,
@@ -61,6 +62,14 @@ describe("flag and value updates", () => {
     ]);
     expect(opacityUpdates([shape("a")], 3)[0].attrs.opacity).toBe(1);
     expect(opacityUpdates([shape("a")], -1)[0].attrs.opacity).toBe(0);
+  });
+
+  it("sends one blend mode per shape", () => {
+    expect(blendUpdates([shape("a"), shape("b")], "multiply")).toEqual([
+      { id: "a", attrs: { "blend-mode": "multiply" } },
+      { id: "b", attrs: { "blend-mode": "multiply" } },
+    ]);
+    expect(blendUpdates([], "screen")).toEqual([]);
   });
 
   it("sets every corner on the rect and frame shapes only", () => {

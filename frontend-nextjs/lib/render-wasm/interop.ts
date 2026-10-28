@@ -26,6 +26,12 @@ export const KEY = {
     "$app$render_wasm$api$initialize_viewport$cljs$0core$0IFn$0_invoke$0arity$0variadic$$",
   setRulersFrameVisible: "$app$render_wasm$api$set_rulers_frame_visible_BANG_$$",
   setRulersVisible: "$app$render_wasm$api$set_rulers_visible_BANG_$$",
+  // set-rulers-offsets! / set-rulers-selection! land on $APP in this build
+  // (probe-verified against the compiled artifact): the two f32 offsets and
+  // the one rect argument (a CLJS map with :x/:y/:width/:height, or null to
+  // clear). They mirror the viewport effects that run on selection changes.
+  setRulersOffsets: "$app$render_wasm$api$set_rulers_offsets_BANG_$$",
+  setRulersSelection: "$app$render_wasm$api$set_rulers_selection_BANG_$$",
   requestRender: "$app$render_wasm$api$request_render$$",
   getDpr: "$app$render_wasm$api$get_dpr$$",
   // set-view-box: a $APP member in this build (probe-verified against the

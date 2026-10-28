@@ -171,6 +171,8 @@ import {
   initWorkspaceCanvas,
   resizeWorkspaceCanvas,
   setWorkspaceRulerColors,
+  setWorkspaceRulersOffsets,
+  setWorkspaceRulersSelection,
   setWorkspaceRulersVisible,
   setWorkspaceViewBox,
 } from "@/lib/render-wasm/workspace-render";
@@ -269,6 +271,7 @@ import {
   rotateGesture,
   selectionGeometry,
   isTransformableShape,
+  translationMatrix,
   IDENTITY_MATRIX,
   type ResizeHandler,
   type RotationCorner,
@@ -276,11 +279,19 @@ import {
   type TransformEntry,
 } from "@/lib/workspace-transform";
 import {
+  alignMoves,
+  distributeMoves,
+  type AlignAxis,
+  type AlignMove,
+  type DistributeAxis,
+} from "@/lib/workspace-align";
+import {
   areaInitialSelection,
   createHoverIdsCache,
   hoverShapeId,
   hoverStackAt,
   isFrameShape,
+  isRootFrameShape,
   makeAppIntersectPosition,
   makeAppSortIds,
   makeAppTopNestedFrame,
@@ -302,6 +313,7 @@ import {
   setWorkspaceObjects,
   setWorkspaceState,
   setWorkspaceViewport,
+  subscribeWorkspace,
   toggleSelection,
   type WorkspaceState,
 } from "@/lib/workspace-store";
@@ -484,6 +496,13 @@ export interface WorkspaceCanvasHandle {
   // commits one mod-obj and pushes the whole record to wasm; resolves true
   // without a request when the target already matches.
   updateShapeGeometry(id: string, target: GeometryTarget): Promise<boolean>;
+  // F9.14: the align and distribute bar of the style panel. Each command
+  // reads the current selection, asks lib/workspace-align where every shape
+  // goes and commits the batch as one update-file call (one undo entry) with
+  // the constraint spread of a move drag. Resolves true without a request
+  // when nothing moves; false on a read-only file or a failed commit.
+  alignSelection(axis: AlignAxis): Promise<boolean>;
+  distributeSelection(axis: DistributeAxis): Promise<boolean>;
   // F9.7: one undo/redo step; the main menu and the Ctrl/Cmd+Z handler
   // reach the effect-owned stack through these.
   undo(): void;
@@ -518,6 +537,53 @@ export interface WorkspaceWasmCanvasProps {
   onToolChange?: (tool: WorkspaceTool) => void;
   // React 19 passes ref as a normal prop; the shell owns the handle.
   ref?: Ref<WorkspaceCanvasHandle>;
+}
+
+// The ruler-overlay push of the compiled viewport effects: set-rulers-
+// offsets! and set-rulers-selection! run on every selection change with the
+// display-state* math of rulers_state.cljs.
+function pushWorkspaceRulerState(
+  app: RendererApp,
+  objects: WorkspaceObjects | null,
+  selection: readonly string[],
+): void {
+  const shapes: WorkspaceShape[] = [];
+  for (const id of selection) {
+    const shape = objects?.[id];
+    if (shape !== null && shape !== undefined) shapes.push(shape);
+  }
+
+  // The tick-label offset: selecting a single root frame shifts the scale
+  // to the frame origin; otherwise the shared parent frame of the
+  // selection sets it (nil -> 0, like (:x selected-frame) on nil).
+  let offsetX = 0;
+  let offsetY = 0;
+  if (shapes.length === 1 && isRootFrameShape(shapes[0])) {
+    const first = shapes[0];
+    offsetX = typeof first["x"] === "number" ? first["x"] : 0;
+    offsetY = typeof first["y"] === "number" ? first["y"] : 0;
+  } else if (shapes.length > 0) {
+    const frameIds = new Set<string | null | undefined>();
+    for (const shape of shapes) {
+      const frameId = shape["frame-id"];
+      if (typeof frameId === "string" || frameId === null || frameId === undefined) {
+        frameIds.add(frameId);
+      }
+    }
+    if (frameIds.size === 1) {
+      const frameId = [...frameIds][0];
+      if (frameId !== null && frameId !== undefined) {
+        const frame = objects?.[frameId];
+        offsetX = frame !== undefined && typeof frame["x"] === "number" ? frame["x"] : 0;
+        offsetY = frame !== undefined && typeof frame["y"] === "number" ? frame["y"] : 0;
+      }
+    }
+  }
+  setWorkspaceRulersOffsets(app, offsetX, offsetY);
+
+  // The purple selection band: the bounding rect of the selected shapes
+  // (gsh/shapes->rect over :points, the same math shapesRect ports).
+  setWorkspaceRulersSelection(app, shapesRect(shapes));
 }
 
 function WorkspaceWasmCanvasImpl({
@@ -613,6 +679,23 @@ function WorkspaceWasmCanvasImpl({
   );
 
   const [error, setError] = useState<string | null>(null);
+
+  // The ruler overlay follows the store selection (rulers_state.cljs): a
+  // selection change pushes the offset and the purple band into the wasm
+  // UI state. The subscription skips unrelated store writes by comparing
+  // the selection key; the canvas load itself pushes the initial state.
+  const rulerSelectionKeyRef = useRef("");
+  useEffect(() => {
+    return subscribeWorkspace(() => {
+      const app = appRef.current;
+      if (app === null) return;
+      const { selection, objects } = getWorkspaceState();
+      const key = selection.join(",");
+      if (key === rulerSelectionKeyRef.current) return;
+      rulerSelectionKeyRef.current = key;
+      pushWorkspaceRulerState(app, objects, selection);
+    });
+  }, []);
 
   // AD9: the canvas owns no tool state; it mirrors the shell prop and asks
   // the shell to switch back after a draw.
@@ -746,6 +829,76 @@ function WorkspaceWasmCanvasImpl({
         // The attributes are committed and the file keeps them; only the
         // reflowed positions are behind.
         console.warn("[workspace] could not reflow the layout:", cause);
+      }
+    },
+    [sendUpdateFile],
+  );
+
+  // F9.14: the align / distribute commands. A moved shape becomes one
+  // translation matrix, spread to its subtree by the same constraints the
+  // move drag applies, and the whole batch rides one update-file request so
+  // one undo returns the selection to its old place. A batch that moves
+  // nothing sends nothing and resolves true (the command already holds).
+  const commitTranslationMoves = useCallback(
+    async (moves: readonly AlignMove[]): Promise<boolean> => {
+      if (!canEditRef.current) return false;
+      const objects = objectsRef.current;
+      if (objects === null) return false;
+      const entries: TransformEntry[] = [];
+      const seen = new Set<string>();
+      for (const move of moves) {
+        const shape = objects[move.id];
+        if (shape === undefined || shape === null || !isTransformableShape(shape)) continue;
+        // The renderer spreads the matrix to the children when the
+        // constraint ABI is there; the local spread is the fallback.
+        const subtree = gestureSubtreeEntries(
+          appRef.current,
+          objects,
+          [move.id],
+          translationMatrix(move.dx, move.dy),
+          0,
+          propagateEnabledRef.current,
+        );
+        for (const entry of subtree) {
+          if (seen.has(entry.id)) continue;
+          seen.add(entry.id);
+          entries.push(entry);
+        }
+      }
+      if (entries.length === 0) return true;
+      const changes = buildTransformEntryChanges(objects, entries, pageIdRef.current);
+      if (changes.length === 0) return true;
+      try {
+        const revn = await sendUpdateFile(changes);
+        if (revn === null) return false;
+        // Re-read: the model may have been replaced while the RPC ran. The
+        // patches carry absolute geometry, so they land on either snapshot.
+        const currentObjects = objectsRef.current;
+        if (currentObjects === null) return false;
+        const next = applyTransformEntries(currentObjects, entries);
+        objectsRef.current = next;
+        indexRef.current = createWorkspaceIndex(next);
+        setWorkspaceObjects(next);
+        const app = appRef.current;
+        if (app !== null) {
+          try {
+            // The whole record: set_object carries the selrect, points and
+            // transform a selrect-only push would drop.
+            const shapes: WorkspaceShape[] = [];
+            for (const id of seen) {
+              const shape = next[id];
+              if (shape !== undefined && shape !== null) shapes.push(shape);
+            }
+            uploadShapeGeometry(app, shapes);
+          } catch (cause: unknown) {
+            console.warn("[workspace] could not sync the aligned shapes to wasm:", cause);
+          }
+        }
+        return true;
+      } catch (cause: unknown) {
+        console.error("[workspace] align commit failed:", cause);
+        setWorkspaceState({ error: cause });
+        return false;
       }
     },
     [sendUpdateFile],
@@ -1071,11 +1224,27 @@ function WorkspaceWasmCanvasImpl({
       undo: () => historyRef.current?.undo(),
       redo: () => historyRef.current?.redo(),
       orderSelection: (location) => orderRef.current?.(location),
+      alignSelection: (axis) =>
+        commitTranslationMoves(
+          alignMoves(objectsRef.current ?? {}, getWorkspaceState().selection, axis),
+        ),
+      distributeSelection: (axis) =>
+        commitTranslationMoves(
+          distributeMoves(objectsRef.current ?? {}, getWorkspaceState().selection, axis),
+        ),
       createPage,
       renamePage,
       deletePage,
     }),
-    [applyViewport, commitReflow, createPage, deletePage, renamePage, sendUpdateFile],
+    [
+      applyViewport,
+      commitReflow,
+      commitTranslationMoves,
+      createPage,
+      deletePage,
+      renamePage,
+      sendUpdateFile,
+    ],
   );
 
   // Completion signals for tests and diagnosis: data-rendered flips on the
@@ -1254,6 +1423,15 @@ function WorkspaceWasmCanvasImpl({
         // theme), like the compiled viewport effects after the canvas init.
         setWorkspaceRulerColors(app);
         setWorkspaceRulersVisible(app, true);
+
+        // Push the current selection into the ruler overlay (F9.2+): the
+        // load reset the store selection above, but a race where the layer
+        // panel already named a shape before the canvas was ready is
+        // possible. Also pushes zero offsets. The key ref sync keeps the
+        // store subscription in step with this direct push.
+        const loadedSelection = getWorkspaceState().selection;
+        pushWorkspaceRulerState(app, objects, loadedSelection);
+        rulerSelectionKeyRef.current = loadedSelection.join(",");
 
         setWorkspaceViewport(fitted);
       } catch (cause: unknown) {

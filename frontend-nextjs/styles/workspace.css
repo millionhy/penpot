@@ -1230,24 +1230,38 @@
   width: 100%;
 }
 
-/* The options area keeps the thin scrollbar and its gutter like the left
-   column lists, so the design-options rows stay 284px wide. */
+/* The options area hosts the per-tab scrollers. The reference
+   options.scss puts the overflow on .design-options itself (a full-width
+   318px container whose internal gutter narrows the rows to 284px), not on
+   a wrapping scroller — moving the scrollbar here made the panel 10px
+   narrower than the header. Keep this container a plain clip and let the
+   design options scroll like the CLJS original. */
 .pp-workspace-right-options {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+/* page.cljs .design-options: 8px 12px 0 padding and a column of 8px gaps
+   holding the element sets; the element itself is the scrolling container
+   (overflow auto + a stable scrollbar gutter, options.scss), so its border
+   box stays as wide as the header and the rows land at 284px. The shape and
+   multi panels use .pp-workspace-style as their root: give it the same
+   scroller geometry so the rows keep the 12px inline margins. */
+.pp-workspace-design-options,
+.pp-workspace-style {
+  height: 100%;
   overflow-y: auto;
+  padding: var(--sp-s) var(--sp-m) 0;
   scrollbar-color: rgb(170 181 186 / 0.3) transparent;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
 
-/* page.cljs .design-options: 8px 12px 0 padding and a column of 8px gaps
-   holding the element sets. */
 .pp-workspace-design-options {
   display: flex;
   flex-direction: column;
   gap: var(--sp-s);
-  padding: var(--sp-s) var(--sp-m) 0;
 }
 
 .pp-workspace-element-set {
@@ -1434,8 +1448,153 @@
 }
 
 .pp-workspace-style-layer {
+  align-items: flex-end;
   display: flex;
   gap: var(--sp-xs);
+}
+
+/* The alignment and distribution bar above the layer row: eight icon buttons
+   in one column grid, like the CLJS align-options menu. */
+.pp-workspace-align {
+  display: grid;
+  gap: var(--sp-xxs);
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.pp-workspace-align .pp-workspace-style-icon-button {
+  width: 100%;
+}
+
+/* The two groups of the bar keep the grid track of the row and only place
+   their buttons in it. */
+.pp-workspace-align-group {
+  display: contents;
+}
+
+.pp-workspace-align-button {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--br-4);
+  color: var(--color-icon-default);
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-28);
+  justify-content: center;
+  padding: 0;
+  width: 100%;
+}
+
+.pp-workspace-align-button:hover:not(:disabled) {
+  background-color: var(--color-background-tertiary);
+  color: var(--color-foreground-primary);
+}
+
+.pp-workspace-align-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* The blend select takes the free width of the layer row. */
+.pp-workspace-style-blend {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The presets row of the measures menu: the preset select, the orientation
+   pair and the fit-content button on one line. */
+.pp-workspace-style-presets {
+  align-items: flex-end;
+  display: flex;
+  gap: var(--sp-xs);
+}
+
+.pp-workspace-style-presets-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The portrait/landscape pair of the presets row. */
+.pp-workspace-style-radio {
+  background-color: var(--color-background-tertiary);
+  border-radius: var(--br-4);
+  display: flex;
+  gap: var(--b-1);
+  padding: var(--b-1);
+}
+
+.pp-workspace-style-radio .pp-workspace-style-icon-button {
+  height: var(--sz-28);
+}
+
+.pp-workspace-style-radio .pp-workspace-style-icon-button[aria-pressed="true"] {
+  background-color: var(--color-background-quaternary);
+  color: var(--color-foreground-primary);
+}
+
+/* The clip-content and show-in-viewer pair under the measures fields. */
+.pp-workspace-style-clip {
+  display: flex;
+  gap: var(--sp-xs);
+  justify-content: flex-start;
+}
+
+/* The selected-colors header count. */
+.pp-workspace-colors-count {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+}
+
+/* The usage count of a color row: a button as wide as its number. */
+.pp-workspace-colors-usage {
+  font-size: var(--fs-12);
+  min-width: var(--sz-28);
+  padding: 0 var(--sp-xs);
+  width: auto;
+}
+
+/* One guide: the type, show, size, color and remove row above the column and
+   row values. */
+.pp-workspace-grid-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+}
+
+.pp-workspace-style-row--grid {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 0.8fr) minmax(0, 0.8fr) auto;
+}
+
+/* One export spec: the format, the size, the suffix and the remove button. */
+.pp-workspace-style-row--export {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+/* The download button under the export list: full width, like exports.cljs. */
+.pp-workspace-style-export-button {
+  background-color: var(--color-background-tertiary);
+  border: var(--b-1) solid transparent;
+  border-radius: var(--br-4);
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  height: var(--sz-28);
+  padding: 0 var(--sp-s);
+  width: 100%;
+}
+
+.pp-workspace-style-export-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* The placeholder of a disabled select (a non-bitmap export has no size). */
+.pp-workspace-style-select--placeholder {
+  align-items: center;
+  color: var(--color-foreground-secondary);
+  display: flex;
+  justify-content: center;
 }
 
 .pp-workspace-style-toggle {
@@ -1610,12 +1769,6 @@
 
 .pp-workspace-style-input::placeholder {
   color: var(--color-foreground-secondary);
-}
-
-.pp-workspace-style-radius {
-  display: grid;
-  gap: var(--sp-xs);
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .pp-workspace-style-field {
