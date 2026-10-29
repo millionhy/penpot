@@ -2593,6 +2593,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   "MichaelHu"）→ 7s 后游标消失（5s TTL）→ B 断网 30s 恢复后 A 的游标回到 B →
   `/view` 链接 9s 内 0 条 `update-file` → 三个 tab 无 console 错误。
 - 一次性文件：`ad9d5693-49bf-81be-8008-dd03e1d41488`（未删；前两轮各一个）。
+- 提交：`387c7ebdcd :sparkles: Wire the collaboration client into the workspace`。
 - 下一步：F9 的浏览器冒烟清单（7.25 路线）；F8 不做项维持 7.46（library-change、
   notification、评论广播、dashboard 订阅、头像栈、多人撤销合并）。
 
