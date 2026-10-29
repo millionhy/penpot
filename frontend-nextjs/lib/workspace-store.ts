@@ -15,6 +15,7 @@
 // workspace-local arrives with the next slices.
 
 import type { WorkspaceDrawTool, WorkspaceFile, WorkspaceObjects } from "@/lib/workspace";
+import type { DrawPoint } from "@/lib/workspace-draw";
 import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";
 import type { ViewportRect, ViewportState } from "@/lib/workspace-viewport";
 
@@ -37,6 +38,13 @@ export interface DrawPreview {
   y: number;
   width: number;
   height: number;
+}
+
+// The live point stream of a curve drag (F9.5, the freehand tool), in world
+// units: the canvas appends on every passing pointer move and the overlay
+// draws the polyline; null between strokes.
+export interface CurvePreview {
+  points: DrawPoint[];
 }
 
 // The live world matrix of a resize/rotate gesture (F9.6), in the transit
@@ -92,6 +100,8 @@ export interface WorkspaceState {
   dragDelta: DragDelta | null;
   // The live box of a running draw gesture (F9.5); null otherwise.
   drawPreview: DrawPreview | null;
+  // The live points of a running freehand stroke; null otherwise.
+  curvePreview: CurvePreview | null;
   // The live world matrix of a running resize/rotate gesture (F9.6); null
   // otherwise.
   transformPreview: TransformPreview | null;
@@ -118,6 +128,7 @@ const initialState: WorkspaceState = {
   objects: null,
   dragDelta: null,
   drawPreview: null,
+  curvePreview: null,
   transformPreview: null,
   canUndo: false,
   canRedo: false,
@@ -233,6 +244,12 @@ export function setDragDelta(delta: DragDelta | null): void {
 // it (under the threshold, after the release and on every abort).
 export function setDrawPreview(preview: DrawPreview | null): void {
   setWorkspaceState({ drawPreview: preview });
+}
+
+// The live freehand stroke the overlay draws while a curve gesture runs;
+// null clears it (release, cancel and on every abort).
+export function setCurvePreview(preview: CurvePreview | null): void {
+  setWorkspaceState({ curvePreview: preview });
 }
 
 // --- Transform preview (F9.6) -----------------------------------------------

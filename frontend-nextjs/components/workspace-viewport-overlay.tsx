@@ -213,6 +213,7 @@ export function WorkspaceViewportOverlay({
     vbox,
     dragDelta,
     drawPreview,
+    curvePreview,
     transformPreview,
   } = state;
   const storeObjects = state.objects;
@@ -322,6 +323,14 @@ export function WorkspaceViewportOverlay({
           height={drawPreview.height}
           strokeWidth={1 / zoom}
           strokeDasharray={`${DASH_SIZE / zoom} ${DASH_SIZE / zoom}`}
+        />
+      ) : null}
+      {curvePreview !== null && curvePreview.points.length > 1 ? (
+        <polyline
+          className="pp-overlay-draw"
+          data-testid="curve-preview"
+          points={pointsToString(curvePreview.points)}
+          strokeWidth={1 / zoom}
         />
       ) : null}
       {hoverShape !== null ? (

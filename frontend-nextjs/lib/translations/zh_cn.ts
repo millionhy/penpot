@@ -870,6 +870,7 @@ export const zh_cn: Record<string, TranslationEntry> = {
   "workspace.sidebar.tokens": "令牌",
   "workspace.toolbar.assets": "素材",
   "workspace.toolbar.comments": "评论（%s）",
+  "workspace.toolbar.curve": "曲线（%s）",
   "workspace.toolbar.frame": "画板（%s）",
   "workspace.toolbar.image": "图片（%s）",
   "workspace.toolbar.move": "移动（%s）",

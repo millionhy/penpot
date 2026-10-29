@@ -17,7 +17,9 @@ import {
   fetchWorkspaceFile,
   IDENTITY_TRANSFORM,
   immediateChildren,
+  isCurveTool,
   isDrawTool,
+  isDrawingTool,
   pageObjects,
   parseWorkspaceQuery,
   renameWorkspaceFile,
@@ -225,15 +227,49 @@ describe("fetchWorkspaceFile", () => {
 });
 
 describe("isDrawTool", () => {
-  it("accepts the three box tools", () => {
+  it("accepts the four box tools", () => {
     expect(isDrawTool("frame")).toBe(true);
     expect(isDrawTool("rect")).toBe(true);
     expect(isDrawTool("ellipse")).toBe(true);
+    expect(isDrawTool("text")).toBe(true);
   });
 
-  it("rejects move and the tools without a drawing handler", () => {
-    const rest: WorkspaceTool[] = ["move", "line", "arrow", "text", "image", "path", "curve"];
+  it("rejects move and the tools without a box handler", () => {
+    const rest: WorkspaceTool[] = ["move", "line", "arrow", "image", "path", "curve"];
     for (const tool of rest) expect(isDrawTool(tool)).toBe(false);
+  });
+});
+
+describe("isCurveTool", () => {
+  it("accepts only the freehand tool", () => {
+    expect(isCurveTool("curve")).toBe(true);
+    const rest: WorkspaceTool[] = [
+      "move",
+      "frame",
+      "rect",
+      "ellipse",
+      "line",
+      "arrow",
+      "text",
+      "image",
+      "path",
+    ];
+    for (const tool of rest) expect(isCurveTool(tool)).toBe(false);
+  });
+});
+
+describe("isDrawingTool", () => {
+  it("accepts the box tools and the freehand tool", () => {
+    expect(isDrawingTool("frame")).toBe(true);
+    expect(isDrawingTool("rect")).toBe(true);
+    expect(isDrawingTool("ellipse")).toBe(true);
+    expect(isDrawingTool("text")).toBe(true);
+    expect(isDrawingTool("curve")).toBe(true);
+  });
+
+  it("rejects move, the line tools, image and the pen tool", () => {
+    const rest: WorkspaceTool[] = ["move", "line", "arrow", "image", "path"];
+    for (const tool of rest) expect(isDrawingTool(tool)).toBe(false);
   });
 });
 

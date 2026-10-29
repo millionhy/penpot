@@ -196,13 +196,16 @@ import {
   type PluginDrawBox,
   type PluginViewportSnapshot,
 } from "@/lib/workspace-bridge";
+import { config } from "@/lib/config";
 import { ZERO_UUID } from "@/lib/file-data";
 import { cmdEncoded } from "@/lib/rpc";
 import { encodeUpdateFile, type UpdateFileChange } from "@/lib/transit";
 import {
   canEditFile,
   immediateChildren,
+  isCurveTool,
   isDrawTool,
+  isDrawingTool,
   pageObjects,
   type WorkspaceDrawTool,
   type WorkspaceFile,
@@ -217,8 +220,28 @@ import {
   createDrawShape,
   drawRectFromPoints,
   firstValidParent,
+  type DrawPoint,
   type DrawRect,
 } from "@/lib/workspace-draw";
+import { createCurveShape } from "@/lib/workspace-path";
+import {
+  createImageShape,
+  dataUriBytes,
+  imageFillReferences,
+  imageMediaUrl,
+  isBitmapImage,
+  uploadImage,
+} from "@/lib/workspace-image";
+import { storeImageBytes } from "@/lib/render-wasm/image-store";
+import {
+  TEXT_CLICK_HEIGHT,
+  TEXT_CLICK_WIDTH,
+  TEXT_FONT_SIZE,
+  TEXT_LINE_HEIGHT,
+  textEditAttrs,
+  textPlainText,
+  type TextGrowType,
+} from "@/lib/workspace-text";
 import { dropIndexForFrame } from "@/lib/workspace-drop";
 import {
   applyMove,
@@ -309,6 +332,7 @@ import {
   clearSelection,
   getWorkspaceState,
   setAreaSelect,
+  setCurvePreview,
   setDragDelta,
   setDrawPreview,
   setHover,
@@ -363,6 +387,10 @@ interface WheelAccumulator {
 // AD3): a release inside it selects the shape, a press that crosses it
 // starts the move drag.
 const CLICK_MOVE_THRESHOLD = 10;
+
+// The noise floor of the freehand sampler, in screen pixels: a move closer
+// than this to the last sample adds no point.
+const CURVE_SAMPLE_DISTANCE = 2;
 
 // The hover-top-frame debounce of setup-hover-shapes (rx/debounce 50).
 const TOP_FRAME_DEBOUNCE_MS = 50;
@@ -435,7 +463,16 @@ interface TransformGestureState {
 // The pointer gesture the handlers mutate (the CLJS keeps this spread
 // across the stream pipeline).
 interface PointerInteraction {
-  mode: "idle" | "pan" | "area" | "click" | "drag" | "draw" | "resize" | "rotate";
+  mode:
+    | "idle"
+    | "pan"
+    | "area"
+    | "click"
+    | "drag"
+    | "draw"
+    | "curve"
+    | "resize"
+    | "rotate";
   pointerId: number | null;
   // The client position of the press (the click-threshold anchor).
   downClient: ViewportPoint | null;
@@ -472,8 +509,23 @@ interface PointerInteraction {
   drawParentId: string | null;
   drawActive: boolean;
   drawRect: DrawRect | null;
+  // The freehand gesture (F9.5): the world points collected since the press,
+  // one per passing pointer move above the sampling distance.
+  curvePoints: DrawPoint[];
   // The transform gesture state (F9.6).
   transformGesture: TransformGestureState | null;
+}
+
+// The inline text editor state (F9.5 text tool): the screen box and font
+// size of the textarea, snapshotted from the viewport when the editor opens.
+interface TextEditorState {
+  id: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  lineHeight: number;
 }
 
 // The $APP-backed pieces of the selection library (they need the wasm
@@ -507,6 +559,11 @@ export interface WorkspaceCanvasHandle {
   // commits one mod-obj and pushes the whole record to wasm; resolves true
   // without a request when the target already matches.
   updateShapeGeometry(id: string, target: GeometryTarget): Promise<boolean>;
+  // 第2项: the image tool. Each picked bitmap uploads to the file media
+  // store, lands as a rect with an image fill at the viewport center and
+  // registers its pixels in the wasm image store. A file the renderer
+  // cannot decode is skipped with a warning.
+  insertImageFiles(files: readonly File[]): Promise<void>;
   // F9.14: the align and distribute bar of the style panel. Each command
   // reads the current selection, asks lib/workspace-align where every shape
   // goes and commits the batch as one update-file call (one undo entry) with
@@ -558,9 +615,10 @@ export interface WorkspaceWasmCanvasProps {
   // The artboard-name toggle of the shell (View menu): the overlay labels
   // follow it, so the UI state stays out of the store.
   showFrameTitles: boolean;
-  // The active toolbar tool (F9.5). Only frame/rect/ellipse draw; the shell
-  // owns the state and the canvas mirrors it into a ref. Optional so the
-  // component keeps working before the shell wires it (Task 6).
+  // The active toolbar tool (F9.5). Frame, rect, ellipse and text draw a
+  // box, curve draws a freehand path; the shell owns the state and the
+  // canvas mirrors it into a ref. Optional so the component keeps working
+  // before the shell wires it (Task 6).
   tool?: WorkspaceTool;
   // The canvas asks the shell to switch tools (a completed draw returns to
   // move, like clear-drawing in the CLJS).
@@ -680,6 +738,9 @@ function WorkspaceWasmCanvasImpl({
   // F9.8: the vertical-order command of the current load, owned by the
   // interaction effect like the history step.
   const orderRef = useRef<((location: VerticalOrderLocation) => void) | null>(null);
+  // 第2项: the image insert command of the current load, owned by the
+  // interaction effect like the history step.
+  const imageInsertRef = useRef<((files: readonly File[]) => Promise<void>) | null>(null);
   // The tool prop mirrored for the long-lived interaction effect, the
   // onToolChange prop mirrored the same way, and the cursor repaint the
   // tool effect triggers without re-running the gesture effect.
@@ -713,6 +774,39 @@ function WorkspaceWasmCanvasImpl({
   );
 
   const [error, setError] = useState<string | null>(null);
+
+  // The inline text editor (F9.5 text tool): the create commit opens it and
+  // the textarea's blur or Escape hands the value to the effect-owned
+  // commit. The refs bridge the React handlers and the long-lived effect.
+  const [textEditor, setTextEditor] = useState<TextEditorState | null>(null);
+  const [textValue, setTextValue] = useState("");
+  const textEditorOpenRef = useRef<((editor: TextEditorState, initial: string) => void) | null>(
+    null,
+  );
+  const textEditorCommitRef = useRef<((id: string, value: string) => void) | null>(null);
+  const textFinishingRef = useRef(false);
+
+  useEffect(() => {
+    textEditorOpenRef.current = (editor, initial) => {
+      textFinishingRef.current = false;
+      setTextValue(initial);
+      setTextEditor(editor);
+    };
+    return () => {
+      textEditorOpenRef.current = null;
+    };
+  }, []);
+
+  // The editor closes once: a blur and an Escape both land here, and the
+  // first one commits. The commit itself runs in the canvas effect, which
+  // owns the write path and the wasm app.
+  const finishTextEdit = useCallback((): void => {
+    const editor = textEditor;
+    if (editor === null || textFinishingRef.current) return;
+    textFinishingRef.current = true;
+    setTextEditor(null);
+    textEditorCommitRef.current?.(editor.id, textValue);
+  }, [textEditor, textValue]);
 
   // The ruler overlay follows the store selection (rulers_state.cljs): a
   // selection change pushes the offset and the purple band into the wasm
@@ -1291,6 +1385,9 @@ function WorkspaceWasmCanvasImpl({
       },
       undo: () => historyRef.current?.undo(),
       redo: () => historyRef.current?.redo(),
+      insertImageFiles: async (files) => {
+        await imageInsertRef.current?.(files);
+      },
       orderSelection: (location) => orderRef.current?.(location),
       alignSelection: (axis) =>
         commitTranslationMoves(
@@ -1574,6 +1671,44 @@ function WorkspaceWasmCanvasImpl({
           },
         });
 
+        // The image fills of the loaded page need their pixels in the
+        // renderer before it can draw the fill. One fetch per media id, one
+        // store call per (shape, image); a failing fetch leaves an empty
+        // fill and only warns, and the stroke-image fills of a legacy file
+        // stay until their slice lands.
+        const hydrateImages = async (): Promise<void> => {
+          const references = imageFillReferences(objects);
+          if (references.length === 0) return;
+          const cache = new Map<string, Uint8Array>();
+          for (const reference of references) {
+            try {
+              let bytes = cache.get(reference.imageId);
+              if (bytes === undefined) {
+                const dataUri = reference.dataUri;
+                if (dataUri !== undefined) {
+                  const decoded = dataUriBytes(dataUri);
+                  if (decoded === null) continue;
+                  bytes = decoded;
+                } else {
+                  const response = await fetch(
+                    imageMediaUrl(reference.imageId, config.publicUri),
+                  );
+                  if (!response.ok) {
+                    throw new Error(`the media fetch answered ${response.status}`);
+                  }
+                  bytes = new Uint8Array(await response.arrayBuffer());
+                }
+                cache.set(reference.imageId, bytes);
+              }
+              if (!alive()) return;
+              storeImageBytes(app, reference.shapeId, reference.imageId, bytes);
+            } catch (cause: unknown) {
+              console.warn("[workspace] could not load an image fill:", cause);
+            }
+          }
+        };
+        void hydrateImages();
+
         // The workspace chrome: rulers visible, a rounded viewport frame
         // and the light ruler palette (the wasm default is the dark
         // theme), like the compiled viewport effects after the canvas init.
@@ -1741,6 +1876,7 @@ function WorkspaceWasmCanvasImpl({
       drawParentId: null,
       drawActive: false,
       drawRect: null,
+      curvePoints: [],
       transformGesture: null,
     };
 
@@ -1788,7 +1924,7 @@ function WorkspaceWasmCanvasImpl({
     const updateCursor = (): void => {
       if (interaction.mode === "pan") canvas.style.cursor = "grabbing";
       else if (keys.space) canvas.style.cursor = "grab";
-      else if (isDrawTool(toolRef.current)) canvas.style.cursor = "crosshair";
+      else if (isDrawingTool(toolRef.current)) canvas.style.cursor = "crosshair";
       else if (hoverActive) canvas.style.cursor = "pointer";
       else canvas.style.cursor = "default";
     };
@@ -2423,46 +2559,44 @@ function WorkspaceWasmCanvasImpl({
       }
     };
 
-    // The release of a draw gesture (F9.5, AD5/AD6): one add-obj through
-    // the shared write path, then the JS model swap, the selection and the
-    // incremental wasm upload. A missing parent aborts with a store error;
-    // a failed or cancelled commit leaves the file untouched. Every exit
-    // returns the tool to move (the CLJS clear-drawing), so a failed draw
-    // never traps the pointer in a tool.
-    //
-    // F9.3 drop-index: a flex parent places the new shape at the slot of the
-    // press point (the CLJS box/curve/line drawing passes the initial
-    // position to get-drop-index); a non-flex parent appends at the tail.
-    const commitDraw = async (
-      tool: WorkspaceDrawTool,
-      rect: DrawRect,
-      parentId: string | null,
+    // The inline editor of a text shape: the world box maps to the viewport
+    // through the live viewport state, so the textarea sits over the shape
+    // the wasm renders. A new text starts empty; a double click seeds it
+    // with the stored content (viewport/actions.cljs on-double-click).
+    const openTextEditor = (shape: WorkspaceShape, initial = ""): void => {
+      const viewport = getWorkspaceState();
+      if (viewport.zoom === null || viewport.vbox === null) return;
+      const zoom = viewport.zoom;
+      const x = typeof shape.x === "number" ? shape.x : 0;
+      const y = typeof shape.y === "number" ? shape.y : 0;
+      const width = typeof shape.width === "number" ? shape.width : TEXT_CLICK_WIDTH;
+      const height = typeof shape.height === "number" ? shape.height : TEXT_CLICK_HEIGHT;
+      textEditorOpenRef.current?.({
+        id: shape.id,
+        left: (x - viewport.vbox.x) * zoom,
+        top: (y - viewport.vbox.y) * zoom,
+        width: Math.max(width, TEXT_CLICK_WIDTH) * zoom,
+        height: Math.max(height, TEXT_CLICK_HEIGHT) * zoom,
+        fontSize: TEXT_FONT_SIZE * zoom,
+        lineHeight: TEXT_LINE_HEIGHT,
+      }, initial);
+    };
+
+    // The shared tail of the drawing commits (F9.5, AD5/AD6): one add-obj
+    // through the shared write path, then the JS model swap, the optional
+    // selection and the incremental wasm upload. The caller checks the
+    // parent first. F9.3 drop-index: a flex parent places the new shape at
+    // the slot of the press point (the CLJS box/curve/line drawing passes
+    // the initial position to get-drop-index); a non-flex parent appends at
+    // the tail. A failure never leaves a local change behind.
+    const commitAddedShape = async (
+      shape: WorkspaceShape,
+      parentId: string,
       origin: { x: number; y: number } | null,
-    ): Promise<void> => {
-      if (!canEditRef.current) {
-        setDrawPreview(null);
-        onToolChangeRef.current("move");
-        return;
-      }
+      select: boolean,
+    ): Promise<boolean> => {
       const objects = objectsRef.current;
-      if (objects === null || parentId === null) {
-        setWorkspaceState({
-          error: new Error("workspace: cannot draw without a valid parent"),
-        });
-        setDrawPreview(null);
-        onToolChangeRef.current("move");
-        return;
-      }
-      const parent = objects[parentId];
-      if (parent === undefined || parent === null) {
-        setWorkspaceState({
-          error: new Error("workspace: cannot draw without a valid parent"),
-        });
-        setDrawPreview(null);
-        onToolChangeRef.current("move");
-        return;
-      }
-      const shape = createDrawShape(tool, rect, parentId, crypto.randomUUID());
+      if (objects === null) return false;
       const dropIndex =
         origin === null ? null : dropIndexForFrame(objects, parentId, origin);
       const change: UpdateFileChange = {
@@ -2476,11 +2610,7 @@ function WorkspaceWasmCanvasImpl({
       };
       try {
         const revn = await sendUpdateFile([change]);
-        if (revn === null) {
-          setDrawPreview(null);
-          onToolChangeRef.current("move");
-          return;
-        }
+        if (revn === null) return false;
         // The local mirror of the backend add-shape (AD10): insert into the
         // parent at the same slot, replace the shared model and rebuild the
         // hit-testing index (hidden/blocked affect the next queries).
@@ -2488,8 +2618,7 @@ function WorkspaceWasmCanvasImpl({
         objectsRef.current = next;
         indexRef.current = createWorkspaceIndex(next);
         setWorkspaceObjects(next);
-        setSelection([shape.id]);
-        setDrawPreview(null);
+        if (select) setSelection([shape.id]);
         // AD5: the incremental wasm sync. A failure here never rolls back
         // the committed file; the next reload renders the shape.
         const app = appRef.current;
@@ -2501,12 +2630,188 @@ function WorkspaceWasmCanvasImpl({
             console.warn("[workspace] could not sync the new shape to wasm:", cause);
           }
         }
+        return true;
       } catch (cause: unknown) {
         console.error("[workspace] draw commit failed:", cause);
         setWorkspaceState({ error: cause });
-        setDrawPreview(null);
+        return false;
       }
+    };
+
+    // A missing model or parent reports a store error and answers false; the
+    // caller then resets its preview and its tool.
+    const hasValidParent = (parentId: string | null): parentId is string => {
+      const objects = objectsRef.current;
+      if (objects === null || parentId === null) return false;
+      const parent = objects[parentId];
+      return parent !== undefined && parent !== null;
+    };
+
+    const reportMissingParent = (): void => {
+      setWorkspaceState({
+        error: new Error("workspace: cannot draw without a valid parent"),
+      });
+    };
+
+    // The release of a box draw (F9.5, AD5/AD6): one add-obj through the
+    // shared path. A missing parent aborts with a store error; a failed or
+    // cancelled commit leaves the file untouched. Every exit returns the
+    // tool to move (the CLJS clear-drawing), so a failed draw never traps
+    // the pointer in a tool.
+    const commitDraw = async (
+      tool: WorkspaceDrawTool,
+      rect: DrawRect,
+      parentId: string | null,
+      origin: { x: number; y: number } | null,
+      growType: TextGrowType = "fixed",
+    ): Promise<void> => {
+      if (!canEditRef.current) {
+        setDrawPreview(null);
+        onToolChangeRef.current("move");
+        return;
+      }
+      if (!hasValidParent(parentId)) {
+        reportMissingParent();
+        setDrawPreview(null);
+        onToolChangeRef.current("move");
+        return;
+      }
+      const shape = createDrawShape(tool, rect, parentId, crypto.randomUUID(), growType);
+      const committed = await commitAddedShape(shape, parentId, origin, true);
+      setDrawPreview(null);
       onToolChangeRef.current("move");
+      // A committed text opens its editor straight away (shapes.cljs
+      // add-shape with start-edition?).
+      if (committed && tool === "text") openTextEditor(shape);
+    };
+
+    // The release of a freehand stroke (F9.5, drawing/curve.cljs): the
+    // sampled points become one path shape. Unlike the box tools the curve
+    // keeps its tool active and never selects the new shape (the CLJS
+    // clear-drawing preserve-tool? and the :curve no-select?).
+    const commitCurve = async (
+      points: readonly DrawPoint[],
+      parentId: string | null,
+    ): Promise<void> => {
+      if (!canEditRef.current) return;
+      if (!hasValidParent(parentId)) {
+        reportMissingParent();
+        return;
+      }
+      const shape = createCurveShape(points, parentId, crypto.randomUUID());
+      if (shape === null) return;
+      await commitAddedShape(shape, parentId, points[0] ?? null, false);
+    };
+
+    // The end of a text edition (shapes.cljs end-edition): an empty text
+    // deletes the shape, any other value commits its content and measured
+    // box in one mod-obj. Both paths mirror the change locally and upload
+    // the record to wasm; a failure leaves the file untouched.
+    textEditorCommitRef.current = (id, value) => {
+      void (async () => {
+        const objects = objectsRef.current;
+        if (objects === null) return;
+        const shape = objects[id];
+        if (shape === undefined || shape === null) return;
+        const x = typeof shape.x === "number" ? shape.x : 0;
+        const y = typeof shape.y === "number" ? shape.y : 0;
+        const empty = value.trim().length === 0;
+        const change: UpdateFileChange = empty
+          ? { type: "del-obj", "page-id": pageIdRef.current, id }
+          : buildStyleChange(id, pageIdRef.current, textEditAttrs(value, x, y));
+        try {
+          const revn = await sendUpdateFile([change]);
+          if (revn === null) return;
+          const before = objectsRef.current ?? objects;
+          const next = applyUpdateChanges(before, [change]);
+          objectsRef.current = next;
+          indexRef.current = createWorkspaceIndex(next);
+          setWorkspaceObjects(next);
+          if (empty) {
+            setSelection(
+              getWorkspaceState().selection.filter((selected) => selected !== id),
+            );
+          }
+          const app = appRef.current;
+          if (app === null) return;
+          try {
+            if (empty) {
+              uploadChangedShapes(app, before, next, [change]);
+            } else {
+              const nextShape = next[id];
+              if (nextShape !== undefined) uploadShapeGeometry(app, [nextShape]);
+            }
+          } catch (cause: unknown) {
+            console.warn("[workspace] could not sync the text to wasm:", cause);
+          }
+        } catch (cause: unknown) {
+          console.error("[workspace] text commit failed:", cause);
+          setWorkspaceState({ error: cause });
+        }
+      })();
+    };
+
+    // The image tool: upload the picked bitmap, then land one rect with the
+    // image fill at the viewport center. The pixels register in the wasm
+    // image store after the record is there, so the next frame resolves the
+    // fill. A failed upload reports and leaves the file untouched.
+    imageInsertRef.current = async (files) => {
+      if (!canEditRef.current) return;
+      const app = appRef.current;
+      const objects = objectsRef.current;
+      const viewport = getWorkspaceState();
+      if (app === null || objects === null || viewport.vbox === null) return;
+      const center = {
+        x: viewport.vbox.x + viewport.vbox.width / 2,
+        y: viewport.vbox.y + viewport.vbox.height / 2,
+      };
+      const target = firstValidParent(objects, topNestedFrameAt(objects, center));
+      if (target === null) {
+        reportMissingParent();
+        return;
+      }
+      for (const file of files) {
+        if (!isBitmapImage(file)) {
+          console.warn("[workspace] unsupported image type:", file.type);
+          continue;
+        }
+        try {
+          const image = await uploadImage(file, fileIdRef.current);
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const shape = createImageShape(image, center, target.id, crypto.randomUUID());
+          const committed = await commitAddedShape(shape, target.id, center, true);
+          if (!committed) continue;
+          try {
+            storeImageBytes(app, shape.id, image.id, bytes);
+          } catch (cause: unknown) {
+            console.warn("[workspace] could not store the image in wasm:", cause);
+          }
+        } catch (cause: unknown) {
+          console.error("[workspace] image upload failed:", cause);
+          setWorkspaceState({ error: cause });
+        }
+      }
+    };
+
+    // A double click on a text shape opens the editor with the stored
+    // content (viewport/actions.cljs on-double-click -> start-edition-mode).
+    // Only the move tool lands here: a draw tool consumes both clicks as two
+    // new shapes, so the browser never reports the pair.
+    const onDoubleClick = (event: MouseEvent): void => {
+      if (!canEditRef.current) return;
+      if (toolRef.current !== "move") return;
+      const state = stateRef.current;
+      if (state === null) return;
+      const world = toWorld({ x: event.clientX, y: event.clientY }, state);
+      const id = updateHoverAt(world);
+      if (id === null) return;
+      const objects = objectsRef.current;
+      if (objects === null) return;
+      const shape = objects[id];
+      if (shape === undefined || shape === null || shape.type !== "text") return;
+      event.preventDefault();
+      setSelection([id]);
+      openTextEditor(shape, textPlainText(shape.content));
     };
 
     const startArea = (
@@ -2615,6 +2920,29 @@ function WorkspaceWasmCanvasImpl({
         return;
       }
 
+      // A left press with the freehand tool starts the curve gesture: the
+      // parent resolves once, at press time, and the stroke samples world
+      // points on every passing move (drawing/curve.cljs).
+      if (event.button === 0 && canEditRef.current && isCurveTool(toolRef.current)) {
+        event.preventDefault();
+        const curveWorld = toWorld(client, state);
+        const target = firstValidParent(objects, topNestedFrameAt(objects, curveWorld));
+        interaction.mode = "curve";
+        interaction.pointerId = event.pointerId;
+        interaction.downClient = client;
+        interaction.downWorld = curveWorld;
+        interaction.drawParentId = target === null ? null : target.id;
+        interaction.curvePoints = [curveWorld];
+        interaction.cancelled = false;
+        // The hover visuals belong to the idle selection mode.
+        hoverActive = false;
+        setHover(null);
+        setHoverShapeId(null);
+        setCurvePreview(null);
+        updateCursor();
+        return;
+      }
+
       // A left press refreshes the hover stack at the press point (the
       // CLJS reads the stack the last move left behind; recomputing keeps
       // the click correct without a preceding move).
@@ -2652,7 +2980,7 @@ function WorkspaceWasmCanvasImpl({
       if (interaction.mode === "idle") {
         // The hover visuals belong to selection mode: a draw tool shows the
         // crosshair and no hover outline until it returns to move.
-        if (isDrawTool(toolRef.current)) return;
+        if (isDrawingTool(toolRef.current)) return;
         scheduleHover(toWorld({ x: event.clientX, y: event.clientY }, state));
         return;
       }
@@ -2699,6 +3027,23 @@ function WorkspaceWasmCanvasImpl({
         if (changed) {
           setDrawPreview(rect === null ? null : { tool: activeTool, ...rect });
         }
+        return;
+      }
+
+      if (interaction.mode === "curve") {
+        if (interaction.cancelled) return;
+        const world = toWorld(client, state);
+        const last = interaction.curvePoints[interaction.curvePoints.length - 1];
+        // One sample per passing move, skipping the noise floor (the CLJS
+        // samples the 10 ms mouse stream; this port samples the raw moves).
+        if (
+          last !== undefined &&
+          Math.hypot(world.x - last.x, world.y - last.y) * state.zoom < CURVE_SAMPLE_DISTANCE
+        ) {
+          return;
+        }
+        interaction.curvePoints.push(world);
+        setCurvePreview({ points: [...interaction.curvePoints] });
         return;
       }
 
@@ -2753,6 +3098,7 @@ function WorkspaceWasmCanvasImpl({
       interaction.drawParentId = null;
       interaction.drawActive = false;
       interaction.drawRect = null;
+      interaction.curvePoints = [];
       interaction.transformGesture = null;
       updateCursor();
     };
@@ -2770,23 +3116,48 @@ function WorkspaceWasmCanvasImpl({
 
       if (mode === "draw") {
         // The release commits one add-obj (F9.5): the last previewed box,
-        // or the 100 x 100 click box when the threshold never crossed.
+        // or the click box when the threshold never crossed. A click with
+        // the text tool is the 4 x 17 auto-width box anchored at the press
+        // point (drawing/common.cljs handle-finish-drawing), not the
+        // 100 x 100 box of the other types.
         const drawTool = toolRef.current;
         const start = interaction.downWorld;
         const parentId = interaction.drawParentId;
-        const rect =
-          interaction.drawActive && interaction.drawRect !== null
+        const textClick = drawTool === "text" && !interaction.drawActive;
+        const rect = textClick
+          ? start === null
+            ? null
+            : {
+                x: start.x,
+                y: start.y,
+                width: TEXT_CLICK_WIDTH,
+                height: TEXT_CLICK_HEIGHT,
+              }
+          : interaction.drawActive && interaction.drawRect !== null
             ? interaction.drawRect
             : start === null
               ? null
               : clickDrawRect(start);
+        const growType: TextGrowType = textClick ? "auto-width" : "fixed";
         endGesture();
         setDrawPreview(null);
         if (cancelled || rect === null || !isDrawTool(drawTool)) {
           onToolChangeRef.current("move");
           return;
         }
-        void commitDraw(drawTool, rect, parentId, start);
+        void commitDraw(drawTool, rect, parentId, start, growType);
+        return;
+      }
+
+      if (mode === "curve") {
+        // The freehand release commits one path shape and keeps the tool
+        // active (drawing/curve.cljs); a cancelled stroke sends nothing.
+        const parentId = interaction.drawParentId;
+        const points = interaction.curvePoints;
+        endGesture();
+        setCurvePreview(null);
+        if (cancelled) return;
+        void commitCurve(points, parentId);
         return;
       }
 
@@ -2878,6 +3249,11 @@ function WorkspaceWasmCanvasImpl({
         // to move; the preview goes with the gesture.
         setDrawPreview(null);
         onToolChangeRef.current("move");
+      }
+      if (interaction.mode === "curve") {
+        // A cancelled stroke leaves the file untouched; the curve tool stays
+        // active for the next stroke.
+        setCurvePreview(null);
       }
       if (interaction.mode === "drag") {
         // A physical cancellation leaves the state as if the press never
@@ -3054,6 +3430,7 @@ function WorkspaceWasmCanvasImpl({
     canvas.addEventListener("pointerup", onPointerUp);
     canvas.addEventListener("pointercancel", onPointerCancel);
     canvas.addEventListener("pointerleave", onPointerLeave);
+    canvas.addEventListener("dblclick", onDoubleClick);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onWindowBlur);
@@ -3065,6 +3442,7 @@ function WorkspaceWasmCanvasImpl({
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointercancel", onPointerCancel);
       canvas.removeEventListener("pointerleave", onPointerLeave);
+      canvas.removeEventListener("dblclick", onDoubleClick);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onWindowBlur);
@@ -3084,6 +3462,8 @@ function WorkspaceWasmCanvasImpl({
       gestureRef.current = null;
       historyRef.current = null;
       orderRef.current = null;
+      imageInsertRef.current = null;
+      textEditorCommitRef.current = null;
       setUndoAvailability(false, false);
       cursorRef.current = null;
       setHover(null);
@@ -3091,6 +3471,7 @@ function WorkspaceWasmCanvasImpl({
       setHoverTopFrameId(null);
       setAreaSelect(null);
       setDrawPreview(null);
+      setCurvePreview(null);
     };
   }, [sendUpdateFile]);
 
@@ -3160,6 +3541,32 @@ function WorkspaceWasmCanvasImpl({
         onResizeStart={handleResizeStart}
         onRotateStart={handleRotateStart}
       />
+      {textEditor !== null ? (
+        <textarea
+          className="pp-workspace-text-editor"
+          data-testid="text-editor"
+          aria-label="Text"
+          autoFocus
+          spellCheck={false}
+          value={textValue}
+          onChange={(event) => setTextValue(event.target.value)}
+          onBlur={finishTextEdit}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            finishTextEdit();
+          }}
+          style={{
+            left: textEditor.left,
+            top: textEditor.top,
+            width: textEditor.width,
+            height: textEditor.height,
+            fontSize: textEditor.fontSize,
+            lineHeight: textEditor.lineHeight,
+          }}
+        />
+      ) : null}
       {error !== null ? (
         <div className="pp-viewport-placeholder" title={error}>
           <span>{error}</span>

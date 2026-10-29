@@ -6,10 +6,14 @@
 //
 // The reference layout is seven tool slots plus the plugins entry: move,
 // frame, the shapes group (rect as its default tool), text, image, the
-// free-draw group (path as its default tool), a 1px separator and plugins.
-// A group button selects its default tool here; the flyouts that pick the
-// other members stay out of this slice. The CLJS toolbar renders nothing for
-// read-only files, and so does this one.
+// free-draw group, a 1px separator and plugins. A group button selects its
+// default tool here; the flyouts that pick the other members stay out of
+// this slice. The CLJS toolbar renders nothing for read-only files, and so
+// does this one.
+//
+// 第2项 opened text and the freehand curve. The free-draw group defaults to
+// curve because the pen tool has no flyout yet; the image slot is the hidden
+// file picker image-upload-tool* rather than a tool.
 //
 // Deviations from the CLJS original, documented (AD12):
 // - No tool flyouts (the shapes and free-draw groups collapse to their
@@ -17,7 +21,7 @@
 //   toggle; the handler below the row is decorative.
 // - No tool keyboard shortcuts.
 
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import {
   BoardIcon,
@@ -29,7 +33,8 @@ import {
   TextIcon,
 } from "@/components/workspace-icons";
 import { tr } from "@/lib/i18n";
-import { isDrawTool, type WorkspaceTool } from "@/lib/workspace";
+import { isDrawingTool, type WorkspaceTool } from "@/lib/workspace";
+import { IMAGE_ACCEPT } from "@/lib/workspace-image";
 
 interface ToolGroup {
   // The tool the button selects when clicked (the CLJS default tool of the
@@ -74,8 +79,8 @@ const TOOL_GROUPS: readonly ToolGroup[] = [
     members: ["image"],
   },
   {
-    tool: "path",
-    label: tr("workspace.toolbar.path"),
+    tool: "curve",
+    label: tr("workspace.toolbar.curve"),
     icon: <PathIcon />,
     members: ["path", "curve"],
   },
@@ -85,13 +90,19 @@ export interface WorkspaceTopToolbarProps {
   canEdit: boolean;
   tool: WorkspaceTool;
   onToolChange: (tool: WorkspaceTool) => void;
+  // 第2项: the image button is a file picker, not a tool (the CLJS
+  // image-upload-tool*); the shell hands the picked files to the canvas.
+  onImageFiles?: (files: readonly File[]) => void;
 }
 
 export function WorkspaceTopToolbar({
   canEdit,
   tool,
   onToolChange,
+  onImageFiles,
 }: WorkspaceTopToolbarProps) {
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+
   if (!canEdit) return null;
 
   return (
@@ -103,7 +114,8 @@ export function WorkspaceTopToolbar({
     >
       <div className="pp-workspace-toolbar-options" data-testid="toolbar-options">
         {TOOL_GROUPS.map((group) => {
-          const enabled = isDrawTool(group.tool);
+          const isImage = group.tool === "image";
+          const enabled = isImage ? onImageFiles !== undefined : isDrawingTool(group.tool);
           const active = group.members.includes(tool);
           return (
             <button
@@ -119,12 +131,33 @@ export function WorkspaceTopToolbar({
               title={group.label}
               aria-label={group.label}
               data-tool={group.tool}
-              onClick={enabled ? () => onToolChange(group.tool) : undefined}
+              onClick={
+                enabled
+                  ? isImage
+                    ? () => imageInputRef.current?.click()
+                    : () => onToolChange(group.tool)
+                  : undefined
+              }
             >
               {group.icon}
             </button>
           );
         })}
+
+        <input
+          ref={imageInputRef}
+          className="pp-file-input"
+          type="file"
+          accept={IMAGE_ACCEPT}
+          multiple
+          data-testid="image-file-input"
+          onChange={(event) => {
+            const files = [...(event.target.files ?? [])];
+            // Let the same file be picked again after a failed upload.
+            event.target.value = "";
+            if (files.length > 0) onImageFiles?.(files);
+          }}
+        />
 
         <div className="pp-workspace-toolbar-separator" role="separator" />
 

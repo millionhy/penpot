@@ -45,9 +45,10 @@ export interface WorkspaceShape {
 
 export type WorkspaceObjects = Record<string, WorkspaceShape>;
 
-// The workspace toolbar tools (F9.5). Only frame, rect and ellipse draw; the
-// rest stay disabled until their slices land. The type lives here so the
-// toolbar, the shell and the canvas share one union (F9.5 AD2).
+// The workspace toolbar tools (F9.5). Frame, rect, ellipse and text draw a
+// box; the freehand curve draws a path. Line, arrow, image and the pen tool
+// stay disabled until their slices land. The type lives here so the toolbar,
+// the shell and the canvas share one union (F9.5 AD2).
 export type WorkspaceTool =
   | "move"
   | "frame"
@@ -60,12 +61,24 @@ export type WorkspaceTool =
   | "path"
   | "curve";
 
-export type WorkspaceDrawTool = "frame" | "rect" | "ellipse";
+export type WorkspaceDrawTool = "frame" | "rect" | "ellipse" | "text";
 
-// The box tools of drawing/box.cljs: the only ones with a drawing handler in
-// this slice.
+// The box tools of drawing/box.cljs: text shares the box gesture with the
+// three boxes and only differs in the shape the release builds.
 export function isDrawTool(tool: WorkspaceTool): tool is WorkspaceDrawTool {
-  return tool === "frame" || tool === "rect" || tool === "ellipse";
+  return tool === "frame" || tool === "rect" || tool === "ellipse" || tool === "text";
+}
+
+// The freehand tool of drawing/curve.cljs: a press starts a point stream and
+// the release turns it into one path shape.
+export function isCurveTool(tool: WorkspaceTool): tool is "curve" {
+  return tool === "curve";
+}
+
+// Every tool that draws: the cursor shows the crosshair and the idle hover
+// visuals stay off while one of them is active.
+export function isDrawingTool(tool: WorkspaceTool): boolean {
+  return isDrawTool(tool) || isCurveTool(tool);
 }
 
 // gmt/matrix: the wire and wasm representation is a {a..f} map, never an

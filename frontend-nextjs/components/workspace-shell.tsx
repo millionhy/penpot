@@ -99,6 +99,12 @@ export function WorkspaceShell({
     setActiveTool(next);
   }, []);
 
+  // 第2项: the image picker crosses the canvas handle like the menus do, so
+  // the upload and the wasm image store keep one owner.
+  const insertImageFiles = useCallback((files: readonly File[]): void => {
+    void canvasRef.current?.insertImageFiles(files);
+  }, []);
+
   const closeMenu = useCallback((): void => setMenu(null), []);
 
   const collapseLeft = useCallback((): void => {
@@ -228,6 +234,7 @@ export function WorkspaceShell({
             canEdit={canEdit}
             tool={activeTool}
             onToolChange={changeTool}
+            onImageFiles={insertImageFiles}
           />
         )}
       </main>

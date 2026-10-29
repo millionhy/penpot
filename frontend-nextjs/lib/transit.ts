@@ -55,10 +55,33 @@ const SEGMENT_U8_SIZE = 28;
 const MAX_SAFE_COORD = 2147483647;
 const MIN_SAFE_COORD = -2147483648;
 
+export type PathCommand = "move-to" | "line-to" | "curve-to" | "close-path";
+
 export interface PathSegment {
-  command: "move-to" | "line-to" | "curve-to" | "close-path";
+  command: PathCommand;
   params: Record<string, number>;
 }
+
+// The fields one segment is built from (the drawing side). Coordinates are
+// optional per command: close-path carries none, move/line-to the trailing
+// x y, curve-to the two control points as well.
+export interface PathSegmentSpec {
+  command: PathCommand;
+  x?: number;
+  y?: number;
+  c1x?: number;
+  c1y?: number;
+  c2x?: number;
+  c2y?: number;
+}
+
+// The int16 command codes of the packed layout (impl/schema:segments).
+const PATH_COMMAND_CODE: Record<PathCommand, number> = {
+  "move-to": 1,
+  "line-to": 2,
+  "curve-to": 3,
+  "close-path": 4,
+};
 
 function clampCoord(value: number): number {
   if (value > MAX_SAFE_COORD) return MAX_SAFE_COORD;
@@ -124,6 +147,30 @@ export class PathData {
       if (segment !== null) out.push(segment);
     }
     return out;
+  }
+
+  // from-segments (the write side of the packed layout): the drawing tools
+  // build path content here instead of packing bytes on their own. The
+  // coordinates land little-endian like the reader above reads them.
+  static fromSegments(segments: readonly PathSegmentSpec[]): PathData {
+    const bytes = new Uint8Array(segments.length * SEGMENT_U8_SIZE);
+    const view = new DataView(bytes.buffer);
+    let index = 0;
+    for (const segment of segments) {
+      const offset = index * SEGMENT_U8_SIZE;
+      index += 1;
+      view.setInt16(offset, PATH_COMMAND_CODE[segment.command], true);
+      const write = (delta: number, value: number | undefined): void => {
+        if (value !== undefined) view.setFloat32(offset + delta, value, true);
+      };
+      write(4, segment.c1x);
+      write(8, segment.c1y);
+      write(12, segment.c2x);
+      write(16, segment.c2y);
+      write(20, segment.x);
+      write(24, segment.y);
+    }
+    return new PathData(bytes);
   }
 
   // to-string: the SVG path form (M / L / C / Z), the raw float32 values

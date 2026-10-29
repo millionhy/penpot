@@ -984,6 +984,7 @@ export const zh_hant: Record<string, TranslationEntry> = {
   "workspace.sidebar.tokens": "權杖",
   "workspace.toolbar.assets": "資產",
   "workspace.toolbar.comments": "留言（%s）",
+  "workspace.toolbar.curve": "曲線（%s）",
   "workspace.toolbar.frame": "畫板（%s）",
   "workspace.toolbar.image": "圖片（%s）",
   "workspace.toolbar.move": "移動（%s）",

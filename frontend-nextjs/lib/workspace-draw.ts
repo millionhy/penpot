@@ -28,6 +28,11 @@ import { ZERO_UUID } from "@/lib/file-data";
 import { IDENTITY_TRANSFORM, type WorkspaceDrawTool } from "@/lib/workspace";
 import type { WorkspaceObjects, WorkspaceShape } from "@/lib/workspace";
 import { insertChildren } from "@/lib/workspace-order";
+import {
+  TEXT_DEFAULT_ATTRS,
+  TEXT_DEFAULT_FILLS,
+  type TextGrowType,
+} from "@/lib/workspace-text";
 
 // The minimum drag, in screen pixels, before the preview starts
 // (handle-drawing: (> (* (distance point initial) zoom) 10)).
@@ -154,15 +159,25 @@ export function firstValidParent(
 
 // cts/setup-shape over a draw rect: the minimal attrs of the type, the
 // geometry of setup-rect and the constant proportions. The matrices are
-// {a..f} maps (F9.5 AD3), never arrays.
+// {a..f} maps (F9.5 AD3), never arrays. A text draw passes the grow-type the
+// CLJS handle-finish-drawing picks: auto-width for a click, fixed for a
+// dragged box.
 export function createDrawShape(
   tool: WorkspaceDrawTool,
   rect: DrawRect,
   parentId: string,
   id: string,
+  growType: TextGrowType = "fixed",
 ): WorkspaceShape {
   const type = tool === "ellipse" ? "circle" : tool;
-  const name = tool === "frame" ? "Board" : tool === "rect" ? "Rectangle" : "Ellipse";
+  const name =
+    tool === "frame"
+      ? "Board"
+      : tool === "rect"
+        ? "Rectangle"
+        : tool === "text"
+          ? "Text"
+          : "Ellipse";
   const x2 = rect.x + rect.width;
   const y2 = rect.y + rect.height;
   const shape: WorkspaceShape = {
@@ -196,9 +211,16 @@ export function createDrawShape(
     rotation: 0,
     proportion: 1,
     "proportion-lock": false,
-    fills: [{ "fill-color": tool === "frame" ? FRAME_FILL : DEFAULT_FILL, "fill-opacity": 1 }],
+    fills:
+      tool === "text"
+        ? TEXT_DEFAULT_FILLS.map((fill) => ({ ...fill }))
+        : [{ "fill-color": tool === "frame" ? FRAME_FILL : DEFAULT_FILL, "fill-opacity": 1 }],
     strokes: [],
   };
+
+  if (tool === "text") {
+    return { ...shape, ...TEXT_DEFAULT_ATTRS, "grow-type": growType };
+  }
 
   if (tool === "frame") {
     return {

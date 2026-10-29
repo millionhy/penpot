@@ -998,6 +998,7 @@ export const en: Record<string, TranslationEntry> = {
   "workspace.sidebar.tokens": "Tokens",
   "workspace.toolbar.assets": "Assets",
   "workspace.toolbar.comments": "Comments (%s)",
+  "workspace.toolbar.curve": "Curve (%s)",
   "workspace.toolbar.frame": "Board (%s)",
   "workspace.toolbar.image": "Image (%s)",
   "workspace.toolbar.label": "Drawing tools",

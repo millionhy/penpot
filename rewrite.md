@@ -6,13 +6,13 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.3 完成；F9 workspace：F9.1–F9.12 与 F9.3 伴随变更完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
-| 最后更新 | 2026-10-23 |
+| 最后更新 | 2026-10-28 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -40,9 +40,9 @@
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 占位后随 F5.6 补齐）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes 未做（见 7.6） |
 | F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.6 完成；F5.7 进行中，organization/team switch 与 subscription/nitrate 已完成），见下与第 4 节 |
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
-| F7 | 插件运行时 | 🔧 | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；切成 F7.1–F7.4 四片（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入完成；F7.4 完整 API 上下文依赖 F9），见下与第 4 节 |
+| F7 | 插件运行时 | ✅ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；四片全部完成（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入、F7.4 完整 API 上下文：workspace 代理 + 事件派发 + 画布桥接，见 7.44）；结构写/文本/媒体/代码生成等延后项以命名错误登记 |
 | F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；余下按 7.25 路线补浏览器冒烟，最后是 F7.4 workspace 插件代理；Web Worker + 协作光标等留 F8 后 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；余下按 7.25 路线补浏览器冒烟；F7.4 已完成（见 7.44）；Web Worker + 协作光标等留 F8 后 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
@@ -305,15 +305,22 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     （等 F7.3 运行时）。
   - **F7.3 运行时接入（完成）**：SES boot（`initPluginsRuntime`）与 `ɵloadPlugin`/`ɵunloadPlugin`
     桥、最小 Context（theme/flags/事件；workspace 相关 API 暂缺）。
-  - **F7.4 完整 API 上下文**：`app.plugins.api` 的 workspace 代理（阻塞于 F9）。
+  - **F7.4 完整 API 上下文（完成）**：`lib/plugin-shape.ts`、`lib/plugin-workspace.ts`
+    的 shape/file/page/viewport/history 代理与 selection 读写；写路径经
+    `lib/workspace-bridge.ts` 落到画布命令（创建/对齐/分布/撤销块/视口），页面
+    切换经 `lib/workspace-navigation.ts`；`plugin-context` 派发 finish/filechange/
+    pagechange/selectionchange/shapechange/contentsave（见 7.44）。
+    shape 删除/克隆/结构、文本/SVG/路径、媒体、代码生成、字体/库/用户、评论/
+    令牌/版本/导出、flow 与 ruler guide 写入仍以命名错误失败，等对应切片。
 - **F8 WebSocket 协作客户端**：连 `/ws/notifications`（直连后端源），订阅文件变更广播。
 - **F9 workspace**：最后迁移、最高风险。切成 F9.1–F9.x 多片：F9.1 数据基础与只读画布
-  已启动（受 F7.4 阻塞所迫提前，不依赖 F8；数据层 + 视口数学 + WASM 直绘 + /workspace
+  已启动（原为解 F7.4 阻塞而提前，不依赖 F8；数据层 + 视口数学 + WASM 直绘 + /workspace
   路由，见 7.23）；F9.2 画布交互与选择完成（悬停/点选/框选/平移 + SVG 覆盖层，零
   写入，见 7.24）；F9.3 拖动移动与保存完成（首个写路径：预览、update-file、重父级，
   见 7.25）；F9.4 外壳与菜单完成（三栏、左头重命名、主菜单、缩放、Layers、工具栏、
   帧标题，见 7.27）；F9.5 绘制工具与样式面板完成（frame/rect/ellipse 绘制、右栏基础
-  样式段，见 7.29）；F9.6 resize/rotate 手柄完成（八手柄 + 四旋转区、修饰键、一次
+  样式段，见 7.29；文本与图片、自由手绘路径随后补齐，见 7.45）；F9.6 resize/rotate
+  手柄完成（八手柄 + 四旋转区、修饰键、一次
   提交，见 7.30）；F9.7 撤销/重做完成（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，
   见 7.31）；F9.8 z-order 插入完成（四条命令、index 全链路、撤销保真，见 7.32）；
   F9.3 伴随变更完成（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，
@@ -324,10 +331,10 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   （约束与重排统一走 wasm 的 propagate，布局属性编辑后自动重排子级，见 7.39）；
   F9.12 grid cells 编辑入口完成（面板的 Grid cell 段、cell map 的分区维护、
   transit 的 uuid/keyword 编码，见 7.40）；
-  余下补浏览器冒烟，
-  最后是 F7.4 workspace 插件代理；
+  余下补浏览器冒烟；F7.4 已完成（见 7.44）；
   Web Worker
-  （缩略图/索引/导入）+ 协作光标 + 其余绘制/布尔/编辑/token 子流程仍在 F3–F8 验证后推进。
+  （缩略图/索引/导入）+ 协作光标 + 其余绘制（线条/箭头/笔工具）/布尔/编辑/token
+  子流程仍在 F3–F8 验证后推进。
 
 每个路由组的完成标准（DoD）：
 
@@ -2377,7 +2384,75 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   选中蓝 #194DE6、右栏 tertiary #F3F4F6）；`npx vitest run` 64 文件 1493 例全
   过；`npx tsc --noEmit` 干净；`npx next lint` 无告警；console 冒烟无错误。
 - 截图：`.git/a5-ref.png`（参考端）与 `.git/b5-cur.png`（重写端），不入库。
-- 下一步：F7.4 workspace 插件代理。
+- 下一步：F7.4 workspace 插件代理（见 7.44）。
+
+### 7.44 本轮（2026-10-28，第四十三批：F7.4 workspace 插件代理）
+
+- 诉求：解除 F7.4 对 F9 的阻塞，把 `app.plugins.api` 的 workspace 表面接到
+  重写端的模块 store 与画布写路径（此前插件只能读 theme/flags）。
+- 新增 `lib/plugin-validation.ts`：`notValid`/`validNumber` 从 context 下沉，
+  让代理模块在不成环的前提下校验（version 1 记控制台、version 2 抛错）。
+- 新增 `lib/workspace-bridge.ts`：画布命令注册表（创建/attrs/几何/对齐/分布/
+  撤销块/视口/页面），读取回退 bridge → store → `pages-index`。
+- 新增 `lib/workspace-navigation.ts`：`openPage` 的页面切换 seam；shell 注册
+  `?page-id=` 的 `router.replace`，未挂载时回退为写 store。
+- 新增 `lib/plugin-shape.ts`：shape 代理按 CLJS 语义每次现查活动页模型
+  （`$id`/`$page`/`$file`、type 映射 board/rectangle/ellipse、points 包围盒、
+  parent/board 相对坐标、fills/strokes 活元素、resize/rotate），写入经
+  `updateShapeAttrs`/`updateShapeGeometry`，权限与活动页双重门禁。
+- 新增 `lib/plugin-workspace.ts`：file/page/viewport/history 代理与 selection
+  成员；`createPage` 先铸 id 再异步提交（立即返回代理），
+  `undoBlockBegin/Finish` 配对成一次撤销事务。
+- 重写 `lib/plugin-context.ts`：workspace 成员全部接代理；新增 `createBoard/
+  Rectangle/Ellipse`、`createPage`、`openPage`、`alignHorizontal/Vertical`、
+  `distributeHorizontal/Vertical`；`finish/filechange/pagechange/
+  selectionchange/shapechange/contentsave/themechange` 由一次 store 订阅按
+  CLJS 变更判定 + 10 ms debounce 派发，`contentsave` 由画布提交成功后触发。
+- 画布（`components/workspace-wasm-canvas.tsx`）：新增 `createShape`、
+  `alignObjects`、`distributeObjects`、`beginUndoBlock/endUndoBlock`（首条 push、
+  其后 merge，10 s 安全超时）、`viewport/setZoom/setCenter/zoomReset/
+  zoomIntoView`、`createPage(id?)`；提交成功后 `notifyPluginContentSaved()`；
+  handle 改为 `useMemo` 并注册到桥接（卸载置 null）。
+- 登记偏差：shape 删除/克隆/结构方法、文本/SVG/路径、媒体上传、
+  generateMarkup/Style、字体/库/当前用户、评论/令牌/版本/导出、flow 与 ruler
+  guide 写入、布局与组件方法仍以命名错误失败，等对应切片。
+- 验证：新增 `lib/plugin-shape.test.ts`（22 例）与
+  `lib/plugin-workspace.test.ts`（28 例），扩展 `lib/plugin-context.test.ts`；
+  `npx vitest run` 70 文件 1632 例全过；`npx tsc --noEmit --incremental false`
+  干净；`npx next lint` 无告警。
+- 提交：`b8476498cb :sparkles: Add the plugin workspace API proxies`。
+- 下一步：F8 WebSocket 协作客户端（`/ws/notifications`）。
+
+### 7.45 本轮（2026-10-28，第四十四批：文本/图片/路径工具）
+
+- 诉求：让顶栏此前禁用的 text / image / path 三个槽位真正可用（第 2 项）。
+- 路径（自由手绘）：新增 `lib/workspace-path.ts`（RDP 简化 tolerance 0.3、
+  points→content、calc-selrect、setup-path 建型）与 `PathData.fromSegments`
+  （28 字节/段、小端）；画布新增 `curve` 手势（按下取样、移动去噪、抬起
+  一次 add-obj，保持工具且不选中新形状），覆盖层画折线预览，store 增
+  `curvePreview`；free-draw 组默认工具改为 `curve`（补
+  `workspace.toolbar.curve` 三语言词条）；笔工具 `path` 仍禁用。
+- 文本：新增 `lib/workspace-text.ts`（default-text-attrs/fills、change-text
+  内容树、纯文本读取、盒子测量）；`isDrawTool` 纳入 text，`createDrawShape`
+  按 grow-type 建型（click 4×17 auto-width、拖拽 fixed）；画布在创建后
+  打开 textarea 行内编辑器，失焦/Esc 提交内容与测量盒，空文本 del-obj；
+  move 工具下双击已有文本会带着原内容重开编辑器（对应参考端
+  `on-double-click` -> `start-edition-mode`）。
+- 图片：新增 `lib/workspace-image.ts`（chunked/一次上传、image fill、
+  居中 rect、proportion 锁定、data-uri 解码）与
+  `lib/render-wasm/image-store.ts`（`_alloc_bytes` + 36 字节头 + `_store_image`）；
+  顶栏 image 槽改为隐藏 file input（多选、accept 图片类型），经 shell 调
+  画布 `insertImageFiles`；打开文件时为既有 image fill 拉取媒体并注册像素。
+- 登记偏差：手绘只发直线 line-to（平滑留给笔工具）；文本测量用 0.55em
+  字符推进近似（未调 wasm calc-text-bounds），编辑器只编辑纯文本，改稿
+  后按测量盒重算尺寸（fixed 文本不保留原框宽）；SVG 作为图片被拒绝
+  （svg-upload 留待后续切片）；stroke-image 不在加载时补水；线条/箭头、
+  笔工具、布尔仍禁用。
+- 验证：新增 `lib/workspace-path.test.ts`、`lib/workspace-text.test.ts`、
+  `lib/workspace-image.test.ts`，扩展 `lib/workspace.test.ts`；
+  `npx vitest run` 73 文件 1685 例全过；`npx tsc --noEmit --incremental false`
+  干净；`npx next lint` 无告警。
+- 下一步：F8 WebSocket 协作客户端（`/ws/notifications`）。
 
 ---
 
