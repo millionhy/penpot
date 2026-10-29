@@ -632,7 +632,9 @@ function encodeUpdateAttrValue(value: unknown): unknown {
 // One record value (the Rect / Point defrecords of app.common.geom): tag +
 // keyword-keyed map, the exact form the CLJS write handler emits, so the
 // backend read handler (map->Rect / map->Point) rebuilds a record instance.
-function encodeRecordValue(tag: string, value: unknown): unknown {
+// Exported for the pointer-update message of the collaboration channel, whose
+// vbox, vport and position are records on the reference client too.
+export function encodeRecordValue(tag: string, value: unknown): unknown {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return encodeUpdateAttrValue(value);
   }

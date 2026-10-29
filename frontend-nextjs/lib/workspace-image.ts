@@ -106,6 +106,12 @@ export interface ImageFillReference {
   dataUri?: string;
 }
 
+// The key of one (shape, image) pair, shared by the reference scan and the
+// remote-change diff below.
+function referenceKey(shapeId: string, imageId: string): string {
+  return shapeId + "\u0000" + imageId;
+}
+
 // The image fills of a loaded model, one entry per (shape, image) pair. The
 // shapes come from lib/workspace; a fill without a string id is skipped.
 export function imageFillReferences(
@@ -123,7 +129,7 @@ export function imageFillReferences(
       if (image === null || typeof image !== "object") continue;
       const id = (image as { id?: unknown }).id;
       if (typeof id !== "string" || id.length === 0) continue;
-      const key = shape.id + "\u0000" + id;
+      const key = referenceKey(shape.id, id);
       if (seen.has(key)) continue;
       seen.add(key);
       const dataUri = (image as { "data-uri"?: unknown })["data-uri"];
@@ -135,6 +141,23 @@ export function imageFillReferences(
     }
   }
   return references;
+}
+
+// The image fills the second model adds (F8.2): a remote change that draws a
+// shape with an image fill, or sets one on an existing shape. The pairs the
+// first model already had are registered in the wasm image store, so only
+// the new ones need their pixels fetched. Order follows the second model.
+export function newImageFillReferences(
+  before: Readonly<Record<string, WorkspaceShape>>,
+  after: Readonly<Record<string, WorkspaceShape>>,
+): ImageFillReference[] {
+  const known = new Set<string>();
+  for (const reference of imageFillReferences(before)) {
+    known.add(referenceKey(reference.shapeId, reference.imageId));
+  }
+  return imageFillReferences(after).filter(
+    (reference) => !known.has(referenceKey(reference.shapeId, reference.imageId)),
+  );
 }
 
 // The bytes of a base64 data-uri, or null when the payload is not one.

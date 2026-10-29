@@ -226,12 +226,12 @@ import {
 import { createCurveShape } from "@/lib/workspace-path";
 import {
   createImageShape,
-  dataUriBytes,
   imageFillReferences,
-  imageMediaUrl,
   isBitmapImage,
+  newImageFillReferences,
   uploadImage,
 } from "@/lib/workspace-image";
+import { hydrateImageReferences } from "@/lib/render-wasm/image-hydrate";
 import { storeImageBytes } from "@/lib/render-wasm/image-store";
 import {
   TEXT_CLICK_HEIGHT,
@@ -348,6 +348,8 @@ import {
   toggleSelection,
   type WorkspaceState,
 } from "@/lib/workspace-store";
+import { planRemoteChanges, type RemoteFileChange } from "@/lib/workspace-collab";
+import { createPointerThrottle, sendPresencePointer } from "@/lib/workspace-presence";
 import {
   clientToWorld,
   fitViewport,
@@ -587,6 +589,12 @@ export interface WorkspaceCanvasHandle {
   createPage(id?: string): Promise<string | null>;
   renamePage(id: string, name: string): Promise<boolean>;
   deletePage(id: string): Promise<boolean>;
+  // F8.2: one file-change of the collaboration channel. The changes of the
+  // open page land in the model and in wasm, the decoded file drops and the
+  // added image fills hydrate; the revn/vern only advance locally, so the
+  // canvas never reloads under the user. The remote change is already
+  // committed, so it is neither echoed nor pushed onto the undo stack.
+  applyRemoteFileChange(event: RemoteFileChange): void;
   // F7.4: the plugin bridge commands. They share the write path and the
   // viewport slice above, so a plugin edit is one undo entry and one
   // update-file request, like the panel commands.
@@ -623,6 +631,10 @@ export interface WorkspaceWasmCanvasProps {
   // The canvas asks the shell to switch tools (a completed draw returns to
   // move, like clear-drawing in the CLJS).
   onToolChange?: (tool: WorkspaceTool) => void;
+  // F8.3: the team of the open file, which resolves the names of the remote
+  // cursors. Optional until F8.4 hands the route value down; without it the
+  // cursors draw with empty bubbles.
+  teamId?: string | null;
   // React 19 passes ref as a normal prop; the shell owns the handle.
   ref?: Ref<WorkspaceCanvasHandle>;
 }
@@ -681,6 +693,7 @@ function WorkspaceWasmCanvasImpl({
   showFrameTitles,
   tool = "move",
   onToolChange,
+  teamId = null,
   ref,
 }: WorkspaceWasmCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1477,6 +1490,55 @@ function WorkspaceWasmCanvasImpl({
         applyViewport(scrollBy(state, center.x - current.x, center.y - current.y));
       },
       zoomIntoView: fitToIds,
+      // F8.2: one file-change of the collaboration channel, in the order
+      // dch/commit uses with :source :remote — apply the changes of the open
+      // page to the model, push them to wasm, drop the decoded file and
+      // hydrate the image fills the batch added. No echo (the change is
+      // already committed server-side), no undo entry (:save-undo? false),
+      // and no write to file.revn/file.data: the load effect keys on
+      // canvasRevn/canvasObjects and would reload the whole page.
+      applyRemoteFileChange: (event: RemoteFileChange) => {
+        const before = objectsRef.current;
+        // Before the load there is no model to patch; the load that follows
+        // reads the file with this commit already in it.
+        if (before === null) return;
+        const plan = planRemoteChanges(event.changes, pageIdRef.current);
+        const after =
+          plan.changes.length === 0 ? before : applyUpdateChanges(before, plan.changes);
+        if (after !== before) {
+          objectsRef.current = after;
+          indexRef.current = createWorkspaceIndex(after);
+          setWorkspaceObjects(after);
+          const app = appRef.current;
+          if (app !== null) {
+            try {
+              // Parents first (their children list changed), then every
+              // surviving shape; one request_render closes the batch.
+              uploadChangedShapes(app, before, after, plan.changes);
+            } catch (cause: unknown) {
+              console.warn("[workspace] could not sync a remote change to wasm:", cause);
+            }
+            // A page switch would re-read the file; keep the cache honest.
+            invalidateDecodedWorkspaceFile(app, fileIdRef.current);
+            const references = newImageFillReferences(before, after);
+            if (references.length > 0) {
+              void hydrateImageReferences(app, references);
+            }
+          }
+          // A remote delete prunes the selection; the hover ids and the
+          // overlay tolerate the stale ones like a local delete.
+          const selection = getWorkspaceState().selection;
+          const kept = selection.filter((id) => {
+            const shape = after[id];
+            return shape !== undefined && shape !== null;
+          });
+          if (kept.length !== selection.length) setSelection(kept);
+        }
+        // The message carries the values after the commit (the HTTP response
+        // of the author carries the ones before it), so they only advance.
+        revnRef.current = Math.max(revnRef.current, event.revn);
+        vernRef.current = Math.max(vernRef.current, event.vern);
+      },
       createPage,
       renamePage,
       deletePage,
@@ -1671,42 +1733,14 @@ function WorkspaceWasmCanvasImpl({
         });
 
         // The image fills of the loaded page need their pixels in the
-        // renderer before it can draw the fill. One fetch per media id, one
-        // store call per (shape, image); a failing fetch leaves an empty
-        // fill and only warns, and the stroke-image fills of a legacy file
-        // stay until their slice lands.
-        const hydrateImages = async (): Promise<void> => {
-          const references = imageFillReferences(objects);
-          if (references.length === 0) return;
-          const cache = new Map<string, Uint8Array>();
-          for (const reference of references) {
-            try {
-              let bytes = cache.get(reference.imageId);
-              if (bytes === undefined) {
-                const dataUri = reference.dataUri;
-                if (dataUri !== undefined) {
-                  const decoded = dataUriBytes(dataUri);
-                  if (decoded === null) continue;
-                  bytes = decoded;
-                } else {
-                  const response = await fetch(
-                    imageMediaUrl(reference.imageId, config.publicUri),
-                  );
-                  if (!response.ok) {
-                    throw new Error(`the media fetch answered ${response.status}`);
-                  }
-                  bytes = new Uint8Array(await response.arrayBuffer());
-                }
-                cache.set(reference.imageId, bytes);
-              }
-              if (!alive()) return;
-              storeImageBytes(app, reference.shapeId, reference.imageId, bytes);
-            } catch (cause: unknown) {
-              console.warn("[workspace] could not load an image fill:", cause);
-            }
-          }
-        };
-        void hydrateImages();
+        // renderer before it can draw the fill. The load-scoped hydration is
+        // shared with the remote path (F8.2), so the helper owns the one
+        // fetch per media id and the one store call per pair; a failing fetch
+        // leaves an empty fill and only warns.
+        const imageReferences = imageFillReferences(objects);
+        if (imageReferences.length > 0) {
+          void hydrateImageReferences(app, imageReferences, { isAlive: alive });
+        }
 
         // The workspace chrome: rulers visible, a rounded viewport frame
         // and the light ruler palette (the wasm default is the dark
@@ -1883,6 +1917,16 @@ function WorkspaceWasmCanvasImpl({
     // of the click/marquee, mod the deep selection (meta on macOS, ctrl
     // elsewhere: kbd/mod?).
     const keys = { space: false, shift: false, mod: false };
+
+    // F8.3: the cursor broadcast of the pointer moves (notifications.cljs
+    // pipes the viewport stream through rxs/throttle 50 and sends the world
+    // point). The sender is the collaboration client, which the shell
+    // registers (F8.4); without one the push only costs the throttle clock.
+    const pointerThrottle = createPointerThrottle({
+      send: (point) => {
+        sendPresencePointer(point);
+      },
+    });
 
     let lastHoverWorld: ViewportPoint | null = null;
     let hoverActive = false;
@@ -2976,6 +3020,11 @@ function WorkspaceWasmCanvasImpl({
       const state = stateRef.current;
       if (state === null) return;
 
+      // The remote cursors follow every move, whatever gesture runs: the
+      // CLJS sends on every viewport pointer event too, and the throttle
+      // drops all but one message per window.
+      pointerThrottle.push(toWorld({ x: event.clientX, y: event.clientY }, state));
+
       if (interaction.mode === "idle") {
         // The hover visuals belong to selection mode: a draw tool shows the
         // crosshair and no hover outline until it returns to move.
@@ -3539,6 +3588,7 @@ function WorkspaceWasmCanvasImpl({
         showFrameTitles={showFrameTitles}
         onResizeStart={handleResizeStart}
         onRotateStart={handleRotateStart}
+        teamId={teamId}
       />
       {textEditor !== null ? (
         <textarea
@@ -3592,6 +3642,7 @@ export const WorkspaceWasmCanvas = memo(
     prev.file.permissions === next.file.permissions &&
     prev.file.data === next.file.data &&
     prev.showFrameTitles === next.showFrameTitles &&
+    prev.teamId === next.teamId &&
     prev.tool === next.tool &&
     prev.onToolChange === next.onToolChange,
 );

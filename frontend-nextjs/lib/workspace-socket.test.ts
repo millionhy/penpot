@@ -161,20 +161,24 @@ describe("encodeClientMessage", () => {
       pageId: PAGE_ID,
       zoom: 2,
       zoomInverse: 0.5,
-      vbox: [0, 0, 100, 100],
-      vport: [10, 20, 80, 60],
-      position: [12.5, 34.5],
+      vbox: { x: 0, y: 0, width: 100, height: 100 },
+      vport: { x: 10, y: 20, width: 80, height: 60 },
+      position: { x: 12.5, y: 34.5 },
     });
+    // The values decode to plain maps here; the CLJS reader rebuilds the
+    // rect / point records from the same tags.
     expect(decodeTransit(raw)).toEqual({
       type: "pointer-update",
       "file-id": FILE_ID,
       "page-id": PAGE_ID,
       zoom: 2,
       "zoom-inverse": 0.5,
-      vbox: [0, 0, 100, 100],
-      vport: [10, 20, 80, 60],
-      position: [12.5, 34.5],
+      vbox: { x: 0, y: 0, width: 100, height: 100 },
+      vport: { x: 10, y: 20, width: 80, height: 60 },
+      position: { x: 12.5, y: 34.5 },
     });
+    expect(raw).toContain("~#rect");
+    expect(raw).toContain("~#point");
   });
 });
 

@@ -16,7 +16,14 @@
 // The socket implementation, the timers and the jitter source are injected so
 // the state machine runs in vitest without a browser.
 
-import { decodeTransit, encodeTransit, keyword, keywordMap, uuid } from "@/lib/transit";
+import {
+  decodeTransit,
+  encodeRecordValue,
+  encodeTransit,
+  keyword,
+  keywordMap,
+  uuid,
+} from "@/lib/transit";
 
 // readyState value of an open WebSocket, spelled out because the tests use a
 // fake socket and node has no DOM WebSocket constant.
@@ -84,14 +91,26 @@ export interface WorkspaceSocket {
 // notifications.cljs builds subscribe-file, subscribe-team and
 // unsubscribe-file; handle-pointer-send builds pointer-update.
 
+export interface WorkspacePoint {
+  x: number;
+  y: number;
+}
+
+export interface WorkspaceRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface WorkspacePointerUpdate {
   fileId: string;
   pageId: string;
   zoom: number;
   zoomInverse: number;
-  vbox: readonly number[];
-  vport: readonly number[];
-  position: readonly [number, number];
+  vbox: WorkspaceRect;
+  vport: WorkspaceRect;
+  position: WorkspacePoint;
 }
 
 export type WorkspaceClientMessage =
@@ -129,6 +148,10 @@ export function encodeClientMessage(message: WorkspaceClientMessage): string {
         }),
       );
     case "pointer-update":
+      // vbox, vport and position are records on the reference client
+      // (handle-pointer-send sends the :workspace-local rects and the
+      // pointer point), and the receiving side reads them with :x / :y /
+      // :width, so they ride the record tags, not arrays.
       return encodeTransit(
         keywordMap({
           type: keyword(message.type),
@@ -136,9 +159,9 @@ export function encodeClientMessage(message: WorkspaceClientMessage): string {
           "page-id": uuid(message.pageId),
           zoom: message.zoom,
           "zoom-inverse": message.zoomInverse,
-          vbox: [...message.vbox],
-          vport: [...message.vport],
-          position: [...message.position],
+          vbox: encodeRecordValue("rect", message.vbox),
+          vport: encodeRecordValue("rect", message.vport),
+          position: encodeRecordValue("point", message.position),
         }),
       );
   }

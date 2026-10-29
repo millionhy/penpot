@@ -1975,6 +1975,30 @@
   stroke: var(--color-accent-tertiary);
 }
 
+/* The remote cursors (F8.3): an arrow plus a name bubble per session,
+   placed in world coordinates by the component (a translate and the
+   inverse zoom). The layer never takes pointer events. The bubble follows
+   profile-name of viewport/presence.scss: 20px tall, 12px side padding and
+   white text on the session color. */
+.pp-presence-cursor {
+  pointer-events: none;
+}
+
+.pp-presence-cursor-name {
+  align-items: center;
+  border-radius: var(--br-4);
+  box-sizing: border-box;
+  color: var(--color-static-white);
+  display: flex;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  height: 20px;
+  line-height: 1.5;
+  padding: 0 var(--sp-m);
+  white-space: nowrap;
+  width: fit-content;
+}
+
 /* The inline text editor (第2项 text tool): a textarea laid over the new
    text shape at the viewport zoom. It keeps the shape font size and line
    height, a transparent background and a 1px accent frame; the canvas

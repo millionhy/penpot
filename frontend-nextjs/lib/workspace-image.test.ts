@@ -26,6 +26,7 @@ import {
   imageFillReferences,
   imageMediaUrl,
   isBitmapImage,
+  newImageFillReferences,
   stripImageExtension,
   uploadImage,
   type UploadedImage,
@@ -189,6 +190,46 @@ describe("imageFillReferences", () => {
       f: shape("f", { fills: "nope" }),
     };
     expect(imageFillReferences(objects)).toEqual([]);
+  });
+});
+
+describe("newImageFillReferences", () => {
+  const shape = (id: string, extra: Record<string, unknown> = {}): WorkspaceShape => ({
+    id,
+    type: "rect",
+    ...extra,
+  });
+  const imageFillWith = (id: string): Record<string, unknown> => ({
+    "fill-opacity": 1,
+    "fill-image": { id, width: 10, height: 10, mtype: "image/png" },
+  });
+
+  it("answers the pairs the second model adds", () => {
+    const before = {
+      a: shape("a", { fills: [imageFillWith("media-1")] }),
+    };
+    const after = {
+      a: shape("a", { fills: [imageFillWith("media-1")] }),
+      b: shape("b", { fills: [imageFillWith("media-2")] }),
+    };
+    expect(newImageFillReferences(before, after)).toEqual([
+      { shapeId: "b", imageId: "media-2" },
+    ]);
+  });
+
+  it("answers a fill that replaced the image of an existing shape", () => {
+    const before = { a: shape("a", { fills: [imageFillWith("media-1")] }) };
+    const after = { a: shape("a", { fills: [imageFillWith("media-2")] }) };
+    expect(newImageFillReferences(before, after)).toEqual([
+      { shapeId: "a", imageId: "media-2" },
+    ]);
+  });
+
+  it("answers nothing when the pairs do not change", () => {
+    const objects = { a: shape("a", { fills: [imageFillWith("media-1")] }) };
+    expect(newImageFillReferences(objects, objects)).toEqual([]);
+    // A pure removal adds no pair either.
+    expect(newImageFillReferences(objects, {})).toEqual([]);
   });
 });
 

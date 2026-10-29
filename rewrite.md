@@ -2523,6 +2523,52 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   多人撤销合并。
 - 下一步：按 F8.1 → F8.4 顺序实现，逐片跑 vitest/tsc/lint 并在 7.47 记录。
 
+### 7.47 本轮（2026-10-29，第四十六批：F8.1–F8.3 协作通道）
+
+- 诉求：按 7.46 的 F8 切片依次实现传输层、订阅与远端变更、在场与指针；F8.4
+  （route/shell 接线与两标签页冒烟）留到下一批。
+- F8.1 传输层：新增 `lib/workspace-socket.ts`（http→ws/https→wss 直连
+  `config.backendOrigin`，空则回退 `location.origin`；`createWorkspaceSocket`
+  注入 WebSocket 实现、定时器与抖动源，把 open/message/close/error 归一为
+  回调；退避 1s→×2→上限 30s、±20% 抖动；`send` 仅在 OPEN 发送并返回 boolean；
+  `close` 幂等且停重连；入站经 `decodeTransit`）。20 例单测用假 socket + 假
+  定时器驱动状态机。同期修三处既有缺陷：`update-file` 的 session-id 统一取
+  `config.sessionId`（否则服务端不认为这些提交来自本连接，自己的广播会回灌）；
+  pointer 的 `vbox`/`vport`/`position` 由数组改为 transit record（参考端是
+  rect/point 记录，数组跨端读不到 `:x`），`encodeRecordValue` 因此导出。
+- F8.2 订阅与远端变更：新增 `lib/workspace-collab.ts`：`classifyMessage` 先按
+  topic（zero/file/team）再按 type 归一到 file-change/file-deleted/
+  file-restored/presence/pointer-update/ignored/malformed；`opened` 重发
+  `subscribe-file`+`subscribe-team`，`stop` 先 `unsubscribe-file` 再 close；
+  `planRemoteChanges` 按 page-id 过滤（add-obj 没有 id 可校验，必须过滤）。新增
+  `lib/render-wasm/image-hydrate.ts`（加载期与远端共用补水，注入 fetch/store/
+  isAlive）与 `newImageFillReferences(before, after)`；画布新增
+  `applyRemoteFileChange`：objectsRef/index/store → `uploadChangedShapes` → 失效
+  解码缓存 → 新 image fill 补水 → revn/vern 取 max → 剔除已删 id 的选择，且
+  **不进撤销栈、不写 `file.revn`/`file.data`**（画布 load effect 会整块重载，丢
+  视口、选择与撤销栈）。页面级变更（add/mod/del-page）只归类不落地，留给页面
+  同步切片。25 + 7 + 3 例。
+- F8.3 在场与指针：新增 `lib/workspace-presence.ts`（9 色 palette 与兜底
+  `#dee563`、`applyPresence` 处理 join/presence/leave/disconnect、
+  `applyPointerUpdate` 只写指针字段、`visibleCursors` 按 page-id 与 5s TTL 过滤、
+  `pointerUpdate` 组 wire 消息、sender 注册表与 50ms 前沿节流）；store 增
+  `presence` 切片与 `setWorkspacePresence`；画布在 pointermove 顶部经节流发出
+  世界坐标；新增 `components/workspace-presence-cursors.tsx` 挂在既有 SVG 覆盖层
+  末端（箭头 path + foreignObject 名字气泡，名字取 `get-team-members`，缺失
+  留空，1s tick 让过期游标消失；停表条件是 `hasFreshCursors`——全部游标过期
+  就撤掉定时器，而不是「切片里还有指针就永跑」）。22 例。
+- 登记偏差：本地 session 不入 presence 切片（服务端过滤自身广播、右头头像栈
+  未做，入切片只会白占一个颜色）；palette 用声明顺序而非 CLJS 的集合哈希序；
+  气泡文本固定白色（CLJS 存了 `:text-color` 却用 `--app-white`）；节流是前沿式，
+  快速移动可落后一个窗口（与 `rxs/throttle` 同）。为 F8.4 备好接口：画布新增
+  可选 `teamId` prop（未传则气泡留空），sender 未注册时画布推指针为空操作。
+- 验证：`npx vitest run` 77 文件 1762 例全过；`npx tsc --noEmit
+  --incremental false` 干净；`npx next lint` 无告警。
+- 提交：`61c6a1950d :sparkles: Add the workspace websocket transport`（F8.1）；
+  F8.2 与 F8.3 待提交。
+- 下一步：F8.4 接线（route 把 teamId 传给 shell、shell 建 client 并注册 sender、
+  file 事件转画布 handle、presence 直接写 store），再跑两标签页冒烟。
+
 ---
 
 ## 8. 开发环境备注（本机）

@@ -32,6 +32,10 @@
 // - the transform preview (F9.6): the store matrix of a running
 //   resize/rotate gesture maps the outlines and the frame; the handles and
 //   the rotation zones hide while it runs.
+// - the remote cursors (F8.3): components/workspace-presence-cursors draws
+//   the arrow and the name bubble of every session with a fresh pointer on
+//   the open page, on top of everything else (the z-index 10000 of the
+//   CLJS layer).
 //
 // Deviations from the compiled original, documented:
 // - Selection and hover outlines share the accent-tertiary color: the CLJS
@@ -52,6 +56,7 @@
 import { useMemo, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 
 import { WorkspaceFrameTitles } from "@/components/workspace-frame-titles";
+import { WorkspacePresenceCursors } from "@/components/workspace-presence-cursors";
 import {
   canEditFile,
   pageObjects,
@@ -190,6 +195,9 @@ export interface WorkspaceViewportOverlayProps {
   onResizeStart?: (handler: ResizeHandler, event: ReactPointerEvent<SVGElement>) => void;
   // A press on a rotation zone.
   onRotateStart?: (corner: RotationCorner, event: ReactPointerEvent<SVGElement>) => void;
+  // The team that resolves the cursor names (F8.3); null leaves the name
+  // bubbles empty.
+  teamId?: string | null;
 }
 
 export function WorkspaceViewportOverlay({
@@ -198,6 +206,7 @@ export function WorkspaceViewportOverlay({
   showFrameTitles,
   onResizeStart,
   onRotateStart,
+  teamId = null,
 }: WorkspaceViewportOverlayProps) {
   const state = useSyncExternalStore(
     subscribeWorkspace,
@@ -353,6 +362,7 @@ export function WorkspaceViewportOverlay({
           strokeDasharray={`${DASH_SIZE / zoom} ${DASH_SIZE / zoom}`}
         />
       ) : null}
+      <WorkspacePresenceCursors pageId={pageId} zoom={zoom} teamId={teamId} />
     </svg>
   );
 }

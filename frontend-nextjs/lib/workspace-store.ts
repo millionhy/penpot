@@ -11,11 +11,13 @@
 // selection/hover/area slice; F9.3 adds the JS model reference and the
 // live drag translation; F9.5 the draw preview; F9.6 the transform
 // preview; F9.7 the undo availability flags. F9.13 switches pages by
-// swapping pageId (the route and the canvas follow it); the rest of
-// workspace-local arrives with the next slices.
+// swapping pageId (the route and the canvas follow it); F8.3 adds the
+// presence slice of the collaboration channel; the rest of workspace-local
+// arrives with the next slices.
 
 import type { WorkspaceDrawTool, WorkspaceFile, WorkspaceObjects } from "@/lib/workspace";
 import type { DrawPoint } from "@/lib/workspace-draw";
+import type { PresenceState } from "@/lib/workspace-presence";
 import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";
 import type { ViewportRect, ViewportState } from "@/lib/workspace-viewport";
 
@@ -109,6 +111,10 @@ export interface WorkspaceState {
   // stack and mirrors its cursor here for the menu and its disabled states.
   canUndo: boolean;
   canRedo: boolean;
+  // The remote sessions of the collaboration channel, keyed by session id
+  // (F8.3): the cursor layer reads it, and the apply/prune of
+  // lib/workspace-presence writes it whole.
+  presence: PresenceState;
 }
 
 const initialState: WorkspaceState = {
@@ -132,6 +138,7 @@ const initialState: WorkspaceState = {
   transformPreview: null,
   canUndo: false,
   canRedo: false,
+  presence: {},
 };
 
 let state: WorkspaceState = initialState;
@@ -267,4 +274,14 @@ export function setTransformPreview(preview: TransformPreview | null): void {
 export function setUndoAvailability(canUndoValue: boolean, canRedoValue: boolean): void {
   if (state.canUndo === canUndoValue && state.canRedo === canRedoValue) return;
   setWorkspaceState({ canUndo: canUndoValue, canRedo: canRedoValue });
+}
+
+// --- Presence (F8.3) --------------------------------------------------------
+
+// The whole presence slice, as lib/workspace-presence computed it from the
+// last join/leave or pointer message; the identical slice is a no-op, so
+// the caller can write back what it read.
+export function setWorkspacePresence(presence: PresenceState): void {
+  if (state.presence === presence) return;
+  setWorkspaceState({ presence });
 }
