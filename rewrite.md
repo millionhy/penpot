@@ -6,13 +6,13 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成；F8 切片计划已定，见 7.46） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
-| 最后更新 | 2026-10-28 |
+| 最后更新 | 2026-10-29 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -41,7 +41,7 @@
 | F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.6 完成；F5.7 进行中，organization/team switch 与 subscription/nitrate 已完成），见下与第 4 节 |
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | ✅ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；四片全部完成（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入、F7.4 完整 API 上下文：workspace 代理 + 事件派发 + 画布桥接，见 7.44）；结构写/文本/媒体/代码生成等延后项以命名错误登记 |
-| F8 | WebSocket 协作客户端 | ⬜ | 连 `/ws/notifications`（直连后端源，见 README） |
+| F8 | WebSocket 协作客户端 | 🔧 | 切片计划已定（F8.1 传输层 / F8.2 订阅与远端变更 / F8.3 在场与指针 / F8.4 接线），直连 `backendOrigin` 的 `/ws/notifications`，见 7.46 |
 | F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；余下按 7.25 路线补浏览器冒烟；F7.4 已完成（见 7.44）；Web Worker + 协作光标等留 F8 后 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
@@ -312,7 +312,12 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     pagechange/selectionchange/shapechange/contentsave（见 7.44）。
     shape 删除/克隆/结构、文本/SVG/路径、媒体、代码生成、字体/库/用户、评论/
     令牌/版本/导出、flow 与 ruler guide 写入仍以命名错误失败，等对应切片。
-- **F8 WebSocket 协作客户端**：连 `/ws/notifications`（直连后端源），订阅文件变更广播。
+- **F8 WebSocket 协作客户端（切片计划已定，见 7.46）**：连 `/ws/notifications`（直连
+  `config.backendOrigin`，Next rewrites 不转发 HTTP upgrade），心跳由服务端协议层 ping 承担、
+  `opened` 时重发订阅。切成 F8.1 传输层（`lib/workspace-socket.ts`）、F8.2 订阅与远端变更
+  （`lib/workspace-collab.ts` + 画布 `applyRemoteFileChange`）、F8.3 在场与指针
+  （`lib/workspace-presence.ts` + 覆盖层游标）、F8.4 接线与验证（route/shell + 两标签页冒烟）。
+  前置修正：session-id 与 `update-file` body 对齐、远端变更不写 `file.revn`、远端图片 fill 补水。
 - **F9 workspace**：最后迁移、最高风险。切成 F9.1–F9.x 多片：F9.1 数据基础与只读画布
   已启动（原为解 F7.4 阻塞而提前，不依赖 F8；数据层 + 视口数学 + WASM 直绘 + /workspace
   路由，见 7.23）；F9.2 画布交互与选择完成（悬停/点选/框选/平移 + SVG 覆盖层，零
@@ -2453,6 +2458,70 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   `npx vitest run` 73 文件 1685 例全过；`npx tsc --noEmit --incremental false`
   干净；`npx next lint` 无告警。
 - 下一步：F8 WebSocket 协作客户端（`/ws/notifications`）。
+
+### 7.46 本轮（2026-10-29，第四十五批：F8 切片计划，勘察）
+
+- 诉求：按 7.45 的下一步，先勘察参考端协作通道的握手、心跳与重连语义，再定落到
+  `frontend-nextjs/lib` 与 workspace shell 的切片；本轮只读，不改代码。
+- 参考端（CLJS）语义：
+  - 建连：`get-profile` 成功且已登录后才 `ws/initialize`；URI 由 `cf/public-uri` join
+    `ws/notifications` 再加 `?session-id=<uuid>`，`http→ws`、`https→wss`（不挂在 `/api/` 下，
+    直连后端源）；服务端同一路径挂 `session/authz`（cookie 或 bearer，浏览器只能靠 cookie），
+    未登录或非 upgrade 在握手阶段就失败，**无应用层 ack**。
+  - 心跳：纯服务端行为——每 5s 发协议层 ping（8 字节自增载荷），连丢 3 次以 8802 关闭，
+    另有 60s idle-timeout；浏览器自动回 pong，JS 看不到 pong 帧；参考端的 `:keepalive` 分支是空
+    实现且从不发送。故重写端**不设应用层心跳**，失活只靠 close/error + 重连覆盖。
+  - 重连：`goog.net.WebSocket` 开 `autoReconnect` 自行重连；新连接不带旧订阅，所以
+    `::dws/opened` 时重发 `subscribe-file` 与 `subscribe-team`。断线期间 `ws/send!` 在非 open 状态
+    **静默丢弃**（不排队、无重试）。
+  - 订阅：进入 workspace 发 `subscribe-file`（带 penpotVersion）与 `subscribe-team`；离开只发
+    `unsubscribe-file`。服务端在 `subscribe-team` 时自行补订阅 organization topic，并在频道管道上
+    按 session-id 过滤自身消息。
+  - 消息：客户端只收 topic ∈ {zero, profile-id, team-id, file-id, organization-id} 的消息，再按
+    type 分派 14 种；本切片只关心 `file-change`/`file-deleted`/`file-restored`、presence 族与
+    `pointer-update`。
+  - 远端落地：`file-change` 走 `dch/commit`（`:source :remote`、`save-undo? false`、`file-revn`/
+    `file-vern` 取自消息），只本地应用不回声；消息里的 `revn` 是**提交后**的值（`update-file` 的
+    HTTP 响应给的是提交前）。
+  - 在场：presence 记 session-id/profile-id/color/updated-at，`pointer-update` 只补
+    point/page-id/zoom/vbox/vport/position；渲染按 `page-id` 相等且 `updated-at` 在 5s 内过滤，
+    1s tick 让过期游标消失；颜色取 9 色集合里首个未占用（兜底 `#dee563`）；指针广播 50ms 节流，
+    仅 viewport 源。
+- 切片（F8.1–F8.4，每片可独立验证）：
+  - **F8.1 传输层（`lib/workspace-socket.ts`）**：`workspaceSocketUri(base, sessionId)`
+    （http→ws/https→wss，直连 `config.backendOrigin`，空则回退 `location.origin`）；
+    `createWorkspaceSocket` 注入 WebSocketImpl 与 setTimeout/clearTimeout，把 open/message/close/error
+    归一为回调；指数退避 1s→×2→上限 30s、±20% 抖动；`send` 仅在 OPEN 时发送并返回 boolean；
+    `close` 幂等并停止重连；入站消息经 `decodeTransit` 解码。测试用假 socket + 假定时器驱动状态机。
+  - **F8.2 订阅与远端变更（`lib/workspace-collab.ts` + 画布 handle）**：`opened` 重发订阅，
+    `stop` 先 `unsubscribe-file` 再关闭；`classifyMessage` 按 topic/type 归一为订阅事件与“忽略”；
+    `planRemoteChanges` 先按 page-id 过滤再交 `applyUpdateChanges`；画布 `applyRemoteFileChange`
+    按序：更新 objectsRef/index/store → `uploadChangedShapes` → 失效解码缓存 → 远端 image fill 补水 →
+    revn/vern 取 max（只推 `revnRef`）→ 剔除已删 id 的选择 → **不进撤销栈**；`file-deleted` 回
+    recent，`file-restored` 在 vern 不一致时重拉文件。
+  - **F8.3 在场与指针（`lib/workspace-presence.ts` + 覆盖层）**：store 增 presence 切片与
+    apply/prune；画布 pointermove 按 50ms 节流经注册表发出（与 `lib/workspace-navigation.ts`
+    同模式）；`components/workspace-presence-cursors.tsx` 在现有 SVG 覆盖层里画箭头 + 名字气泡
+    （profile 缺失时留空）；名字取 `get-team-members`。
+  - **F8.4 接线与验证（route/shell）**：`app/workspace/page.tsx` 把 `teamId` 传给 shell；shell
+    在挂载期建 client（StrictMode 双挂载保持幂等）、file 事件转 canvas handle、presence 直接写
+    store；跑 vitest/tsc/lint，并做两标签页冒烟：A 画形→B 见；B 动指针→A 见游标且 5s 后消失；
+    断网 30s 恢复后订阅与游标回来；只读链接不产生写请求。
+- 三处必修的既有缺陷（F8.1 前先修）：
+  - session-id 不一致：画布 `update-file` body 用每次挂载新铸的 `crypto.randomUUID()`，而 RPC 头
+    用 `config.sessionId`；服务端按 body 的 session-id 打标、按 WS 连接的 session-id 过滤，不一致会
+    把自己的 `file-change`、join/leave、pointer 全部回灌（自绘自身游标、重复应用、revn 抖动）。
+    统一取 `config.sessionId`。
+  - 远端变更不能写 `file.revn` / `file.data`：画布 load effect 依赖 `canvasRevn`/`canvasObjects`，
+    一改就整块重载（丢视口、选择、撤销栈）；远端只写 objectsRef/index/store，revn 只推进 `revnRef`。
+  - 远端图片补水：加载期的 `hydrateImages` 是闭包，需抽成
+    `lib/render-wasm/image-hydrate.ts` 的 `hydrateImageReferences(app, refs)`，加载与远端新增共用。
+- 取舍（默认值，实施前可改）：`file-restored` 采用重拉（对齐 `reload-current-file`，接受清空撤销栈
+  与视口）；远端变更与本地手势并发时直接应用（与 CLJS 一致），不排队。
+- 不做：`library-change`、`notification` 与 team/organization 事件（按 type 忽略并注明归属）、
+  评论用 `broadcast`、dashboard 的 ws 订阅、presence 头像栈（参考端在右头，shell 尚无右头）、
+  多人撤销合并。
+- 下一步：按 F8.1 → F8.4 顺序实现，逐片跑 vitest/tsc/lint 并在 7.47 记录。
 
 ---
 
