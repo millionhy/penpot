@@ -117,7 +117,7 @@ export function SettingsSidebar() {
       <div className="pp-profile-section">
         <img
           className="pp-profile-avatar"
-          src={photo ?? avatar ?? ""}
+          src={photo ?? avatar ?? undefined}
           alt=""
           width={32}
           height={32}

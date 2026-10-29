@@ -59,11 +59,15 @@ function shortName(name: string): string {
   return name.length > NAME_LIMIT ? name.slice(0, NAME_SLICE) + "..." : name;
 }
 
-// profile-id -> fullname, the map refs/profiles answers with in the CLJS.
+// profile-id -> fullname, the map refs/profiles answers with in the CLJS. A
+// blank fullname falls back to the name: the column may be an empty string,
+// which ?? would keep.
 function namesOf(rows: { id: string; name?: string; fullname?: string }[]): Map<string, string> {
   const names = new Map<string, string>();
   for (const row of rows) {
-    const name = row.fullname ?? row.name;
+    const fullname = row.fullname;
+    const name =
+      typeof fullname === "string" && fullname.length > 0 ? fullname : row.name;
     if (typeof name === "string" && name.length > 0) names.set(row.id, name);
   }
   return names;

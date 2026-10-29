@@ -168,6 +168,7 @@ function WorkspaceRoute({ params }: { params: URLSearchParams }) {
       pageId={pageId}
       file={file}
       projectName={projectName}
+      teamId={query.teamId}
     />
   );
 }

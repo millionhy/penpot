@@ -158,7 +158,7 @@ export function DashboardProfileMenu() {
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <img className="pp-profile-img" src={photo ?? avatar ?? ""} alt={fullname} />
+        <img className="pp-profile-img" src={photo ?? avatar ?? undefined} alt={fullname} />
         <span className="pp-profile-fullname">{fullname}</span>
       </button>
 

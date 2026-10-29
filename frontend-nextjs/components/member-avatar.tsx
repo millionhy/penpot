@@ -33,5 +33,7 @@ export function MemberAvatar({ member, className }: MemberAvatarProps) {
     setAvatar(generateAvatar({ name }));
   }, [photo, name]);
 
-  return <img className={className} src={photo ?? avatar ?? ""} alt="" />;
+  // The avatar is generated in an effect, so the first paint has none; an
+  // empty src makes React warn and the browser re-fetch the page.
+  return <img className={className} src={photo ?? avatar ?? undefined} alt="" />;
 }

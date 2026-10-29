@@ -41,8 +41,8 @@
 | F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.6 完成；F5.7 进行中，organization/team switch 与 subscription/nitrate 已完成），见下与第 4 节 |
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | ✅ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；四片全部完成（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入、F7.4 完整 API 上下文：workspace 代理 + 事件派发 + 画布桥接，见 7.44）；结构写/文本/媒体/代码生成等延后项以命名错误登记 |
-| F8 | WebSocket 协作客户端 | 🔧 | 切片计划已定（F8.1 传输层 / F8.2 订阅与远端变更 / F8.3 在场与指针 / F8.4 接线），直连 `backendOrigin` 的 `/ws/notifications`，见 7.46 |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；余下按 7.25 路线补浏览器冒烟；F7.4 已完成（见 7.44）；Web Worker + 协作光标等留 F8 后 |
+| F8 | WebSocket 协作客户端 | ✅ | 四片全部完成（F8.1 传输层 / F8.2 订阅与远端变更 / F8.3 在场与指针 / F8.4 route/shell 接线），直连 `backendOrigin` 的 `/ws/notifications`；两标签页冒烟 12/12（远端形状、游标与 5s TTL、断网重连重订阅、只读无写），见 7.46–7.48 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；余下按 7.25 路线补浏览器冒烟；F7.4 已完成（见 7.44）；协作光标与远端变更已随 F8.3/F8.4 落地，Web Worker 仍留后 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
@@ -312,12 +312,12 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     pagechange/selectionchange/shapechange/contentsave（见 7.44）。
     shape 删除/克隆/结构、文本/SVG/路径、媒体、代码生成、字体/库/用户、评论/
     令牌/版本/导出、flow 与 ruler guide 写入仍以命名错误失败，等对应切片。
-- **F8 WebSocket 协作客户端（切片计划已定，见 7.46）**：连 `/ws/notifications`（直连
+- **F8 WebSocket 协作客户端（完成，见 7.46–7.48）**：连 `/ws/notifications`（直连
   `config.backendOrigin`，Next rewrites 不转发 HTTP upgrade），心跳由服务端协议层 ping 承担、
-  `opened` 时重发订阅。切成 F8.1 传输层（`lib/workspace-socket.ts`）、F8.2 订阅与远端变更
+  `opened` 时重发订阅。F8.1 传输层（`lib/workspace-socket.ts`）、F8.2 订阅与远端变更
   （`lib/workspace-collab.ts` + 画布 `applyRemoteFileChange`）、F8.3 在场与指针
-  （`lib/workspace-presence.ts` + 覆盖层游标）、F8.4 接线与验证（route/shell + 两标签页冒烟）。
-  前置修正：session-id 与 `update-file` body 对齐、远端变更不写 `file.revn`、远端图片 fill 补水。
+  （`lib/workspace-presence.ts` + 覆盖层游标）、F8.4 接线与验证（route/shell + 两标签页冒烟）
+  全部完成。前置修正：session-id 与 `update-file` body 对齐、远端变更不写 `file.revn`、远端图片 fill 补水。
 - **F9 workspace**：最后迁移、最高风险。切成 F9.1–F9.x 多片：F9.1 数据基础与只读画布
   已启动（原为解 F7.4 阻塞而提前，不依赖 F8；数据层 + 视口数学 + WASM 直绘 + /workspace
   路由，见 7.23）；F9.2 画布交互与选择完成（悬停/点选/框选/平移 + SVG 覆盖层，零
@@ -2569,6 +2569,32 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   （F8.2 与 F8.3 并入一笔：画布与本文由两片共用，拆开会让中间提交不可用）。
 - 下一步：F8.4 接线（route 把 teamId 传给 shell、shell 建 client 并注册 sender、
   file 事件转画布 handle、presence 直接写 store），再跑两标签页冒烟。
+
+### 7.48 本轮（2026-10-29，第四十七批：F8.4 接线与两标签页冒烟）
+
+- 诉求：按 7.46 的 F8.4 把协作客户端接到 route/shell，并做两标签页冒烟。
+- 接线：`app/workspace/page.tsx` 把 `teamId` 传给 shell；shell 在 effect 里按
+  `fileId`/`teamId` 建 `createWorkspaceCollab`（StrictMode 双挂载即关旧建新，`stop()` 先退订再
+  关闭，服务端只看到一次 join/leave）；`file-change` 转
+  `canvasRef.current.applyRemoteFileChange` 并推进本地 known vern；`file-deleted` 回
+  `/dashboard/recent?team-id=`；`file-restored` 与 known vern 比较后重拉文件写 store
+  （画布 load effect 重建模型，丢撤销栈与视口，与 7.46 取舍一致）；presence/pointer 走
+  `applyPresence`/`applyPointerUpdate` 写 store 切片；sender 从 store 读 `pageId` 与
+  `getWorkspaceViewport()` 组消息，50ms 节流仍在画布。
+- 修三处缺陷（冒烟挖出）：shell 没把 `teamId` 传给画布（游标气泡全空）；`namesOf` 用
+  `fullname ?? name`，后端 fullname 为空串时不回退（改为空串回退 name）；
+  `member-avatar`/`dashboard-profile-menu`/`settings-sidebar`/`org-team-switch` 的
+  `<img src={photo ?? avatar ?? ""}>` 首帧空 src 触发 React 警告（改 `?? undefined`）。
+- 偏差：本地 session 仍不入 presence 切片（无右头头像栈，同 7.47）；pointer 不按
+  `canEdit` 过滤（参考端同；只读链接只订阅与广播，不产生 RPC 写）。
+- 验证：`npx tsc --noEmit --incremental false` 退出 0；`npx vitest run` 77 文件 1762 例全过；
+  `npx next lint` 无告警；`node .git/f84-smoke.mjs`（不入库）12/12 通过：A 建空文件 →
+  B 打开同文件（0 层）→ A 画矩形 → B 层行 1 → B 动指针 → A 见游标（名字
+  "MichaelHu"）→ 7s 后游标消失（5s TTL）→ B 断网 30s 恢复后 A 的游标回到 B →
+  `/view` 链接 9s 内 0 条 `update-file` → 三个 tab 无 console 错误。
+- 一次性文件：`ad9d5693-49bf-81be-8008-dd03e1d41488`（未删；前两轮各一个）。
+- 下一步：F9 的浏览器冒烟清单（7.25 路线）；F8 不做项维持 7.46（library-change、
+  notification、评论广播、dashboard 订阅、头像栈、多人撤销合并）。
 
 ---
 

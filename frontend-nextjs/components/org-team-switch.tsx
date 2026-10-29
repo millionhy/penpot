@@ -199,7 +199,7 @@ function TeamPicture({ team, className }: { team: TeamWithOrganization; classNam
     setAvatar(generateAvatar({ name: team.name }));
   }, [photo, team.name]);
 
-  return <img className={className} src={photo ?? avatar ?? ""} alt={team.name} />;
+  return <img className={className} src={photo ?? avatar ?? undefined} alt={team.name} />;
 }
 
 // organization-avatar* (app.main.ui.components.organization-avatar, size

@@ -22,6 +22,11 @@
 //   whole left column folds into a floating expand button.
 // - The right sidebar carries the zoom widget and the F9.5 style panel; the
 //   rest of the options toolbox stays out of this slice.
+//
+// F8.4: the shell owns the collaboration client of the open file. One socket
+// per file and team; the inbound file events cross the canvas handle, the
+// presence messages write the store slice and the canvas pointer reaches the
+// socket through the presence sender registry of lib/workspace-presence.
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -44,9 +49,29 @@ import {
   type WorkspaceCanvasHandle,
 } from "@/components/workspace-wasm-canvas";
 import { ExpandIcon, ChevronIcon } from "@/components/workspace-icons";
+import { dashboardHref } from "@/lib/dashboard";
 import { tr } from "@/lib/i18n";
+import {
+  canEditFile,
+  fetchWorkspaceFile,
+  resolvePageId,
+  type WorkspaceFile,
+  type WorkspaceTool,
+} from "@/lib/workspace";
+import { createWorkspaceCollab } from "@/lib/workspace-collab";
 import { registerWorkspacePageOpener } from "@/lib/workspace-navigation";
-import { canEditFile, type WorkspaceFile, type WorkspaceTool } from "@/lib/workspace";
+import {
+  applyPointerUpdate,
+  applyPresence,
+  pointerUpdate,
+  registerPresencePointerSender,
+} from "@/lib/workspace-presence";
+import {
+  getWorkspaceState,
+  getWorkspaceViewport,
+  setWorkspacePresence,
+  setWorkspaceState,
+} from "@/lib/workspace-store";
 
 export interface WorkspaceShellProps {
   fileId: string;
@@ -54,6 +79,10 @@ export interface WorkspaceShellProps {
   file: WorkspaceFile;
   // The project name above the file name (get-project); null until loaded.
   projectName: string | null;
+  // The team of the open file: the team subscription of the collaboration
+  // channel and the names of the remote cursors; null when the URL carries
+  // no team-id, which only skips both.
+  teamId: string | null;
 }
 
 // Only one workspace menu is open at a time: the main menu and the zoom
@@ -67,6 +96,7 @@ export function WorkspaceShell({
   pageId,
   file,
   projectName,
+  teamId,
 }: WorkspaceShellProps) {
   const canEdit = canEditFile(file);
   const router = useRouter();
@@ -135,6 +165,83 @@ export function WorkspaceShell({
     registerWorkspacePageOpener(selectPage);
     return () => registerWorkspacePageOpener(null);
   }, [selectPage]);
+
+  // F8.4: the collaboration client of the open file, one per file and team.
+  // The presence slice lives in the store; the file events cross the canvas
+  // handle, so the canvas keeps ownership of its model and its wasm bridge.
+  const knownVernRef = useRef(file.vern ?? 0);
+  useEffect(() => {
+    let live = true;
+    const client = createWorkspaceCollab(
+      { fileId, teamId },
+      {
+        // The committed changes of another client land in the canvas model;
+        // the server filters this client's own echo by session id.
+        onFileChange: (event) => {
+          knownVernRef.current = Math.max(knownVernRef.current, event.vern);
+          canvasRef.current?.applyRemoteFileChange(event);
+        },
+        // handle-file-deleted: the open file is gone, so the route falls
+        // back to the recent list of the team.
+        onFileDeleted: (deletedId) => {
+          if (deletedId !== fileId) return;
+          router.replace(dashboardHref("dashboard-recent", { teamId }));
+        },
+        // handle-file-restored: reload only when the restored snapshot is
+        // not the one open here. The load effect of the canvas rebuilds the
+        // model from the new file, dropping the undo stack and the viewport.
+        onFileRestored: (event) => {
+          if (event.vern === knownVernRef.current) return;
+          knownVernRef.current = event.vern;
+          void fetchWorkspaceFile(fileId)
+            .then((next) => {
+              if (!live) return;
+              knownVernRef.current = next.vern ?? event.vern;
+              const current = getWorkspaceState();
+              setWorkspaceState({
+                file: next,
+                pageId: resolvePageId(next, current.pageId),
+              });
+            })
+            .catch((cause: unknown) => {
+              console.warn("[workspace] could not reload the restored file:", cause);
+            });
+        },
+        // The presence family and the remote pointers fold into the slice
+        // the cursor layer reads; a join refreshes its time stamp and a
+        // pointer message only touches the pointer fields.
+        onPresence: (event) => {
+          setWorkspacePresence(
+            applyPresence(getWorkspaceState().presence, event, Date.now()),
+          );
+        },
+        onPointerUpdate: (event) => {
+          setWorkspacePresence(
+            applyPointerUpdate(getWorkspaceState().presence, event, Date.now()),
+          );
+        },
+      },
+    );
+
+    // The canvas throttles its pointer moves and hands the world point here;
+    // the message carries the viewport slice the canvas mirrors in the store.
+    registerPresencePointerSender((point) => {
+      const current = getWorkspaceState();
+      if (current.pageId === null) return false;
+      const message = pointerUpdate(
+        { fileId, pageId: current.pageId, viewport: getWorkspaceViewport() },
+        point,
+      );
+      return message !== null && client.sendPointer(message);
+    });
+
+    return () => {
+      live = false;
+      registerPresencePointerSender(null);
+      setWorkspacePresence({});
+      client.stop();
+    };
+  }, [fileId, teamId, router]);
 
   const toggleUI = useCallback((): void => {
     setMenu(null);
@@ -228,6 +335,7 @@ export function WorkspaceShell({
           showFrameTitles={showFrameTitles}
           tool={activeTool}
           onToolChange={changeTool}
+          teamId={teamId}
         />
         {hideUI ? null : (
           <WorkspaceTopToolbar
