@@ -714,13 +714,14 @@ function WorkspaceWasmCanvasImpl({
   // interaction effect outlives prop changes, so the ids it commits with
   // and the guards all live in refs the load effect refreshes — the edit
   // gate, the revn counter and the vern guard (revn + vern of the current
-  // file) and the session id minted once per mount.
+  // file). The session id is config.sessionId, with no per-mount ref: the
+  // RPC header and the collaboration socket carry the same value, so the
+  // server filters this client's own broadcasts (F8.1).
   const fileIdRef = useRef(fileId);
   const pageIdRef = useRef(pageId);
   const canEditRef = useRef(true);
   const revnRef = useRef(0);
   const vernRef = useRef(0);
-  const sessionIdRef = useRef<string | null>(null);
   // A commit in flight rejects new presses (AD9).
   const commitPendingRef = useRef(false);
   // The undo stack of this page load (F9.7): the canvas owns it and mirrors
@@ -840,16 +841,15 @@ function WorkspaceWasmCanvasImpl({
   // and every style edit funnels through here, so the in-flight guard
   // (commitPendingRef), the revn advance and the vern guard live in one
   // place. Returns the revn the backend reported, or null when a commit is
-  // already in flight or the session id is missing; throws when the request
-  // fails (the callers own their error reporting and local rollback).
+  // already in flight; throws when the request fails (the callers own their
+  // error reporting and local rollback).
   const sendUpdateFile = useCallback(
     async (
       changes: UpdateFileChange[],
       recordUndo: boolean | "merge" = true,
       undoBase?: WorkspaceObjects | null,
     ): Promise<number | null> => {
-      const sessionId = sessionIdRef.current;
-      if (sessionId === null || commitPendingRef.current) return null;
+      if (commitPendingRef.current) return null;
       // An open plugin undo block folds every commit after its first into
       // one undo entry; a block past its timeout is dropped, so a plugin
       // that never finishes cannot swallow the user's later edits.
@@ -881,7 +881,7 @@ function WorkspaceWasmCanvasImpl({
       try {
         const body = encodeUpdateFile({
           id: fileIdRef.current,
-          "session-id": sessionId,
+          "session-id": config.sessionId,
           revn: revnRef.current,
           vern: vernRef.current,
           changes,
@@ -1555,16 +1555,15 @@ function WorkspaceWasmCanvasImpl({
     undoRef.current = createUndoState();
     setUndoAvailability(false, false);
     // The write-path bookkeeping of this file (AD5/AD11): the ids the
-    // interaction effect commits with, the edit gate, the revn/vern
-    // guards and the session id minted once per mount.
+    // interaction effect commits with, the edit gate and the revn/vern
+    // guards. The session id is not minted here: config.sessionId must match
+    // the RPC header and the socket URL for the server to filter this
+    // client's own broadcasts.
     fileIdRef.current = fileId;
     pageIdRef.current = pageId;
     canEditRef.current = canvasCanEdit;
     revnRef.current = canvasRevn;
     vernRef.current = canvasVern;
-    if (sessionIdRef.current === null) {
-      sessionIdRef.current = crypto.randomUUID();
-    }
 
     void (async () => {
       try {
