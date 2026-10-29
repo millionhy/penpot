@@ -2564,8 +2564,9 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   可选 `teamId` prop（未传则气泡留空），sender 未注册时画布推指针为空操作。
 - 验证：`npx vitest run` 77 文件 1762 例全过；`npx tsc --noEmit
   --incremental false` 干净；`npx next lint` 无告警。
-- 提交：`61c6a1950d :sparkles: Add the workspace websocket transport`（F8.1）；
-  F8.2 与 F8.3 待提交。
+- 提交：`61c6a1950d :sparkles: Add the workspace websocket transport`（F8.1）、
+  `1fc0854d14 :sparkles: Add the remote changes and presence to the workspace`
+  （F8.2 与 F8.3 并入一笔：画布与本文由两片共用，拆开会让中间提交不可用）。
 - 下一步：F8.4 接线（route 把 teamId 传给 shell、shell 建 client 并注册 sender、
   file 事件转画布 handle、presence 直接写 store），再跑两标签页冒烟。
 
