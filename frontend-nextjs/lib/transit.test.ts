@@ -368,6 +368,47 @@ describe("encodeUpdateFile", () => {
     expect(decodeTransit<UpdateFileParams>(doc)).toEqual(params);
   });
 
+  it("keeps the node types of a text content as plain strings", () => {
+    const content = {
+      type: "root",
+      "vertical-align": "top",
+      children: [
+        {
+          type: "paragraph-set",
+          children: [
+            {
+              type: "paragraph",
+              "text-align": "left",
+              children: [{ text: "Hello", "font-size": "14" }],
+            },
+          ],
+        },
+      ],
+    };
+    const params: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 7,
+      vern: 2,
+      changes: [
+        {
+          type: "mod-obj",
+          "page-id": PAGE_ID,
+          id: SHAPE_ID,
+          operations: [{ type: "set", attr: "content", val: content }],
+        },
+      ],
+    };
+
+    const doc = encodeUpdateFile(params);
+    // schema:content declares [:type [:= "root"]] (and the two other node
+    // types as strings), so a keyword here fails validate-shape and the whole
+    // update-file answers 500 (found by the workspace browser smoke).
+    expect(doc).not.toContain('"~:root"');
+    expect(doc).not.toContain('"~:paragraph"');
+    expect(decodeTransit<UpdateFileParams>(doc)).toEqual(params);
+  });
+
   it("round-trips through the reader into the original JS shape", () => {
     const doc = encodeUpdateFile(moveParams(new PathData(packedMoveBytes())));
     const decoded = decodeTransit<UpdateFileParams>(doc);

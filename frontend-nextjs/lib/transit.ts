@@ -560,10 +560,21 @@ const KEYWORD_VALUE_KEY =
   /^(type|style|stroke-style|stroke-alignment|stroke-cap-start|stroke-cap-end|blend-mode|grow-type|layout-item-h-sizing|layout-item-v-sizing|layout|layout-flex-dir|layout-grid-dir|layout-gap-type|layout-wrap-type|layout-padding-type|layout-align-items|layout-align-content|layout-justify-items|layout-justify-content|layout-item-margin-type|layout-item-align-self|constraints-h|constraints-v)$/;
 const UUID_FORM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+// The node types of a text content tree are plain strings on the backend
+// (app.common.types.shape.text/schema:content declares [:type [:= "root"]]
+// and the same for "paragraph-set" and "paragraph"). Every other value of a
+// "type" key is an enum keyword, so only these three keep the string form;
+// without this guard the text commit reached validate-shape as :root and the
+// whole update-file answered 500.
+const TEXT_NODE_TYPE = /^(root|paragraph-set|paragraph)$/;
+
 function encodeUpdateAttrEntry(key: string, value: unknown): unknown {
   if (typeof value === "string") {
     if (UUID_VALUE_KEY.test(key) && UUID_FORM.test(value)) return uuid(value);
-    if (KEYWORD_VALUE_KEY.test(key)) return keyword(value);
+    if (KEYWORD_VALUE_KEY.test(key)) {
+      if (key === "type" && TEXT_NODE_TYPE.test(value)) return value;
+      return keyword(value);
+    }
   }
   // layout-grid-cells is a uuid -> grid cell map (schema:grid-cell) whose
   // keys, :id and :shapes are uuids and whose position / align-self /
