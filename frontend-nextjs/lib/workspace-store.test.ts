@@ -18,6 +18,7 @@ import {
   setHover,
   setHoverShapeId,
   setHoverTopFrameId,
+  setLinePreview,
   setSelection,
   setTransformPreview,
   setUndoAvailability,
@@ -48,6 +49,8 @@ describe("getInitialWorkspaceState", () => {
     expect(initial.objects).toBeNull();
     expect(initial.dragDelta).toBeNull();
     expect(initial.drawPreview).toBeNull();
+    expect(initial.curvePreview).toBeNull();
+    expect(initial.linePreview).toBeNull();
     expect(initial.transformPreview).toBeNull();
     expect(initial.canUndo).toBe(false);
     expect(initial.canRedo).toBe(false);
@@ -220,6 +223,23 @@ describe("draw preview slice", () => {
     expect(listener).toHaveBeenCalledTimes(1);
     setDrawPreview(null);
     expect(getWorkspaceState().drawPreview).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsub();
+  });
+});
+
+describe("line preview slice", () => {
+  it("stores the live segment and clears it", () => {
+    const listener = vi.fn();
+    const unsub = subscribeWorkspace(listener);
+    setLinePreview({ start: { x: 1, y: 2 }, end: { x: 30, y: 40 } });
+    expect(getWorkspaceState().linePreview).toEqual({
+      start: { x: 1, y: 2 },
+      end: { x: 30, y: 40 },
+    });
+    expect(listener).toHaveBeenCalledTimes(1);
+    setLinePreview(null);
+    expect(getWorkspaceState().linePreview).toBeNull();
     expect(listener).toHaveBeenCalledTimes(2);
     unsub();
   });

@@ -147,7 +147,9 @@ export function pointsRect(points: readonly DrawPoint[]): DrawRect | null {
   };
 }
 
-function rectPoints(rect: DrawRect): DrawPoint[] {
+// grc/rect->points: the four corners, clockwise from the top left. The line
+// tools build their `points` the same way.
+export function rectPoints(rect: DrawRect): DrawPoint[] {
   const x2 = rect.x + rect.width;
   const y2 = rect.y + rect.height;
   return [

@@ -20,6 +20,7 @@ import {
   isCurveTool,
   isDrawTool,
   isDrawingTool,
+  isLineTool,
   pageObjects,
   parseWorkspaceQuery,
   renameWorkspaceFile,
@@ -258,17 +259,40 @@ describe("isCurveTool", () => {
   });
 });
 
+describe("isLineTool", () => {
+  it("accepts the two drag tools of drawing/line.cljs", () => {
+    expect(isLineTool("line")).toBe(true);
+    expect(isLineTool("arrow")).toBe(true);
+  });
+
+  it("rejects every other tool", () => {
+    const rest: WorkspaceTool[] = [
+      "move",
+      "frame",
+      "rect",
+      "ellipse",
+      "text",
+      "image",
+      "path",
+      "curve",
+    ];
+    for (const tool of rest) expect(isLineTool(tool)).toBe(false);
+  });
+});
+
 describe("isDrawingTool", () => {
-  it("accepts the box tools and the freehand tool", () => {
+  it("accepts the box tools, the freehand tool and the line tools", () => {
     expect(isDrawingTool("frame")).toBe(true);
     expect(isDrawingTool("rect")).toBe(true);
     expect(isDrawingTool("ellipse")).toBe(true);
     expect(isDrawingTool("text")).toBe(true);
     expect(isDrawingTool("curve")).toBe(true);
+    expect(isDrawingTool("line")).toBe(true);
+    expect(isDrawingTool("arrow")).toBe(true);
   });
 
-  it("rejects move, the line tools, image and the pen tool", () => {
-    const rest: WorkspaceTool[] = ["move", "line", "arrow", "image", "path"];
+  it("rejects move, image and the pen tool", () => {
+    const rest: WorkspaceTool[] = ["move", "image", "path"];
     for (const tool of rest) expect(isDrawingTool(tool)).toBe(false);
   });
 });

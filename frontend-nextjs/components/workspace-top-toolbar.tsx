@@ -5,27 +5,34 @@
 // app.main.ui.workspace.top_toolbar.
 //
 // The reference layout is seven tool slots plus the plugins entry: move,
-// frame, the shapes group (rect as its default tool), text, image, the
-// free-draw group, a 1px separator and plugins. A group button selects its
-// default tool here; the flyouts that pick the other members stay out of
-// this slice. The CLJS toolbar renders nothing for read-only files, and so
-// does this one.
+// frame, the shapes group (rect, ellipse, line and arrow), text, image, the
+// free-draw group, a 1px separator and plugins. A group with more than one
+// member opens its flyout on hover (350 ms, group-tool* on-display-menu) and
+// on Enter/Space/ArrowDown; the main button selects the member the group
+// last had active, which falls back to the group default (active-group-tool).
+// Every tool slot selects its tool, so the row is also the way back to move.
+// The CLJS toolbar renders nothing for read-only files, and so does this one.
 //
-// 第2项 opened text and the freehand curve. The free-draw group defaults to
-// curve because the pen tool has no flyout yet; the image slot is the hidden
-// file picker image-upload-tool* rather than a tool.
+// 第2项 opened text, the freehand curve and the line/arrow drag tools. The
+// free-draw group still has one member: the pen tool has no port yet, so the
+// group stays a plain button rather than a flyout that would offer it.
 //
 // Deviations from the CLJS original, documented (AD12):
-// - No tool flyouts (the shapes and free-draw groups collapse to their
-//   default tools), no MCP button, no debug panel and no toolbar collapse
-//   toggle; the handler below the row is decorative.
+// - No MCP button, no debug panel and no toolbar collapse toggle; the
+//   handler below the row is decorative.
 // - No tool keyboard shortcuts.
+// - The flyout only handles Escape from the keyboard; Tab moves the focus
+//   natively instead of the CLJS roving-focus loop.
 
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
+  ArrowIcon,
   BoardIcon,
+  CurveIcon,
+  EllipseIcon,
   ImageIcon,
+  LineIcon,
   MoveIcon,
   PathIcon,
   PuzzleIcon,
@@ -33,58 +40,242 @@ import {
   TextIcon,
 } from "@/components/workspace-icons";
 import { tr } from "@/lib/i18n";
-import { isDrawingTool, type WorkspaceTool } from "@/lib/workspace";
+import type { WorkspaceTool } from "@/lib/workspace";
 import { IMAGE_ACCEPT } from "@/lib/workspace-image";
 
+// group-tool* on-display-menu / on-hide-menu: the delay before the flyout
+// opens on hover and before it closes after the pointer leaves.
+const FLYOUT_DELAY_MS = 350;
+
 interface ToolGroup {
-  // The tool the button selects when clicked (the CLJS default tool of the
-  // group; the flyout members are not reachable here).
+  // The tool the button selects when the group has no active member (the
+  // CLJS :default-tool of the group).
   tool: WorkspaceTool;
-  label: string;
   icon: ReactNode;
-  // The tools that keep the button in its active state, like
-  // is-selected-group in the CLJS original.
+  // The tools of the group; a single one renders without a flyout.
   members: readonly WorkspaceTool[];
 }
 
+// tool-label of top_toolbar.cljs. Every key is a literal call site so
+// scripts/extract-translations.mjs sees it.
+function toolLabel(tool: WorkspaceTool): string {
+  switch (tool) {
+    case "move":
+      return tr("workspace.toolbar.move");
+    case "frame":
+      return tr("workspace.toolbar.frame");
+    case "rect":
+      return tr("workspace.toolbar.rect");
+    case "ellipse":
+      return tr("workspace.toolbar.ellipse");
+    case "line":
+      return tr("workspace.toolbar.line");
+    case "arrow":
+      return tr("workspace.toolbar.arrow");
+    case "text":
+      return tr("workspace.toolbar.text");
+    case "image":
+      return tr("workspace.toolbar.image");
+    case "path":
+      return tr("workspace.toolbar.path");
+    case "curve":
+      return tr("workspace.toolbar.curve");
+    default:
+      return tool;
+  }
+}
+
+// The icon of every tool the toolbar offers (the :tools icons of
+// grouped-tools).
+function toolIcon(tool: WorkspaceTool): ReactNode {
+  switch (tool) {
+    case "move":
+      return <MoveIcon />;
+    case "frame":
+      return <BoardIcon />;
+    case "ellipse":
+      return <EllipseIcon />;
+    case "line":
+      return <LineIcon />;
+    case "arrow":
+      return <ArrowIcon />;
+    case "text":
+      return <TextIcon />;
+    case "image":
+      return <ImageIcon />;
+    case "path":
+      return <PathIcon />;
+    case "curve":
+      return <CurveIcon />;
+    default:
+      return <RectangleIcon />;
+  }
+}
+
 const TOOL_GROUPS: readonly ToolGroup[] = [
-  {
-    tool: "move",
-    label: tr("workspace.toolbar.move"),
-    icon: <MoveIcon />,
-    members: ["move"],
-  },
-  {
-    tool: "frame",
-    label: tr("workspace.toolbar.frame"),
-    icon: <BoardIcon />,
-    members: ["frame"],
-  },
+  { tool: "move", icon: <MoveIcon />, members: ["move"] },
+  { tool: "frame", icon: <BoardIcon />, members: ["frame"] },
   {
     tool: "rect",
-    label: tr("workspace.toolbar.rect"),
     icon: <RectangleIcon />,
     members: ["rect", "ellipse", "line", "arrow"],
   },
-  {
-    tool: "text",
-    label: tr("workspace.toolbar.text"),
-    icon: <TextIcon />,
-    members: ["text"],
-  },
-  {
-    tool: "image",
-    label: tr("workspace.toolbar.image"),
-    icon: <ImageIcon />,
-    members: ["image"],
-  },
-  {
-    tool: "curve",
-    label: tr("workspace.toolbar.curve"),
-    icon: <PathIcon />,
-    members: ["path", "curve"],
-  },
+  { tool: "text", icon: <TextIcon />, members: ["text"] },
+  { tool: "image", icon: <ImageIcon />, members: ["image"] },
+  { tool: "curve", icon: <CurveIcon />, members: ["curve"] },
 ];
+
+// active-group-tool: the member the group had active, else its default. The
+// call site keeps the value while the pointer moves away, so the button
+// shows the tool the user picked until the group changes again.
+function activeMember(group: ToolGroup, tool: WorkspaceTool): WorkspaceTool {
+  return group.members.includes(tool) ? tool : group.tool;
+}
+
+interface ToolGroupButtonProps {
+  group: ToolGroup;
+  tool: WorkspaceTool;
+  onToolChange: (tool: WorkspaceTool) => void;
+}
+
+function ToolGroupButton({ group, tool, onToolChange }: ToolGroupButtonProps) {
+  const [open, setOpen] = useState(false);
+  const [defaultTool, setDefaultTool] = useState<WorkspaceTool>(activeMember(group, tool));
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const openTimer = useRef<number | null>(null);
+  const closeTimer = useRef<number | null>(null);
+
+  const hasFlyout = group.members.length > 1;
+  const active = group.members.includes(tool);
+
+  // (mf/with-effect [drawtool group] (reset! default-tool* ...)).
+  useEffect(() => {
+    setDefaultTool(activeMember(group, tool));
+  }, [group, tool]);
+
+  useEffect(
+    () => () => {
+      if (openTimer.current !== null) window.clearTimeout(openTimer.current);
+      if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    },
+    [],
+  );
+
+  const cancelTimers = (): void => {
+    if (openTimer.current !== null) {
+      window.clearTimeout(openTimer.current);
+      openTimer.current = null;
+    }
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+
+  const scheduleOpen = (): void => {
+    if (!hasFlyout) return;
+    cancelTimers();
+    openTimer.current = window.setTimeout(() => {
+      openTimer.current = null;
+      setOpen(true);
+    }, FLYOUT_DELAY_MS);
+  };
+
+  const scheduleClose = (): void => {
+    if (!hasFlyout) return;
+    cancelTimers();
+    closeTimer.current = window.setTimeout(() => {
+      closeTimer.current = null;
+      setOpen(false);
+    }, FLYOUT_DELAY_MS);
+  };
+
+  const select = (next: WorkspaceTool): void => {
+    cancelTimers();
+    setOpen(false);
+    onToolChange(next);
+  };
+
+  return (
+    <div
+      className="pp-workspace-tool-group"
+      onPointerEnter={scheduleOpen}
+      onPointerLeave={scheduleClose}
+    >
+      <button
+        ref={buttonRef}
+        type="button"
+        className={active ? "pp-workspace-tool pp-workspace-tool--active" : "pp-workspace-tool"}
+        aria-pressed={active}
+        aria-haspopup={hasFlyout ? "true" : undefined}
+        aria-expanded={hasFlyout ? open : undefined}
+        title={toolLabel(defaultTool)}
+        aria-label={toolLabel(defaultTool)}
+        data-tool={defaultTool}
+        onClick={() => select(defaultTool)}
+        onKeyDown={(event) => {
+          if (!hasFlyout) return;
+          if (event.key === "Escape") {
+            if (!open) return;
+            event.preventDefault();
+            cancelTimers();
+            setOpen(false);
+            return;
+          }
+          if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+            event.preventDefault();
+            cancelTimers();
+            setOpen(true);
+          }
+        }}
+      >
+        {toolIcon(defaultTool)}
+      </button>
+
+      {hasFlyout ? (
+        <ul
+          role="menu"
+          className={
+            open
+              ? "pp-workspace-toolbar-flyout pp-workspace-toolbar-flyout--open"
+              : "pp-workspace-toolbar-flyout"
+          }
+          aria-label={toolLabel(defaultTool)}
+          aria-hidden={!open}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            cancelTimers();
+            setOpen(false);
+            buttonRef.current?.focus();
+          }}
+        >
+          {group.members.map((member) => (
+            <li key={member} role="none">
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={tool === member}
+                aria-label={toolLabel(member)}
+                title={toolLabel(member)}
+                className={
+                  tool === member
+                    ? "pp-workspace-tool pp-workspace-tool--active"
+                    : "pp-workspace-tool"
+                }
+                data-tool={member}
+                tabIndex={open ? 0 : -1}
+                onClick={() => select(member)}
+              >
+                {toolIcon(member)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 
 export interface WorkspaceTopToolbarProps {
   canEdit: boolean;
@@ -114,33 +305,33 @@ export function WorkspaceTopToolbar({
     >
       <div className="pp-workspace-toolbar-options" data-testid="toolbar-options">
         {TOOL_GROUPS.map((group) => {
-          const isImage = group.tool === "image";
-          const enabled = isImage ? onImageFiles !== undefined : isDrawingTool(group.tool);
-          const active = group.members.includes(tool);
+          if (group.tool === "image") {
+            return (
+              <button
+                key={group.tool}
+                type="button"
+                className="pp-workspace-tool"
+                disabled={onImageFiles === undefined}
+                title={toolLabel("image")}
+                aria-label={toolLabel("image")}
+                data-tool={group.tool}
+                onClick={
+                  onImageFiles === undefined
+                    ? undefined
+                    : () => imageInputRef.current?.click()
+                }
+              >
+                {group.icon}
+              </button>
+            );
+          }
           return (
-            <button
+            <ToolGroupButton
               key={group.tool}
-              type="button"
-              className={
-                active
-                  ? "pp-workspace-tool pp-workspace-tool--active"
-                  : "pp-workspace-tool"
-              }
-              disabled={!enabled}
-              aria-pressed={active}
-              title={group.label}
-              aria-label={group.label}
-              data-tool={group.tool}
-              onClick={
-                enabled
-                  ? isImage
-                    ? () => imageInputRef.current?.click()
-                    : () => onToolChange(group.tool)
-                  : undefined
-              }
-            >
-              {group.icon}
-            </button>
+              group={group}
+              tool={tool}
+              onToolChange={onToolChange}
+            />
           );
         })}
 

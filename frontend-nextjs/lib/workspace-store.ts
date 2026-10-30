@@ -49,6 +49,15 @@ export interface CurvePreview {
   points: DrawPoint[];
 }
 
+// The live segment of a line or arrow drag (F9.5), in world units: the
+// canvas writes the press point and the current (maybe snapped) end on
+// every passing pointer move and the overlay draws the segment; null
+// under the 10-screen-pixel threshold and between drags.
+export interface LinePreview {
+  start: DrawPoint;
+  end: DrawPoint;
+}
+
 // The live world matrix of a resize/rotate gesture (F9.6), in the transit
 // {a..f} form: the canvas writes it on every preview frame and the overlay
 // maps the selection outlines, the bounds and the handles by it; null when
@@ -104,6 +113,8 @@ export interface WorkspaceState {
   drawPreview: DrawPreview | null;
   // The live points of a running freehand stroke; null otherwise.
   curvePreview: CurvePreview | null;
+  // The live segment of a running line or arrow drag; null otherwise.
+  linePreview: LinePreview | null;
   // The live world matrix of a running resize/rotate gesture (F9.6); null
   // otherwise.
   transformPreview: TransformPreview | null;
@@ -135,6 +146,7 @@ const initialState: WorkspaceState = {
   dragDelta: null,
   drawPreview: null,
   curvePreview: null,
+  linePreview: null,
   transformPreview: null,
   canUndo: false,
   canRedo: false,
@@ -257,6 +269,12 @@ export function setDrawPreview(preview: DrawPreview | null): void {
 // null clears it (release, cancel and on every abort).
 export function setCurvePreview(preview: CurvePreview | null): void {
   setWorkspaceState({ curvePreview: preview });
+}
+
+// The live segment the overlay draws while a line or arrow drag runs; null
+// clears it (under the threshold, after the release and on every abort).
+export function setLinePreview(preview: LinePreview | null): void {
+  setWorkspaceState({ linePreview: preview });
 }
 
 // --- Transform preview (F9.6) -----------------------------------------------

@@ -29,6 +29,8 @@
 //   the overlay keeps their outlines in step; the hover outline stays put.
 // - the draw preview (F9.5): a dashed rect of the live box of the
 //   frame/rect/ellipse gesture, in world coordinates like the marquee.
+// - the curve and line previews (F9.5): the sampled polyline of the
+//   freehand stroke and the solid 1px line of the line/arrow drag.
 // - the transform preview (F9.6): the store matrix of a running
 //   resize/rotate gesture maps the outlines and the frame; the handles and
 //   the rotation zones hide while it runs.
@@ -223,6 +225,7 @@ export function WorkspaceViewportOverlay({
     dragDelta,
     drawPreview,
     curvePreview,
+    linePreview,
     transformPreview,
   } = state;
   const storeObjects = state.objects;
@@ -339,6 +342,17 @@ export function WorkspaceViewportOverlay({
           className="pp-overlay-draw"
           data-testid="curve-preview"
           points={pointsToString(curvePreview.points)}
+          strokeWidth={1 / zoom}
+        />
+      ) : null}
+      {linePreview !== null ? (
+        <line
+          className="pp-overlay-draw"
+          data-testid="line-preview"
+          x1={linePreview.start.x}
+          y1={linePreview.start.y}
+          x2={linePreview.end.x}
+          y2={linePreview.end.y}
           strokeWidth={1 / zoom}
         />
       ) : null}

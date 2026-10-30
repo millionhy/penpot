@@ -46,9 +46,10 @@ export interface WorkspaceShape {
 export type WorkspaceObjects = Record<string, WorkspaceShape>;
 
 // The workspace toolbar tools (F9.5). Frame, rect, ellipse and text draw a
-// box; the freehand curve draws a path. Line, arrow, image and the pen tool
-// stay disabled until their slices land. The type lives here so the toolbar,
-// the shell and the canvas share one union (F9.5 AD2).
+// box; the freehand curve draws a path; line and arrow drag a two-node path.
+// Image and the pen tool stay disabled until their slices land. The type
+// lives here so the toolbar, the shell and the canvas share one union
+// (F9.5 AD2).
 export type WorkspaceTool =
   | "move"
   | "frame"
@@ -75,10 +76,18 @@ export function isCurveTool(tool: WorkspaceTool): tool is "curve" {
   return tool === "curve";
 }
 
+export type WorkspaceLineTool = "line" | "arrow";
+
+// The press-and-drag tools of drawing/line.cljs: the release turns the two
+// points into one two-node path, with an arrow cap on the end for "arrow".
+export function isLineTool(tool: WorkspaceTool): tool is WorkspaceLineTool {
+  return tool === "line" || tool === "arrow";
+}
+
 // Every tool that draws: the cursor shows the crosshair and the idle hover
 // visuals stay off while one of them is active.
 export function isDrawingTool(tool: WorkspaceTool): boolean {
-  return isDrawTool(tool) || isCurveTool(tool);
+  return isDrawTool(tool) || isCurveTool(tool) || isLineTool(tool);
 }
 
 // gmt/matrix: the wire and wasm representation is a {a..f} map, never an

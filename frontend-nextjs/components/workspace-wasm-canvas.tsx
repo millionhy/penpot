@@ -206,6 +206,7 @@ import {
   isCurveTool,
   isDrawTool,
   isDrawingTool,
+  isLineTool,
   pageObjects,
   type WorkspaceDrawTool,
   type WorkspaceFile,
@@ -224,6 +225,7 @@ import {
   type DrawRect,
 } from "@/lib/workspace-draw";
 import { createCurveShape } from "@/lib/workspace-path";
+import { createLineShape, lineEndPoint } from "@/lib/workspace-line";
 import {
   createImageShape,
   imageFillReferences,
@@ -338,6 +340,7 @@ import {
   setHover,
   setHoverShapeId,
   setHoverTopFrameId,
+  setLinePreview,
   setSelection,
   setTransformPreview,
   setUndoAvailability,
@@ -473,6 +476,7 @@ interface PointerInteraction {
     | "drag"
     | "draw"
     | "curve"
+    | "line"
     | "resize"
     | "rotate";
   pointerId: number | null;
@@ -514,6 +518,10 @@ interface PointerInteraction {
   // The freehand gesture (F9.5): the world points collected since the press,
   // one per passing pointer move above the sampling distance.
   curvePoints: DrawPoint[];
+  // The line/arrow gesture (F9.5): the world press point and the current end
+  // (null under the 10-screen-pixel threshold, snapped when Shift is held).
+  lineStart: DrawPoint | null;
+  lineEnd: DrawPoint | null;
   // The transform gesture state (F9.6).
   transformGesture: TransformGestureState | null;
 }
@@ -1910,6 +1918,8 @@ function WorkspaceWasmCanvasImpl({
       drawActive: false,
       drawRect: null,
       curvePoints: [],
+      lineStart: null,
+      lineEnd: null,
       transformGesture: null,
     };
 
@@ -2746,6 +2756,26 @@ function WorkspaceWasmCanvasImpl({
       await commitAddedShape(shape, parentId, points[0] ?? null, false);
     };
 
+    // The release of a line or arrow drag (drawing/line.cljs): the two
+    // points become one two-node path with a centered stroke, plus a
+    // triangle cap on the end node for the arrow tool. The release point
+    // anchors the drop slot, like the box and curve commits.
+    const commitLine = async (
+      start: DrawPoint,
+      end: DrawPoint,
+      parentId: string | null,
+      arrow: boolean,
+    ): Promise<void> => {
+      if (!canEditRef.current) return;
+      if (!hasValidParent(parentId)) {
+        reportMissingParent();
+        return;
+      }
+      const shape = createLineShape(start, end, parentId, crypto.randomUUID(), arrow);
+      if (shape === null) return;
+      await commitAddedShape(shape, parentId, start, true);
+    };
+
     // The end of a text edition (shapes.cljs end-edition): an empty text
     // deletes the shape, any other value commits its content and measured
     // box in one mod-obj. Both paths mirror the change locally and upload
@@ -2986,6 +3016,30 @@ function WorkspaceWasmCanvasImpl({
         return;
       }
 
+      // A left press with the line or arrow tool starts the drag gesture: the
+      // parent resolves once, at the press point, and the release turns the
+      // two points into one path (drawing/line.cljs).
+      if (event.button === 0 && canEditRef.current && isLineTool(toolRef.current)) {
+        event.preventDefault();
+        const lineWorld = toWorld(client, state);
+        const target = firstValidParent(objects, topNestedFrameAt(objects, lineWorld));
+        interaction.mode = "line";
+        interaction.pointerId = event.pointerId;
+        interaction.downClient = client;
+        interaction.downWorld = lineWorld;
+        interaction.drawParentId = target === null ? null : target.id;
+        interaction.lineStart = lineWorld;
+        interaction.lineEnd = null;
+        interaction.cancelled = false;
+        // The hover visuals belong to the idle selection mode.
+        hoverActive = false;
+        setHover(null);
+        setHoverShapeId(null);
+        setLinePreview(null);
+        updateCursor();
+        return;
+      }
+
       // A left press refreshes the hover stack at the press point (the
       // CLJS reads the stack the last move left behind; recomputing keeps
       // the click correct without a preceding move).
@@ -3095,6 +3149,24 @@ function WorkspaceWasmCanvasImpl({
         return;
       }
 
+      if (interaction.mode === "line") {
+        // The end follows every passing move past the 10-screen-pixel
+        // threshold; Shift snaps it to 15 degrees around the press point
+        // (line.cljs snap-to-angle).
+        if (interaction.cancelled) return;
+        const origin = interaction.lineStart;
+        if (origin === null) return;
+        const end = lineEndPoint(
+          origin,
+          toWorld(client, state),
+          state.zoom,
+          event.shiftKey,
+        );
+        interaction.lineEnd = end;
+        setLinePreview(end === null ? null : { start: origin, end });
+        return;
+      }
+
       if (interaction.mode === "drag") {
         // One flush per frame; the flush reads the latest world point.
         if (interaction.cancelled) return;
@@ -3147,6 +3219,8 @@ function WorkspaceWasmCanvasImpl({
       interaction.drawActive = false;
       interaction.drawRect = null;
       interaction.curvePoints = [];
+      interaction.lineStart = null;
+      interaction.lineEnd = null;
       interaction.transformGesture = null;
       updateCursor();
     };
@@ -3206,6 +3280,23 @@ function WorkspaceWasmCanvasImpl({
         setCurvePreview(null);
         if (cancelled) return;
         void commitCurve(points, parentId);
+        return;
+      }
+
+      if (mode === "line") {
+        // The release commits one two-node path and returns the tool to
+        // move, like the box tools (drawing/line.cljs clear-drawing). A
+        // cancelled drag, or one that never passed the threshold, sends
+        // nothing.
+        const start = interaction.lineStart;
+        const end = interaction.lineEnd;
+        const parentId = interaction.drawParentId;
+        const arrow = toolRef.current === "arrow";
+        endGesture();
+        setLinePreview(null);
+        onToolChangeRef.current("move");
+        if (cancelled || start === null || end === null) return;
+        void commitLine(start, end, parentId, arrow);
         return;
       }
 
@@ -3303,6 +3394,12 @@ function WorkspaceWasmCanvasImpl({
         // active for the next stroke.
         setCurvePreview(null);
       }
+      if (interaction.mode === "line") {
+        // A cancelled line drag leaves the file untouched and returns the
+        // tool to move, like the box tools.
+        setLinePreview(null);
+        onToolChangeRef.current("move");
+      }
       if (interaction.mode === "drag") {
         // A physical cancellation leaves the state as if the press never
         // mutated it: the preview resets and the selection the threshold
@@ -3360,6 +3457,16 @@ function WorkspaceWasmCanvasImpl({
       if (interaction.mode === "drag") {
         cancelDragPreview();
         interaction.cancelled = true;
+      }
+      if (interaction.mode === "line") {
+        // Escape aborts the drag now: no commit on the release and the tool
+        // returns to move, like the box tools.
+        setLinePreview(null);
+        interaction.cancelled = true;
+        interaction.lineEnd = null;
+        onToolChangeRef.current("move");
+        updateCursor();
+        return;
       }
       if (interaction.mode === "resize" || interaction.mode === "rotate") {
         // Escape drops the preview now; the release that follows finds the

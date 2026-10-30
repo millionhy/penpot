@@ -144,6 +144,43 @@
   outline-offset: var(--sp-xxs);
 }
 
+/* .toolbar-group: the slot of a tool group; the flyout hangs from it
+   (top_toolbar.scss .toolbar-group position: relative). */
+.pp-workspace-tool-group {
+  position: relative;
+}
+
+/* .toolbar-group-flyout: the sub-tool column under the group button,
+   hidden until the group opens (opacity + visibility, 80ms). */
+.pp-workspace-toolbar-flyout {
+  background-color: var(--color-background-primary);
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xxs);
+  left: 50%;
+  margin: 0;
+  opacity: 0;
+  padding: var(--sp-xxs) 0;
+  pointer-events: none;
+  position: absolute;
+  top: 140%;
+  transform: translateX(-50%);
+  transition:
+    opacity 80ms ease-out,
+    visibility 80ms linear;
+  visibility: hidden;
+  z-index: var(--z-index-panels);
+}
+
+.pp-workspace-toolbar-flyout--open {
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: 0s;
+  visibility: visible;
+}
+
 /* .toolbar-separator: a 1px quaternary line, 32px tall, inset 12px from
    the neighboring tools. */
 .pp-workspace-toolbar-separator {
