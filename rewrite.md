@@ -336,11 +336,13 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   （约束与重排统一走 wasm 的 propagate，布局属性编辑后自动重排子级，见 7.39）；
   F9.12 grid cells 编辑入口完成（面板的 Grid cell 段、cell map 的分区维护、
   transit 的 uuid/keyword 编码，见 7.40）；
-  浏览器冒烟完成（43/43：绘制、移动与撤销、resize/rotate、样式、文本、curve、
-  frame 子级与 reflow、图片、z-order、zoom、Escape、Shift 多选、空文本删除与
-  恢复、拖入重父、reload，见 7.49）；F7.4 已完成（见 7.44）；
+  F9.5 线条/箭头完成（工具栏分组 flyout + 拖拽绘制、Shift 15° 吸附、10px 阈值、
+  arrow 三角端帽，见 7.50）；
+  浏览器冒烟完成（52/52：绘制、移动与撤销、resize/rotate、样式、文本、curve、
+  line/arrow 与 flyout、frame 子级与 reflow、图片、z-order、zoom、Escape、Shift 多选、
+  空文本删除与恢复、拖入重父、reload，见 7.49/7.50）；F7.4 已完成（见 7.44）；
   Web Worker
-  （缩略图/索引/导入）+ 其余绘制（线条/箭头/笔工具）/布尔/编辑/token
+  （缩略图/索引/导入）+ 其余绘制（笔工具）/布尔/编辑/token
   子流程仍在后续推进。
 
 每个路由组的完成标准（DoD）：
@@ -385,7 +387,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  █████████████████████████████░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.4 完成；F9.1–F9.12、F9.3 伴随变更、drop-index、F9.10 子级传播、F9.11 布局 reflow 与 F9.12 grid cells 入口完成、浏览器冒烟 43/43：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板、缩放手柄、撤销/重做、z-order、伴随变更、布局内插入与重排、布局/约束段与多选批量、resize 约束传播、布局重排走 wasm 传播)
+阶段 F  █████████████████████████████░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.4 完成；F9.1–F9.12、F9.3 伴随变更、drop-index、F9.10 子级传播、F9.11 布局 reflow、F9.12 grid cells 入口与线条/箭头工具完成、浏览器冒烟 52/52：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板、缩放手柄、撤销/重做、z-order、伴随变更、布局内插入与重排、布局/约束段与多选批量、resize 约束传播、布局重排走 wasm 传播、分组 flyout 与线条/箭头)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
@@ -2645,6 +2647,58 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 一次性文件：`ad9d5693-49bf-81be-8008-dd14f16961af`（未删，方便复核）。
 - 下一步：F 阶段余项：Web Worker（缩略图/索引/导入）、线条/箭头/笔工具、布尔
   与路径编辑；阶段 B 的 M0/M1 待开工。
+
+### 7.50 本轮（2026-10-30，第四十九批：F9 线条/箭头与工具栏 flyout）
+
+- 诉求：继续还 F9.5 的绘制缺口。参考端的 shapes 组有四个成员
+  （rect/ellipse/line/arrow），本仓只剩 rect/ellipse，且工具栏没有 flyout，
+  line/arrow 在 UI 上无法选中。
+- 参考端语义（`data/workspace/drawing/line.cljs`）：按下开始拖拽；
+  `handle-drawing` 用 `(> (* distance zoom) 10)` 丢掉 10 屏幕像素以内的帧；
+  Shift 走 `snap-to-angle`，把终点吸到相对按下点的 15° 整数倍（半径不变）；
+  `update-endpoint` 用 `points->content` 重建两节点 path；箭头版在
+  `arrow-strokes` 里给末节点加 `:stroke-cap-end :triangle-arrow`；
+  `handle-finish-drawing` 对 line/arrow 走 `clear-drawing`（不回退到上一次
+  工具，而是回 move），形状被选中。单击不产生形状：PathData 的 count 是段数，
+  两节点只有 1 段，`finalize` 判 uninitialized。
+- 实现：
+  - `lib/workspace-line.ts`：`snapToAngle`、`lineEndPoint`（阈值 + Shift 吸附）、
+    `createLineShape`（无填充、1px 居中黑描边、`stroke-cap-end` 仅箭头）。
+  - `lib/workspace-path.ts` 导出 `rectPoints`（两工具共用 selrect 四角）。
+  - `lib/workspace.ts`：`WorkspaceLineTool`、`isLineTool`，`isDrawingTool` 纳入
+    line/arrow（十字光标、关掉悬停高亮）。
+  - `lib/workspace-store.ts` + `components/workspace-viewport-overlay.tsx`：
+    `linePreview` 切片与覆盖层 `<line data-testid="line-preview">`（1/zoom 描边，
+    缩放不变粗）。
+  - `components/workspace-wasm-canvas.tsx`：`PointerInteraction.mode` 增 `line`，
+    按下定父级与起点、移动出预览、释放走 `commitLine`（一次 add-obj + 本地
+    镜像 + 增量 wasm 同步 + 选中），Escape/pointercancel 清预览并回 move。
+  - `components/workspace-top-toolbar.tsx`：拆成 `ToolGroupButton`，shapes 组
+    四个成员，悬停 350ms 开 flyout（沿用 `group-tool*` 的 on-display-menu /
+    on-hide-menu）、Enter/Space/ArrowDown 开、Escape 关；主按钮 `data-tool`
+    跟 `active-group-tool`，成员按钮 `role=menuitemradio` + `aria-checked`，
+    旧冒烟的 `[data-tool="rect"]` 选择器仍命中主按钮。顺手去掉旧的
+    `disabled={!isDrawingTool(...)}`：那行把 move/frame/text 一并禁用，选完
+    line/arrow 后工具栏就回不到 move/rect（参考端不禁用）；只有图片按钮在
+    未接文件选择器时仍禁用。
+  - `styles/workspace.css`：`.pp-workspace-tool-group` 定位上下文与 flyout
+    （opacity/visibility 过渡，关闭时 `pointer-events: none`）。
+- 偏差（已注释）：形状在释放时一次构建，拖拽过程只用覆盖层虚线预览（参考端
+  每帧重建预览形状）；无像素网格与吸附点；flyout 的 Tab 走原生焦点顺序，不
+  做 CLJS 的 roving focus；笔工具仍未移植，free-draw 组保持单成员、不渲染
+  flyout。
+- 翻译：`node scripts/extract-translations.mjs` 重生成，新增
+  `workspace.toolbar.{line,arrow,ellipse}`；zh_cn 上游无 line/arrow 词条，运行时
+  回落英文。
+- 验证：`npx tsc --noEmit --incremental false` 退出 0；`npx vitest run`
+  78 文件 1784 例全过（新增 `lib/workspace-line.test.ts` 16 例、store 预览切片、
+  `isLineTool`）；`npx next lint` 无告警；浏览器冒烟 52/52（原 43 条 + 9 条：
+  flyout 悬停展开、line 拖拽出预览、line/arrow 各加一行 Path 且各一次写、
+  单击不落形状、提交后工具回 move、主按钮回落 rect）。
+- 冒烟新坐标放在画布左侧空白区，避免与 rect/text/curve/frame/image 的既有
+  断言（行名 `Rectangle`/`Path`、Board 轮廓中心）撞车。
+- 下一步：F 阶段余项：Web Worker（缩略图/索引/导入）、笔工具、布尔与路径编辑、
+  F5.7 的 comments/插件注册/`subscribe-team`；阶段 B 的 M0/M1 待开工。
 
 ---
 
