@@ -123,6 +123,7 @@ export function redoStep(state: UndoState): UndoStep | null {
 //   attribute the old shape does not carry (or carries as nil) inverts to a
 //   nil val, which the backend set-shape-attr applies as a dissoc.
 // - add-obj: a del-obj;
+// - del-obj: the add-obj changes that re-create the deleted subtree;
 // - mov-objects: one mov-objects per shape, back to its previous parent and
 //   previous position.
 // The changes are walked in reverse, so a commit that adds then modifies a
@@ -160,10 +161,12 @@ export function invertChanges(
         });
         break;
       case "del-obj":
-        // No F9 write deletes a shape yet (drawing adds, undo deletes), and
-        // the inverse would need the deleted snapshot. Fail loudly rather
-        // than record an undo that cannot restore it.
-        throw new Error("workspace-undo: a del-obj commit has no inverse");
+        // The only F9 write that deletes is the empty text commit, and the
+        // model before the commit still holds the snapshot: re-add it. A
+        // delete takes the whole subtree, so every descendant comes back
+        // too, each one after its parent.
+        inverted.push(...restoreAdds(objects, change.id, change["page-id"]));
+        break;
       case "add-page":
       case "mod-page":
       case "del-page":
@@ -211,6 +214,48 @@ export function invertChanges(
   }
 
   return inverted;
+}
+
+// The add-obj changes that restore one deleted shape: the shape itself at the
+// index it held in the parent it was cut from, then its subtree (a child
+// needs its parent to exist; the container's snapshot already lists it, so
+// the backend add-shape leaves the children list alone).
+function restoreAdds(
+  objects: WorkspaceObjects,
+  id: string,
+  pageId: string,
+): UpdateFileChange[] {
+  const shape = objects[id];
+  if (shape === undefined || shape === null) return [];
+
+  const parentId =
+    typeof shape["parent-id"] === "string" ? shape["parent-id"] : ZERO_UUID;
+  const frameId =
+    typeof shape["frame-id"] === "string" ? shape["frame-id"] : parentId;
+  const parent = objects[parentId];
+  const siblings =
+    parent !== undefined && parent !== null && Array.isArray(parent.shapes)
+      ? parent.shapes
+      : [];
+  const at = siblings.indexOf(id);
+
+  const changes: UpdateFileChange[] = [
+    {
+      type: "add-obj",
+      id,
+      "page-id": pageId,
+      "frame-id": frameId,
+      "parent-id": parentId,
+      index: at < 0 ? siblings.length : at,
+      obj: { ...shape },
+    },
+  ];
+
+  const children = Array.isArray(shape.shapes) ? shape.shapes : [];
+  for (const childId of children) {
+    changes.push(...restoreAdds(objects, String(childId), pageId));
+  }
+  return changes;
 }
 
 // The local mirror of process-changes over the JS model, used by undo and

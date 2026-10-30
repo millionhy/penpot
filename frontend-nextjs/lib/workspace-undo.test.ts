@@ -285,10 +285,44 @@ describe("invertChanges", () => {
     ]);
   });
 
-  it("refuses to invert a del-obj, which no F9 write produces", () => {
-    expect(() =>
-      invertChanges(model(), [{ type: "del-obj", "page-id": PAGE_ID, id: RECT }]),
-    ).toThrow(/no inverse/);
+  it("inverts a del-obj into the add-obj that restores the snapshot", () => {
+    const before = model();
+    const [restored] = invertChanges(before, [
+      { type: "del-obj", "page-id": PAGE_ID, id: RECT },
+    ]);
+    expect(restored).toEqual({
+      type: "add-obj",
+      id: RECT,
+      "page-id": PAGE_ID,
+      "frame-id": FRAME_A,
+      "parent-id": FRAME_A,
+      index: 0,
+      obj: before[RECT],
+    });
+  });
+
+  it("round-trips a deleted shape back into its slot", () => {
+    const before = orderedModel();
+    const changes: UpdateFileChange[] = [
+      { type: "del-obj", "page-id": PAGE_ID, id: ITEM_B },
+    ];
+    const deleted = applyUpdateChanges(before, changes);
+    expect(deleted[ITEM_B]).toBeUndefined();
+    expect(deleted[FRAME_A].shapes).toEqual([ITEM_A, ITEM_C, ITEM_D]);
+
+    const undone = applyUpdateChanges(deleted, invertChanges(before, changes));
+    expect(undone[ITEM_B]).toBeDefined();
+    expect(undone[FRAME_A].shapes).toEqual(ITEMS);
+  });
+
+  it("restores a deleted subtree parent first", () => {
+    // Deleting the frame takes its single child with it.
+    const inverted = invertChanges(model(), [
+      { type: "del-obj", "page-id": PAGE_ID, id: FRAME_A },
+    ]);
+    expect(
+      inverted.map((change) => (change.type === "add-obj" ? change.id : "")),
+    ).toEqual([FRAME_A, RECT]);
   });
 });
 
