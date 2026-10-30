@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成；F8 切片计划已定，见 7.46） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
@@ -42,7 +42,7 @@
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | ✅ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；四片全部完成（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入、F7.4 完整 API 上下文：workspace 代理 + 事件派发 + 画布桥接，见 7.44）；结构写/文本/媒体/代码生成等延后项以命名错误登记 |
 | F8 | WebSocket 协作客户端 | ✅ | 四片全部完成（F8.1 传输层 / F8.2 订阅与远端变更 / F8.3 在场与指针 / F8.4 route/shell 接线），直连 `backendOrigin` 的 `/ws/notifications`；两标签页冒烟 12/12（远端形状、游标与 5s TTL、断网重连重订阅、只读无写），见 7.46–7.48 |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；余下按 7.25 路线补浏览器冒烟；F7.4 已完成（见 7.44）；协作光标与远端变更已随 F8.3/F8.4 落地，Web Worker 仍留后 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；浏览器冒烟 43/43（含文本提交 500 与 del-obj 反演两个缺陷，见 7.49）；F7.4 已完成（见 7.44）；协作光标与远端变更已随 F8.3/F8.4 落地，Web Worker 仍留后 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
@@ -336,10 +336,12 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
   （约束与重排统一走 wasm 的 propagate，布局属性编辑后自动重排子级，见 7.39）；
   F9.12 grid cells 编辑入口完成（面板的 Grid cell 段、cell map 的分区维护、
   transit 的 uuid/keyword 编码，见 7.40）；
-  余下补浏览器冒烟；F7.4 已完成（见 7.44）；
+  浏览器冒烟完成（43/43：绘制、移动与撤销、resize/rotate、样式、文本、curve、
+  frame 子级与 reflow、图片、z-order、zoom、Escape、Shift 多选、空文本删除与
+  恢复、拖入重父、reload，见 7.49）；F7.4 已完成（见 7.44）；
   Web Worker
-  （缩略图/索引/导入）+ 协作光标 + 其余绘制（线条/箭头/笔工具）/布尔/编辑/token
-  子流程仍在 F3–F8 验证后推进。
+  （缩略图/索引/导入）+ 其余绘制（线条/箭头/笔工具）/布尔/编辑/token
+  子流程仍在后续推进。
 
 每个路由组的完成标准（DoD）：
 
@@ -383,7 +385,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 ## 5. 里程碑（前端优先）
 
 ```
-阶段 F  █████████████████████████████░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.3 完成；F9.1–F9.11、F9.3 伴随变更、drop-index、F9.10 子级传播、F9.11 布局 reflow 与 F9.12 grid cells 入口完成：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板、缩放手柄、撤销/重做、z-order、伴随变更、布局内插入与重排、布局/约束段与多选批量、resize 约束传播、布局重排走 wasm 传播)
+阶段 F  █████████████████████████████░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.4 完成；F9.1–F9.12、F9.3 伴随变更、drop-index、F9.10 子级传播、F9.11 布局 reflow 与 F9.12 grid cells 入口完成、浏览器冒烟 43/43：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板、缩放手柄、撤销/重做、z-order、伴随变更、布局内插入与重排、布局/约束段与多选批量、resize 约束传播、布局重排走 wasm 传播)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
@@ -2596,6 +2598,53 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 提交：`387c7ebdcd :sparkles: Wire the collaboration client into the workspace`。
 - 下一步：F9 的浏览器冒烟清单（7.25 路线）；F8 不做项维持 7.46（library-change、
   notification、评论广播、dashboard 订阅、头像栈、多人撤销合并）。
+
+### 7.49 本轮（2026-10-29，第四十八批：F9 浏览器冒烟清单）
+
+- 诉求：按 7.25 路线把 F9 的浏览器冒烟补齐，跑出并修掉真实缺陷。
+- 做法：沿用 7.25/7.41 的 headless Chrome + CDP 路线（不引 playwright）。临时脚本
+  `.git/f9-smoke.mjs`（不入库）：登录测试账号 → 一次性新建文件 → 一趟跑完整条
+  链路，43 条断言，退出 0；截图 `.git/f9-a.png`。
+- 清单（43/43 通过）：
+  1. 绘制：rect 工具画 170×110，8 个 resize 手柄 + 4 个旋转区，一次 update-file。
+  2. 移动 / 撤销 / 重做：拖动 dx=90 dy=50，Ctrl+Z 回原位，Ctrl+Shift+Z 再前进。
+  3. resize / rotate：右柄 +80，Ctrl+Z 回宽；右上旋转区转 30.14°，Ctrl+Z 归零。
+  4. 样式：不透明度 50 落地，Ctrl+Z 回 100。
+  5. 文本：文本工具开行内编辑器、提交加一行、重开读到 `Hello F9`。
+  6. 自由手绘：curve 工具一条 Path，一次写。
+  7. frame：Board 内画矩形自动成为子级；子级约束改 `scale` 后放大父级，子级宽
+     90 → 128.57（reflow 生效）。
+  8. 图片：文件选择器走 media 上传，层名 `cayla1`；宽度改 240。
+  9. z-order：Ctrl+ArrowDown 改层序，一次写。
+  10. zoom：缩放菜单 100% → 130%。
+  11. Escape 取消拖动：X/Y 轴不变，零写入。
+  12. Shift 多选：点两行，标题显示「已选择 2 项」。
+  13. 空文本提交删除（6 行 → 5 行，一次写），Ctrl+Z 恢复（→ 6 行）。
+  14. 拖入 Board 重父：二级行 1 → 2，一次写。
+  15. reload：6 行全回、零写入、宽度 240 仍在；无 console 错误、无失败 RPC。
+- 冒烟挖出的两个真实缺陷：
+  1. 文本提交整批 500。`lib/transit.ts` 的 `KEYWORD_VALUE_KEY` 含 `type`，把文本
+     content 的节点类型 `root/paragraph-set/paragraph` 重打成 `~:root`；backend 的
+     `app.common.types.shape.text/schema:content` 要 `[:= "root"]` 这类字符串，校验
+     只卡类型，于是 update-file 直接 500。修法：加 `TEXT_NODE_TYPE` 白名单，只这
+     三个值保持字符串；`lib/transit.test.ts` 追加一例，断言文中没有 `~:root` /
+     `~:paragraph` 且回读相等。
+  2. 空文本删除不可撤销。`lib/workspace-undo.ts` 的 `invertChanges` 对 `del-obj`
+     抛错，撤销记录在请求前就失败，删除后 Ctrl+Z 什么都不做。修法：
+     `restoreAdds` 按父先子后重新出 `add-obj`（index 取父 shapes 里的位置，缺失
+     落末尾；parent-id/frame-id 缺失用 zero uuid 兜底；父的 obj 快照已含 shapes，
+     backend add-shape 不会再插一次）。三条单测覆盖反演、回落与子树顺序。
+- 冒烟自身的坑（不是产品缺陷）：脚本原先只给 `z` 发 keydown/keyup，不带 Control
+  键本身，画布的 `keys.mod` 一直为真（参考端 `app.main.streams/keyboard-mod` 同样
+  只看 Control 键的按下/松开），于是下一个落点变成框选——「Escape 取消拖动」那条
+  一直是假通过。修法：`pressKey` 先按下修饰键、最后松开，跟真用户同路。
+- 其它事实：frame 一级子级默认 constraints `left/top`，不先改 `scale` 就不会随父级
+  缩放；reload 后 Board 行回到折叠，行数要用 toggle 展开后再数。
+- 验证：冒烟 43/43；`npx tsc --noEmit --incremental false` 退出 0；`npx vitest run`
+  77 文件 1765 例全过；`npx next lint` 无告警。
+- 一次性文件：`ad9d5693-49bf-81be-8008-dd14f16961af`（未删，方便复核）。
+- 下一步：F 阶段余项：Web Worker（缩略图/索引/导入）、线条/箭头/笔工具、布尔
+  与路径编辑；阶段 B 的 M0/M1 待开工。
 
 ---
 
