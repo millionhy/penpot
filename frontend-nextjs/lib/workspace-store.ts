@@ -17,6 +17,8 @@
 
 import type { WorkspaceDrawTool, WorkspaceFile, WorkspaceObjects } from "@/lib/workspace";
 import type { DrawPoint } from "@/lib/workspace-draw";
+import type { EditNode } from "@/lib/workspace-node-edit";
+import type { PenNode } from "@/lib/workspace-pen";
 import type { PresenceState } from "@/lib/workspace-presence";
 import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";
 import type { ViewportRect, ViewportState } from "@/lib/workspace-viewport";
@@ -56,6 +58,27 @@ export interface CurvePreview {
 export interface LinePreview {
   start: DrawPoint;
   end: DrawPoint;
+}
+
+// The draft of the pen tool (第3项), in world units: the nodes placed so far,
+// the pointer for the rubber band and whether the draft closes on itself.
+// The canvas writes it on every node and on every passing move; null while
+// no pen draft runs.
+export interface PenPreview {
+  nodes: PenNode[];
+  cursor: DrawPoint | null;
+  closed: boolean;
+}
+
+// The anchors of a shape open in the node editor (F9.13): the canvas writes
+// the list on entry, on every passing move and after a commit; the overlay
+// draws the preview path, the anchors and the handles from it. Null while
+// no path edition runs.
+export interface NodeEditState {
+  shapeId: string;
+  nodes: EditNode[];
+  // The anchor the last press selected; null when the edition has none.
+  selected: number | null;
 }
 
 // The live world matrix of a resize/rotate gesture (F9.6), in the transit
@@ -115,6 +138,10 @@ export interface WorkspaceState {
   curvePreview: CurvePreview | null;
   // The live segment of a running line or arrow drag; null otherwise.
   linePreview: LinePreview | null;
+  // The draft of the pen tool; null while no draft runs.
+  penPreview: PenPreview | null;
+  // The anchors of the path open in the node editor; null otherwise.
+  nodeEdit: NodeEditState | null;
   // The live world matrix of a running resize/rotate gesture (F9.6); null
   // otherwise.
   transformPreview: TransformPreview | null;
@@ -147,6 +174,8 @@ const initialState: WorkspaceState = {
   drawPreview: null,
   curvePreview: null,
   linePreview: null,
+  penPreview: null,
+  nodeEdit: null,
   transformPreview: null,
   canUndo: false,
   canRedo: false,
@@ -275,6 +304,20 @@ export function setCurvePreview(preview: CurvePreview | null): void {
 // clears it (under the threshold, after the release and on every abort).
 export function setLinePreview(preview: LinePreview | null): void {
   setWorkspaceState({ linePreview: preview });
+}
+
+// The pen draft the overlay draws (the placed nodes, the closing flag and
+// the rubber band to the pointer); null clears it on commit and on Escape.
+export function setPenPreview(preview: PenPreview | null): void {
+  setWorkspaceState({ penPreview: preview });
+}
+
+// The anchors of the path open in the node editor, with the selected anchor;
+// null closes the edition. The canvas writes a whole new slice per change,
+// so the overlay re-renders on every passing move.
+export function setNodeEdit(edit: NodeEditState | null): void {
+  if (edit !== null && state.nodeEdit === edit) return;
+  setWorkspaceState({ nodeEdit: edit });
 }
 
 // --- Transform preview (F9.6) -----------------------------------------------

@@ -8,16 +8,18 @@
 // - the link-file-to-library calls of app.main.ui.dashboard.import and the
 //   clone-template / get-builtin-templates commands of app.main.data.dashboard.
 //
-// The CLJS worker analyzes Blobs behind object URIs; the shell receives the
-// picked File objects directly and reads them here, so there is no worker hop
-// and no URI lifecycle to manage.
+// The CLJS worker analyzes Blobs behind object URIs; this port hands the
+// picked File itself to a module worker (lib/import-analyze.worker) and keeps
+// a synchronous read as the fallback, so there is no object-URI lifecycle to
+// manage and a build without worker support still imports files.
 //
 // Deviations, documented:
 // - export-binfile is sent without the :version 3 the CLJS call site still
 //   passes; the backend schema dropped the parameter in 2.12 (see the
 //   ::doc/changes entry of export-binfile).
 // - The 200 ms pacing the CLJS worker puts between analyze results is
-//   dropped; the shell results arrive as the local reads settle.
+//   dropped; the shell results arrive as the worker answers (or as the
+//   synchronous fallback settles).
 // - The name-editing path of the import dialog stays unported: it only
 //   appears for the removed "legacy-zip" format (editable? requires it).
 // - A zip without a manifest reports the CLJS validation hint as a plain
@@ -25,6 +27,7 @@
 //   other zip failures carry the reader's own text.
 
 import { RpcError } from "./errors";
+import { analyzeImportFileOffThread } from "./import-analyze-worker-client";
 import { tr } from "./i18n";
 import { cmd, cmdSse } from "./rpc";
 import { keyword } from "./transit";
@@ -324,33 +327,66 @@ function createUuid(): string {
   return crypto.randomUUID();
 }
 
-// analyze-file of the worker, reading the File directly. Every failure comes
-// back as one "analyze-error" entry, like the worker's catch branch: the
-// dialog never throws.
+// The byte-level analysis, free of the dialog model and of i18n: the import
+// worker runs it off the main thread and the synchronous reader runs the
+// same function as the fallback. Throws on an invalid archive, like the
+// worker did, so the caller maps the message.
+export type ImportAnalysis =
+  | { format: "binfile-v3"; files: ImportManifestFile[] }
+  | { format: "binfile-v1"; fileId: string }
+  | { format: "unknown" }
+  // Only the worker client produces this variant: the worker reports the
+  // reader's message instead of throwing across the boundary.
+  | { format: "error"; message: string };
+
+export async function analyzeImportBytes(bytes: Uint8Array): Promise<ImportAnalysis> {
+  const sniff = sniffImportFormat(bytes);
+  if (sniff === "zip") {
+    const manifest = await readZipManifest(bytes);
+    if (manifest.type !== "penpot/export-files") return { format: "unknown" };
+    return { format: "binfile-v3", files: manifest.files };
+  }
+  if (sniff === "binfile-v1") return { format: "binfile-v1", fileId: createUuid() };
+  return { format: "unknown" };
+}
+
+// analyze-file of the worker, reading the File directly. The worker does the
+// read and the ZIP parse when the browser has one; the synchronous reader
+// below is the fallback. Every failure comes back as one "analyze-error"
+// entry, like the worker's catch branch: the dialog never throws.
 export async function analyzeImportFile(picked: { key: string; file: File }): Promise<ImportEntry[]> {
   const fallback = tr("dashboard.import.analyze-error");
   const base = { sourceKey: picked.key, file: picked.file, name: picked.file.name };
   try {
-    const bytes = new Uint8Array(await picked.file.arrayBuffer());
-    const sniff = sniffImportFormat(bytes);
-    if (sniff === "zip") {
-      const manifest = await readZipManifest(bytes);
-      if (manifest.type === "penpot/export-files") {
-        return manifest.files.map((inner) => ({
-          ...base,
-          name: inner.name,
-          fileId: inner.id,
-          format: "binfile-v3" as const,
-          status: "import-ready" as const,
-        }));
-      }
-      return [{ ...base, fileId: null, format: null, status: "analyze-error", error: fallback }];
-    }
-    if (sniff === "binfile-v1") {
+    const offThread = await analyzeImportFileOffThread(picked.file);
+    const analysis =
+      offThread ??
+      (await analyzeImportBytes(new Uint8Array(await picked.file.arrayBuffer())));
+    if (analysis.format === "error") {
       return [
         {
           ...base,
-          fileId: createUuid(),
+          fileId: null,
+          format: null,
+          status: "analyze-error",
+          error: importCauseMessage(new Error(analysis.message), fallback),
+        },
+      ];
+    }
+    if (analysis.format === "binfile-v3") {
+      return analysis.files.map((inner) => ({
+        ...base,
+        name: inner.name,
+        fileId: inner.id,
+        format: "binfile-v3" as const,
+        status: "import-ready" as const,
+      }));
+    }
+    if (analysis.format === "binfile-v1") {
+      return [
+        {
+          ...base,
+          fileId: analysis.fileId,
           format: "binfile-v1" as const,
           status: "import-ready" as const,
         },

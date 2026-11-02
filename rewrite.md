@@ -42,7 +42,7 @@
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | ✅ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；四片全部完成（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入、F7.4 完整 API 上下文：workspace 代理 + 事件派发 + 画布桥接，见 7.44）；结构写/文本/媒体/代码生成等延后项以命名错误登记 |
 | F8 | WebSocket 协作客户端 | ✅ | 四片全部完成（F8.1 传输层 / F8.2 订阅与远端变更 / F8.3 在场与指针 / F8.4 route/shell 接线），直连 `backendOrigin` 的 `/ws/notifications`；两标签页冒烟 12/12（远端形状、游标与 5s TTL、断网重连重订阅、只读无写），见 7.46–7.48 |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；浏览器冒烟 43/43（含文本提交 500 与 del-obj 反演两个缺陷，见 7.49）；F7.4 已完成（见 7.44）；协作光标与远端变更已随 F8.3/F8.4 落地，Web Worker 仍留后 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；浏览器冒烟 43/43（含文本提交 500 与 del-obj 反演两个缺陷，见 7.49）；F7.4 已完成（见 7.44）；F9.5 的线条/箭头与工具栏 flyout（见 7.50）、F9.13 布尔命令与路径节点编辑（见 7.51）完成；协作光标与远端变更已随 F8.3/F8.4 落地；导入分析已入 Web Worker，缩略图与索引待独立切片 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
@@ -2697,8 +2697,74 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   单击不落形状、提交后工具回 move、主按钮回落 rect）。
 - 冒烟新坐标放在画布左侧空白区，避免与 rect/text/curve/frame/image 的既有
   断言（行名 `Rectangle`/`Path`、Board 轮廓中心）撞车。
-- 下一步：F 阶段余项：Web Worker（缩略图/索引/导入）、笔工具、布尔与路径编辑、
-  F5.7 的 comments/插件注册/`subscribe-team`；阶段 B 的 M0/M1 待开工。
+- 下一步：见 7.51（笔工具、布尔、路径节点编辑与导入 worker）。
+
+### 7.51 本轮（2026-10-30，第五十批：笔工具、布尔、路径节点编辑与导入 worker）
+
+- 诉求：F 阶段余项四件——Web Worker（缩略图/索引/导入）、笔工具、布尔、
+  路径编辑。三项编辑器能力落地，Web Worker 落地导入分析，缩略图与索引给出
+  切片边界。
+- 笔工具（续 7.45）：
+  - `lib/workspace-path.ts` 的 `contentRect` 改为只收端点、再解析三次贝塞尔的
+    极值。原先把控制点当 bbox 边界，斜曲线会把 x/y/width/height 撑大；参考端
+    `content->selrect` 用的是曲线极值，不是控制点包围盒。
+  - `lib/workspace-pen.test.ts` 的曲线 bbox 断言改为 `-80/9` / `80/9`（该曲线
+    x(t) 的极值），6 个文件 61 例通过。
+- 布尔（`bool.cljs` create-bool 的移植）：
+  - `lib/render-wasm/bool.ts`：wasm ABI 桥。`_start_temp_objects` → 操作数
+    subtree 逐个 `set_object` → `_init_shapes_pool` → `_alloc_bytes(16*n)` 逆序
+    写 uuid 的四个 u32 → `_calculate_bool(rawType)` → 头 u32 是段数、其后每段
+    7 个 u32 拷成 `PathData` → `_free_bytes`，finally `_end_temp_objects`。
+    RawBoolType 为 union 0 / difference 1 / intersection 2 / exclude 3。内存
+    增长会 detach `HEAPU32`，alloc 与 calculate 之后各重读一次视图。
+  - `lib/workspace-bool.ts`：操作数排序（`orderByIndexedShapes` 逆序 DFS，
+    top-first）、过滤 frame/variant/组件副本、children 反转为 bottom-first、
+    head = difference 取 children[0]、其余取最后一个、样式从 head 继承、
+    change 列表为 add-obj（index = headIndex + 1）+ 各 operand 清 layout-item
+    的 mod-obj + mov-objects。
+  - `components/workspace-wasm-canvas.tsx`：`performBool` 一次写（写前算内容，
+    失败只在 store 报错、不碰文件）；快捷键 Ctrl/Cmd+Alt+U/D/I/E，只在 idle
+    且可编辑时生效。渲染器未 ready 或算不出内容时不做纯 JS 回退（已注释）。
+  - `lib/workspace-bool.test.ts` 15 例（排序、过滤、head、样式、change 形态）。
+  - 未做：`change-bool-type`、`bool-to-group`——两者要先有图层/右键菜单切片。
+- 路径节点编辑：
+  - `lib/workspace-node-edit.ts`：`pathEditNodes`（显式闭合段折进首锚点，曲线
+    闭合时 out←c1、首锚点 in←c2）、`nodesToSegments` / `contentFromNodes` /
+    `nodesToSvgPath`、`moveNode`、`moveHandle`（mirror 关掉 Alt 就断开对称）、
+    `deleteNode`（子路径少于 2 节点整组丢弃）、`isEditablePath`、`hitNode` /
+    `hitHandle`（6 屏幕像素半径）、`buildNodeEditChange`（一次 mod-obj：
+    content/x/y/width/height/selrect/points）。
+  - store：`nodeEdit: { shapeId, nodes, selected } | null` 切片与 `setNodeEdit`。
+  - overlay：编辑中隐藏 selection 轮廓、bounds 与 resize/rotate 手柄；画预览
+    path、每锚点方框（选中态高亮）、每手柄的连线与圆点。尺寸都除 zoom，缩放
+    不变粗。
+  - canvas：move 工具下双击路径进入；拖锚点或手柄实时改节点，释放时一次
+    提交（`sendUpdateFile` → 本地镜像 → 索引重建 → wasm 增量上传 → 节点回写）；
+    pointercancel 与 Escape 回滚到按下快照；Delete/Backspace 删点，最后一个
+    子路径删空时改走一次 del-obj 删形状；Enter 退出；切工具、切页、卸载都关闭
+    编辑。
+  - `lib/workspace-node-edit.test.ts` 18 例。
+  - 偏差（已注释）：不做节点插入（点中某段加点）与分段（split）、不处理 shape
+    transform（与既有 overlay 一样按世界坐标近似）、无对齐与吸附。
+- 导入分析的 Web Worker：
+  - `lib/import-analyze.worker.ts`：module worker，直接收 `File`、
+    `arrayBuffer()` → `analyzeImportBytes`，异常回 error message。
+  - `lib/import-analyze-worker-client.ts`：懒创建单例、pending Map 按 id 结算、
+    worker error 时全部 settle(null) 并终止、`disposeImportAnalyzer`。
+  - `lib/binfile.ts`：抽出 `analyzeImportBytes(bytes)`；`analyzeImportFile` 先走
+    worker，返回 null（node、无 Worker、构造失败）再同步回退。新增
+    `ImportAnalysis` 联合类型。
+  - `components/import-dialog.tsx` 卸载时 dispose，避免对话框每次开合堆 worker。
+  - 缩略图与索引仍留后，边界是独立的：缩略图要在 worker 里构建 wasm 渲染器
+    与 OffscreenCanvas（`render-wasm/bridge.ts` 依赖 `document`）；索引的
+    `lib/workspace-index.ts` 是同步 quadtree，每次写都重建，转 worker 需要
+    常驻 page 状态与异步总线。本轮只落地导入分析。
+- 验证：`npx tsc --noEmit --incremental false` 退出 0；`npx vitest run` 82 文件
+  1841 例全过；`npx next lint` 无告警（顺带修了 `render-wasm/bool.ts` 局部变量
+  名 `module` 触发 no-assign-module-variable、`workspace-pen.ts` 未用的
+  `pointsRect`）。
+- 下一步：Web Worker 余项（缩略图、索引）、F5.7 的 comments/插件注册/
+  `subscribe-team`；阶段 B 的 M0/M1 待开工。
 
 ---
 

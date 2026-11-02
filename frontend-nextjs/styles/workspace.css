@@ -2012,6 +2012,34 @@
   stroke: var(--color-accent-tertiary);
 }
 
+/* The node dots of a running pen draft (第3项): the anchors the user already
+   placed. The radius and the stroke ride inline, scaled by the zoom. */
+.pp-overlay-pen-node {
+  fill: var(--color-static-white);
+  stroke: var(--color-accent-tertiary);
+}
+
+/* The node editor (F9.13): the rebuilt path, the square anchors and the two
+   round handles per anchor, with the lines that tie them to it. The sizes
+   ride inline in screen pixels, like the pen draft dots. */
+.pp-overlay-node {
+  fill: var(--color-static-white);
+  stroke: var(--color-accent-tertiary);
+}
+
+.pp-overlay-node-selected {
+  fill: var(--color-accent-tertiary);
+}
+
+.pp-overlay-node-handle {
+  fill: var(--color-accent-tertiary);
+  stroke: var(--color-static-white);
+}
+
+.pp-overlay-node-handle-line {
+  stroke: var(--color-accent-tertiary);
+}
+
 /* The remote cursors (F8.3): an arrow plus a name bubble per session,
    placed in world coordinates by the component (a translate and the
    inverse zoom). The layer never takes pointer events. The bubble follows

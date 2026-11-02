@@ -281,7 +281,7 @@ describe("isLineTool", () => {
 });
 
 describe("isDrawingTool", () => {
-  it("accepts the box tools, the freehand tool and the line tools", () => {
+  it("accepts the box tools, the freehand tool, the line tools and the pen", () => {
     expect(isDrawingTool("frame")).toBe(true);
     expect(isDrawingTool("rect")).toBe(true);
     expect(isDrawingTool("ellipse")).toBe(true);
@@ -289,10 +289,11 @@ describe("isDrawingTool", () => {
     expect(isDrawingTool("curve")).toBe(true);
     expect(isDrawingTool("line")).toBe(true);
     expect(isDrawingTool("arrow")).toBe(true);
+    expect(isDrawingTool("path")).toBe(true);
   });
 
-  it("rejects move, image and the pen tool", () => {
-    const rest: WorkspaceTool[] = ["move", "image", "path"];
+  it("rejects move and image", () => {
+    const rest: WorkspaceTool[] = ["move", "image"];
     for (const tool of rest) expect(isDrawingTool(tool)).toBe(false);
   });
 });

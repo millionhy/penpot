@@ -13,9 +13,9 @@
 // Every tool slot selects its tool, so the row is also the way back to move.
 // The CLJS toolbar renders nothing for read-only files, and so does this one.
 //
-// 第2项 opened text, the freehand curve and the line/arrow drag tools. The
-// free-draw group still has one member: the pen tool has no port yet, so the
-// group stays a plain button rather than a flyout that would offer it.
+// 第2项 opened text, the freehand curve and the line/arrow drag tools; 第3项
+// added the pen, which shares the free-draw group with the curve and is its
+// default member (the grouped-tools order of top_toolbar.cljs).
 //
 // Deviations from the CLJS original, documented (AD12):
 // - No MCP button, no debug panel and no toolbar collapse toggle; the
@@ -122,7 +122,7 @@ const TOOL_GROUPS: readonly ToolGroup[] = [
   },
   { tool: "text", icon: <TextIcon />, members: ["text"] },
   { tool: "image", icon: <ImageIcon />, members: ["image"] },
-  { tool: "curve", icon: <CurveIcon />, members: ["curve"] },
+  { tool: "path", icon: <PathIcon />, members: ["path", "curve"] },
 ];
 
 // active-group-tool: the member the group had active, else its default. The

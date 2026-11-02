@@ -19,6 +19,7 @@ import {
   setHoverShapeId,
   setHoverTopFrameId,
   setLinePreview,
+  setNodeEdit,
   setSelection,
   setTransformPreview,
   setUndoAvailability,
@@ -51,6 +52,7 @@ describe("getInitialWorkspaceState", () => {
     expect(initial.drawPreview).toBeNull();
     expect(initial.curvePreview).toBeNull();
     expect(initial.linePreview).toBeNull();
+    expect(initial.nodeEdit).toBeNull();
     expect(initial.transformPreview).toBeNull();
     expect(initial.canUndo).toBe(false);
     expect(initial.canRedo).toBe(false);
@@ -60,6 +62,20 @@ describe("getInitialWorkspaceState", () => {
     const initial = getInitialWorkspaceState();
     setWorkspaceState({ status: "loading" });
     expect(getInitialWorkspaceState()).toBe(initial);
+  });
+});
+
+describe("setNodeEdit", () => {
+  it("stores the anchors of the open path and clears them", () => {
+    const nodes = [
+      { point: { x: 0, y: 0 }, in: null, out: null, start: true, close: false },
+      { point: { x: 10, y: 0 }, in: null, out: null, start: false, close: false },
+    ];
+    const edit = { shapeId: "path", nodes, selected: 0 };
+    setNodeEdit(edit);
+    expect(getWorkspaceState().nodeEdit).toBe(edit);
+    setNodeEdit(null);
+    expect(getWorkspaceState().nodeEdit).toBeNull();
   });
 });
 

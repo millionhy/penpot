@@ -199,7 +199,7 @@ import {
 import { config } from "@/lib/config";
 import { ZERO_UUID } from "@/lib/file-data";
 import { cmdEncoded } from "@/lib/rpc";
-import { encodeUpdateFile, type UpdateFileChange } from "@/lib/transit";
+import { encodeUpdateFile, PathData, type UpdateFileChange } from "@/lib/transit";
 import {
   canEditFile,
   immediateChildren,
@@ -207,6 +207,7 @@ import {
   isDrawTool,
   isDrawingTool,
   isLineTool,
+  isPenTool,
   pageObjects,
   type WorkspaceDrawTool,
   type WorkspaceFile,
@@ -226,6 +227,33 @@ import {
 } from "@/lib/workspace-draw";
 import { createCurveShape } from "@/lib/workspace-path";
 import { createLineShape, lineEndPoint } from "@/lib/workspace-line";
+import { calculateBool } from "@/lib/render-wasm/bool";
+import {
+  BOOL_SHORTCUTS,
+  boolRequest,
+  buildBoolChanges,
+  type BoolType,
+} from "@/lib/workspace-bool";
+import {
+  PEN_CLOSE_THRESHOLD,
+  PEN_INSERT_THRESHOLD,
+  createPenShape,
+  penFixedAngle,
+  penNode,
+  withDragHandle,
+  type PenNode,
+} from "@/lib/workspace-pen";
+import {
+  buildNodeEditChange,
+  deleteNode,
+  hitHandle,
+  hitNode,
+  isEditablePath,
+  moveHandle,
+  moveNode,
+  pathEditNodes,
+  type EditNode,
+} from "@/lib/workspace-node-edit";
 import {
   createImageShape,
   imageFillReferences,
@@ -341,6 +369,8 @@ import {
   setHoverShapeId,
   setHoverTopFrameId,
   setLinePreview,
+  setNodeEdit,
+  setPenPreview,
   setSelection,
   setTransformPreview,
   setUndoAvailability,
@@ -467,6 +497,17 @@ interface TransformGestureState {
 
 // The pointer gesture the handlers mutate (the CLJS keeps this spread
 // across the stream pipeline).
+interface NodeDragState {
+  // The anchor the press grabbed, and which of its parts: the anchor itself
+  // or one of the two handles.
+  index: number;
+  kind: "node" | "in" | "out";
+  // The anchor list at the press: every passing move rebuilds from this
+  // snapshot, so the drag never accumulates rounding error.
+  nodes: EditNode[];
+  moved: boolean;
+}
+
 interface PointerInteraction {
   mode:
     | "idle"
@@ -477,6 +518,9 @@ interface PointerInteraction {
     | "draw"
     | "curve"
     | "line"
+    | "path"
+    | "node"
+    | "node-handle"
     | "resize"
     | "rotate";
   pointerId: number | null;
@@ -522,6 +566,13 @@ interface PointerInteraction {
   // (null under the 10-screen-pixel threshold, snapped when Shift is held).
   lineStart: DrawPoint | null;
   lineEnd: DrawPoint | null;
+  // The pen press (第3项): the node the press may drag a handle on. A drag
+  // past the insert threshold turns the node into a curve; a click keeps it
+  // a corner.
+  penDragIndex: number | null;
+  // The node edit press (F9.13): the grabbed anchor or handle and the
+  // anchor list at the press.
+  nodeDrag: NodeDragState | null;
   // The transform gesture state (F9.6).
   transformGesture: TransformGestureState | null;
 }
@@ -771,6 +822,10 @@ function WorkspaceWasmCanvasImpl({
     onToolChange ?? NOOP_TOOL_CHANGE,
   );
   const cursorRef = useRef<(() => void) | null>(null);
+  // The pen draft lives in the interaction effect (it survives releases);
+  // switching away from the pen tool clears it through this ref, like
+  // clear-drawing does in the CLJS.
+  const penCancelRef = useRef<(() => void) | null>(null);
   // The overlay hands a handle press to the gesture effect through this
   // ref: the effect owns the pointer capture, the preview and the commit;
   // the overlay only knows the pointerdown.
@@ -851,12 +906,23 @@ function WorkspaceWasmCanvasImpl({
   // the shell to switch back after a draw.
   useEffect(() => {
     toolRef.current = tool;
+    // Leaving the pen tool drops the unfinished draft: the CLJS clear-drawing
+    // runs on every tool change. Leaving the move tool closes the node
+    // editor (the path edition lives under the move tool only).
+    if (tool !== "path") penCancelRef.current?.();
+    if (tool !== "move") setNodeEdit(null);
     cursorRef.current?.();
   }, [tool]);
 
   useEffect(() => {
     onToolChangeRef.current = onToolChange ?? NOOP_TOOL_CHANGE;
   }, [onToolChange]);
+
+  // A page switch or a reload closes the node editor: its anchors belong to
+  // the shape of the page that opened it.
+  useEffect(() => {
+    setNodeEdit(null);
+  }, [pageId, fileId]);
 
   // AD6: the single pessimistic write path of the canvas (F9.5). Every draw
   // and every style edit funnels through here, so the in-flight guard
@@ -1920,6 +1986,8 @@ function WorkspaceWasmCanvasImpl({
       curvePoints: [],
       lineStart: null,
       lineEnd: null,
+      penDragIndex: null,
+      nodeDrag: null,
       transformGesture: null,
     };
 
@@ -2434,6 +2502,159 @@ function WorkspaceWasmCanvasImpl({
       void performOrder(location);
     };
 
+    // --- The node editor (F9.13) ---------------------------------------
+    // A double click on a path opens its anchors under the move tool; a press
+    // on an anchor or a handle starts a drag, Delete drops the selected
+    // anchor and Escape/Enter close the edition. Every change commits one
+    // mod-obj through the shared write path (the rebuilt content plus the new
+    // box) and hands the record back to wasm; a rejected write leaves the
+    // file alone. Scope: path shapes with an identity transform, no node
+    // insertion and no segment splitting (see lib/workspace-node-edit).
+    const commitNodeEdit = async (
+      shapeId: string,
+      nodes: readonly EditNode[],
+      selected: number | null,
+    ): Promise<void> => {
+      if (!canEditRef.current) return;
+      const objects = objectsRef.current;
+      if (objects === null) return;
+      const shape = objects[shapeId];
+      if (shape === undefined || shape === null) {
+        setNodeEdit(null);
+        return;
+      }
+      const change = buildNodeEditChange(shape, nodes, pageIdRef.current);
+      if (change === null) return;
+      try {
+        const revn = await sendUpdateFile([change]);
+        if (revn === null) return;
+        const after = applyUpdateChanges(objects, [change]);
+        objectsRef.current = after;
+        indexRef.current = createWorkspaceIndex(after);
+        setWorkspaceObjects(after);
+        const next = after[shapeId];
+        if (next === undefined || next === null) {
+          setNodeEdit(null);
+          return;
+        }
+        // Re-read the anchors from the committed content: the save and the
+        // parse normalize the closing segment exactly once.
+        const content = next.content;
+        if (!(content instanceof PathData)) {
+          setNodeEdit(null);
+          return;
+        }
+        const rebuilt = pathEditNodes(content);
+        setNodeEdit({
+          shapeId,
+          nodes: rebuilt,
+          selected: selected !== null && selected < rebuilt.length ? selected : null,
+        });
+        const app = appRef.current;
+        if (app === null) return;
+        try {
+          uploadShapeGeometry(app, [next]);
+        } catch (cause: unknown) {
+          console.warn("[workspace] could not sync the path edit to wasm:", cause);
+        }
+      } catch (cause: unknown) {
+        console.error("[workspace] path edit failed:", cause);
+        setWorkspaceState({ error: cause });
+      }
+    };
+
+    const deleteEditedNode = async (): Promise<void> => {
+      if (commitPendingRef.current || !canEditRef.current) return;
+      const edit = getWorkspaceState().nodeEdit;
+      const objects = objectsRef.current;
+      if (edit === null || objects === null || edit.selected === null) return;
+      const nodes = deleteNode(edit.nodes, edit.selected);
+      if (nodes.length > 0) {
+        setNodeEdit({ shapeId: edit.shapeId, nodes, selected: null });
+        await commitNodeEdit(edit.shapeId, nodes, null);
+        return;
+      }
+      // Every subpath lost its second anchor: the shape has no geometry, so
+      // one del-obj drops it (the CLJS delete-node removes the path then).
+      const change: UpdateFileChange = {
+        type: "del-obj",
+        "page-id": pageIdRef.current,
+        id: edit.shapeId,
+      };
+      try {
+        const revn = await sendUpdateFile([change]);
+        if (revn === null) return;
+        const before = objectsRef.current ?? objects;
+        const after = applyUpdateChanges(before, [change]);
+        objectsRef.current = after;
+        indexRef.current = createWorkspaceIndex(after);
+        setWorkspaceObjects(after);
+        setSelection(
+          getWorkspaceState().selection.filter((id) => id !== edit.shapeId),
+        );
+        setNodeEdit(null);
+        const app = appRef.current;
+        if (app === null) return;
+        try {
+          uploadChangedShapes(app, before, after, [change]);
+        } catch (cause: unknown) {
+          console.warn("[workspace] could not remove the empty path:", cause);
+        }
+      } catch (cause: unknown) {
+        console.error("[workspace] dropping the empty path failed:", cause);
+        setWorkspaceState({ error: cause });
+      }
+    };
+
+    // F9.12: one boolean operation over the selection (bool.cljs
+    // create-bool). The renderer computes the resulting path from the
+    // operands; the change list then adds the bool above its head, drops
+    // the layout-item data of the operands and parents them under it. A
+    // renderer that cannot compute the content leaves the file untouched
+    // (no pure fallback in this build), and so does a rejected write.
+    const performBool = async (type: BoolType): Promise<void> => {
+      if (commitPendingRef.current || !canEditRef.current) return;
+      const objects = objectsRef.current;
+      const app = appRef.current;
+      if (objects === null || app === null) return;
+      const selection = getWorkspaceState().selection;
+      const request = boolRequest(objects, selection, type);
+      if (request === null) return;
+      try {
+        const content = calculateBool(app, request, objects);
+        if (content === null) {
+          setWorkspaceState({
+            error: new Error("workspace: the renderer produced no boolean content"),
+          });
+          return;
+        }
+        const creation = buildBoolChanges(
+          objects,
+          selection,
+          type,
+          pageIdRef.current,
+          crypto.randomUUID(),
+          content,
+        );
+        if (creation === null) return;
+        const revn = await sendUpdateFile(creation.changes);
+        if (revn === null) return;
+        const after = applyUpdateChanges(objects, creation.changes);
+        objectsRef.current = after;
+        indexRef.current = createWorkspaceIndex(after);
+        setWorkspaceObjects(after);
+        setSelection([creation.shape.id]);
+        try {
+          uploadChangedShapes(app, objects, after, creation.changes);
+        } catch (cause: unknown) {
+          console.warn("[workspace] could not sync the boolean to wasm:", cause);
+        }
+      } catch (cause: unknown) {
+        console.error("[workspace] boolean failed:", cause);
+        setWorkspaceState({ error: cause });
+      }
+    };
+
     // The threshold crossing of a pending press (AD3): commit the branch
     // the press decided — a single/toggle press updates the selection
     // first — then resolve the move set over the JS model and enter the
@@ -2776,6 +2997,54 @@ function WorkspaceWasmCanvasImpl({
       await commitAddedShape(shape, parentId, start, true);
     };
 
+    // --- The pen tool (第3项) ------------------------------------------------
+    // The draft outlives the pointer gestures: a press adds a node, the drag
+    // of that press bends it, and the release leaves the draft open for the
+    // next press. Enter, a press on the first node, a double click and a tool
+    // change close it (path/drawing.cljs start-edition).
+    let penDraft: { nodes: PenNode[]; closed: boolean; parentId: string | null } | null = null;
+
+    const penPreviewNow = (cursor: DrawPoint | null): void => {
+      if (penDraft === null || penDraft.nodes.length === 0) {
+        setPenPreview(null);
+        return;
+      }
+      setPenPreview({
+        nodes: penDraft.nodes.map((node) => ({
+          point: { ...node.point },
+          in: node.in === null ? null : { ...node.in },
+          out: node.out === null ? null : { ...node.out },
+        })),
+        cursor,
+        closed: penDraft.closed,
+      });
+    };
+
+    const clearPenDraft = (): void => {
+      penDraft = null;
+      setPenPreview(null);
+    };
+    penCancelRef.current = clearPenDraft;
+
+    // finish-path (Enter) and the closing press: one add-obj through the
+    // shared path, the selection on the new path and the tool back to move.
+    const commitPen = async (): Promise<void> => {
+      const draft = penDraft;
+      if (draft === null) return;
+      const parentId = draft.parentId;
+      const first = draft.nodes[0]?.point ?? null;
+      clearPenDraft();
+      onToolChangeRef.current("move");
+      if (!canEditRef.current) return;
+      if (!hasValidParent(parentId)) {
+        reportMissingParent();
+        return;
+      }
+      const shape = createPenShape(draft, parentId, crypto.randomUUID());
+      if (shape === null) return;
+      await commitAddedShape(shape, parentId, first, true);
+    };
+
     // The end of a text edition (shapes.cljs end-edition): an empty text
     // deletes the shape, any other value commits its content and measured
     // box in one mod-obj. Both paths mirror the change locally and upload
@@ -2872,6 +3141,15 @@ function WorkspaceWasmCanvasImpl({
     // new shapes, so the browser never reports the pair.
     const onDoubleClick = (event: MouseEvent): void => {
       if (!canEditRef.current) return;
+      if (isPenTool(toolRef.current)) {
+        // A double click finishes the pen draft (restart-draw-loop?): the
+        // repeated node of the second press merges on commit.
+        if (penDraft !== null) {
+          event.preventDefault();
+          void commitPen();
+        }
+        return;
+      }
       if (toolRef.current !== "move") return;
       const state = stateRef.current;
       if (state === null) return;
@@ -2881,7 +3159,20 @@ function WorkspaceWasmCanvasImpl({
       const objects = objectsRef.current;
       if (objects === null) return;
       const shape = objects[id];
-      if (shape === undefined || shape === null || shape.type !== "text") return;
+      if (shape === undefined || shape === null) return;
+      // A path opens its anchors in the node editor (the CLJS
+      // start-edition under the move tool).
+      if (isEditablePath(shape)) {
+        event.preventDefault();
+        setSelection([id]);
+        setNodeEdit({
+          shapeId: id,
+          nodes: pathEditNodes(shape.content as PathData),
+          selected: null,
+        });
+        return;
+      }
+      if (shape.type !== "text") return;
       event.preventDefault();
       setSelection([id]);
       openTextEditor(shape, textPlainText(shape.content));
@@ -2968,6 +3259,41 @@ function WorkspaceWasmCanvasImpl({
         return;
       }
 
+      // The node editor owns the left press (F9.13): a press on an anchor or
+      // a handle starts its drag; a press anywhere else closes the edition
+      // and falls through to the usual selection/marquee handling.
+      const nodeEdit = getWorkspaceState().nodeEdit;
+      if (event.button === 0 && nodeEdit !== null) {
+        if (toolRef.current !== "move") {
+          setNodeEdit(null);
+        } else {
+          const editWorld = toWorld(client, state);
+          const handle = hitHandle(nodeEdit.nodes, editWorld, state.zoom);
+          const anchor = handle === null ? hitNode(nodeEdit.nodes, editWorld, state.zoom) : -1;
+          if (handle !== null || anchor >= 0) {
+            event.preventDefault();
+            interaction.mode = handle === null ? "node" : "node-handle";
+            interaction.pointerId = event.pointerId;
+            interaction.downClient = client;
+            interaction.downWorld = editWorld;
+            interaction.cancelled = false;
+            interaction.nodeDrag = {
+              index: handle === null ? anchor : handle.index,
+              kind: handle === null ? "node" : handle.kind,
+              nodes: nodeEdit.nodes,
+              moved: false,
+            };
+            if (anchor >= 0) setNodeEdit({ ...nodeEdit, selected: anchor });
+            hoverActive = false;
+            setHover(null);
+            setHoverShapeId(null);
+            updateCursor();
+            return;
+          }
+          setNodeEdit(null);
+        }
+      }
+
       // A left press with a box tool starts the draw gesture (F9.5): the
       // parent resolves once, at press time, and no hover/selection logic
       // runs for this press.
@@ -2989,6 +3315,49 @@ function WorkspaceWasmCanvasImpl({
         setHover(null);
         setHoverShapeId(null);
         setDrawPreview(null);
+        updateCursor();
+        return;
+      }
+
+      // A left press with the pen tool places a node (第3项): the first press
+      // resolves the parent and opens the draft, the following ones append
+      // (path/drawing.cljs start-edition). A press on the first node closes
+      // the path once two nodes exist (close-path-drag-start).
+      if (event.button === 0 && canEditRef.current && isPenTool(toolRef.current)) {
+        event.preventDefault();
+        const penWorld = toWorld(client, state);
+        hoverActive = false;
+        setHover(null);
+        setHoverShapeId(null);
+        if (penDraft === null) {
+          const target = firstValidParent(objects, topNestedFrameAt(objects, penWorld));
+          penDraft = { nodes: [], closed: false, parentId: target === null ? null : target.id };
+        }
+        const draft = penDraft;
+        const first = draft.nodes[0];
+        const closing =
+          first !== undefined &&
+          draft.nodes.length >= 2 &&
+          Math.hypot(penWorld.x - first.point.x, penWorld.y - first.point.y) * state.zoom <=
+            PEN_CLOSE_THRESHOLD;
+        if (closing) {
+          draft.closed = true;
+          void commitPen();
+          return;
+        }
+        const last = draft.nodes[draft.nodes.length - 1];
+        const repeat =
+          last !== undefined &&
+          Math.hypot(penWorld.x - last.point.x, penWorld.y - last.point.y) * state.zoom <
+            PEN_INSERT_THRESHOLD;
+        if (!repeat) draft.nodes.push(penNode(penWorld));
+        interaction.mode = "path";
+        interaction.pointerId = event.pointerId;
+        interaction.downClient = client;
+        interaction.downWorld = penWorld;
+        interaction.penDragIndex = draft.nodes.length - 1;
+        interaction.cancelled = false;
+        penPreviewNow(penWorld);
         updateCursor();
         return;
       }
@@ -3080,6 +3449,11 @@ function WorkspaceWasmCanvasImpl({
       pointerThrottle.push(toWorld({ x: event.clientX, y: event.clientY }, state));
 
       if (interaction.mode === "idle") {
+        if (isPenTool(toolRef.current) && penDraft !== null) {
+          // The rubber band follows the pointer; a press is what adds a node.
+          penPreviewNow(toWorld({ x: event.clientX, y: event.clientY }, state));
+          return;
+        }
         // The hover visuals belong to selection mode: a draw tool shows the
         // crosshair and no hover outline until it returns to move.
         if (isDrawingTool(toolRef.current)) return;
@@ -3098,6 +3472,25 @@ function WorkspaceWasmCanvasImpl({
         panAcc.dx += -(client.x - last.x) / state.zoom;
         panAcc.dy += -(client.y - last.y) / state.zoom;
         if (panAcc.rafId === 0) panAcc.rafId = window.requestAnimationFrame(flushPan);
+        return;
+      }
+
+      if (interaction.mode === "node" || interaction.mode === "node-handle") {
+        // The press snapshot is the base of every frame: the anchor or the
+        // handle lands under the pointer, the handles of an anchor mirror
+        // around it unless Alt breaks the pair (a corner).
+        if (interaction.cancelled) return;
+        const gesture = interaction.nodeDrag;
+        const edit = getWorkspaceState().nodeEdit;
+        const down = interaction.downWorld;
+        if (gesture === null || edit === null || down === null) return;
+        const world = toWorld(client, state);
+        const nodes =
+          gesture.kind === "node"
+            ? moveNode(gesture.nodes, gesture.index, world.x - down.x, world.y - down.y)
+            : moveHandle(gesture.nodes, gesture.index, gesture.kind, world, !event.altKey);
+        interaction.nodeDrag = { ...gesture, moved: true };
+        setNodeEdit({ ...edit, nodes });
         return;
       }
 
@@ -3167,6 +3560,32 @@ function WorkspaceWasmCanvasImpl({
         return;
       }
 
+      if (interaction.mode === "path") {
+        if (interaction.cancelled) return;
+        const draft = penDraft;
+        const index = interaction.penDragIndex;
+        const node = draft === null || index === null ? undefined : draft.nodes[index];
+        if (draft === null || index === null || node === undefined) return;
+        const world = toWorld(client, state);
+        // A move under the insert threshold keeps the click: the node stays
+        // a corner and only the rubber band follows.
+        if (
+          Math.hypot(world.x - node.point.x, world.y - node.point.y) * state.zoom <
+          PEN_INSERT_THRESHOLD
+        ) {
+          penPreviewNow(world);
+          return;
+        }
+        // The drag bends the node: the outgoing handle and its mirror
+        // (drawing.cljs drag-handler). Shift snaps it to 15 degrees.
+        draft.nodes[index] = withDragHandle(
+          node,
+          event.shiftKey ? penFixedAngle(node.point, world) : world,
+        );
+        penPreviewNow(world);
+        return;
+      }
+
       if (interaction.mode === "drag") {
         // One flush per frame; the flush reads the latest world point.
         if (interaction.cancelled) return;
@@ -3221,6 +3640,8 @@ function WorkspaceWasmCanvasImpl({
       interaction.curvePoints = [];
       interaction.lineStart = null;
       interaction.lineEnd = null;
+      interaction.penDragIndex = null;
+      interaction.nodeDrag = null;
       interaction.transformGesture = null;
       updateCursor();
     };
@@ -3235,6 +3656,22 @@ function WorkspaceWasmCanvasImpl({
 
       const mode = interaction.mode;
       const cancelled = interaction.cancelled;
+
+      if (mode === "node" || mode === "node-handle") {
+        // The release commits one mod-obj: a press that never moved (a plain
+        // anchor click) and an aborted gesture send nothing. The selection
+        // made at the press stays.
+        const gesture = interaction.nodeDrag;
+        const edit = getWorkspaceState().nodeEdit;
+        const moved = gesture !== null && gesture.moved;
+        const shapeId = edit === null ? null : edit.shapeId;
+        const nodes = edit === null ? null : edit.nodes;
+        const selected = edit === null ? null : edit.selected;
+        endGesture();
+        if (cancelled || !moved || shapeId === null || nodes === null) return;
+        void commitNodeEdit(shapeId, nodes, selected);
+        return;
+      }
 
       if (mode === "draw") {
         // The release commits one add-obj (F9.5): the last previewed box,
@@ -3297,6 +3734,14 @@ function WorkspaceWasmCanvasImpl({
         onToolChangeRef.current("move");
         if (cancelled || start === null || end === null) return;
         void commitLine(start, end, parentId, arrow);
+        return;
+      }
+
+      if (mode === "path") {
+        // The release keeps the draft open for the next node; the last
+        // pointer position stays the rubber band source.
+        endGesture();
+        penPreviewNow(null);
         return;
       }
 
@@ -3382,6 +3827,13 @@ function WorkspaceWasmCanvasImpl({
 
     const onPointerCancel = (event: PointerEvent): void => {
       if (interaction.pointerId !== event.pointerId) return;
+      if (interaction.mode === "node" || interaction.mode === "node-handle") {
+        // A physical cancellation restores the anchors captured at the press;
+        // the file never saw the preview.
+        const gesture = interaction.nodeDrag;
+        const edit = getWorkspaceState().nodeEdit;
+        if (gesture !== null && edit !== null) setNodeEdit({ ...edit, nodes: gesture.nodes });
+      }
       if (interaction.mode === "area") setAreaSelect(null);
       if (interaction.mode === "draw") {
         // A cancelled draw leaves the file untouched and returns the tool
@@ -3399,6 +3851,10 @@ function WorkspaceWasmCanvasImpl({
         // tool to move, like the box tools.
         setLinePreview(null);
         onToolChangeRef.current("move");
+      }
+      if (interaction.mode === "path") {
+        // A lost pointer keeps the nodes already placed; the tool stays.
+        setPenPreview(null);
       }
       if (interaction.mode === "drag") {
         // A physical cancellation leaves the state as if the press never
@@ -3437,6 +3893,24 @@ function WorkspaceWasmCanvasImpl({
     // drag resets its preview first (the CLJS :escape emits interrupt +
     // deselect-all, so the keydown handler still clears the selection).
     const cancelGesture = (): void => {
+      // Escape drops the unfinished pen draft (the CLJS clear-drawing) and
+      // swallows the pending press.
+      if (penDraft !== null) {
+        clearPenDraft();
+        if (interaction.mode === "path") {
+          interaction.cancelled = true;
+          return;
+        }
+      }
+      if (interaction.mode === "node" || interaction.mode === "node-handle") {
+        // Escape puts the anchors back to the press snapshot; the release that
+        // follows finds the gesture cancelled and commits nothing.
+        const gesture = interaction.nodeDrag;
+        const edit = getWorkspaceState().nodeEdit;
+        if (gesture !== null && edit !== null) setNodeEdit({ ...edit, nodes: gesture.nodes });
+        interaction.cancelled = true;
+        return;
+      }
       if (interaction.mode === "area") {
         setAreaSelect(null);
         interaction.cancelled = true;
@@ -3514,10 +3988,50 @@ function WorkspaceWasmCanvasImpl({
 
     const onKeyDown = (event: KeyboardEvent): void => {
       if (isFormTarget(event.target)) return;
+      const nodeEditing = getWorkspaceState().nodeEdit !== null;
+      // The node editor keys (F9.13): Enter closes the edition, Delete or
+      // Backspace drops the selected anchor (one mod-obj, or one del-obj when
+      // the last subpath goes). Both only fire on an idle canvas.
+      if (nodeEditing && interaction.mode === "idle") {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          setNodeEdit(null);
+          return;
+        }
+        if (event.key === "Delete" || event.key === "Backspace") {
+          event.preventDefault();
+          if (!canEditRef.current) return;
+          void deleteEditedNode();
+          return;
+        }
+      }
+      // finish-path: Enter closes the pen draft while the canvas is idle.
+      if (
+        event.key === "Enter" &&
+        interaction.mode === "idle" &&
+        isPenTool(toolRef.current) &&
+        penDraft !== null
+      ) {
+        event.preventDefault();
+        void commitPen();
+        return;
+      }
       // F9.7: Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z (or Ctrl+Y on Windows)
       // redoes. Only an idle canvas takes the shortcut: a running gesture
       // owns the pointer and its pending release.
       const mod = isMacos() ? event.metaKey : event.ctrlKey;
+      // F9.12: Ctrl/Cmd+Alt+U/D/I/E create a union, difference, intersection
+      // or exclude over the selection (the CLJS bool shortcuts). The Alt
+      // modifier keeps the block below off these keys.
+      if (mod && event.altKey && !event.isComposing && interaction.mode === "idle") {
+        const boolType = BOOL_SHORTCUTS[event.key.toLowerCase()];
+        if (boolType !== undefined) {
+          event.preventDefault();
+          if (!canEditRef.current) return;
+          void performBool(boolType);
+          return;
+        }
+      }
       if (mod && !event.altKey && !event.isComposing && interaction.mode === "idle") {
         const key = event.key.toLowerCase();
         const redo =
@@ -3558,6 +4072,12 @@ function WorkspaceWasmCanvasImpl({
       }
       if (event.key === "Escape") {
         cancelGesture();
+        // Escape closes the node editor first; a second press then clears
+        // the selection (the shape stays selected while editing).
+        if (getWorkspaceState().nodeEdit !== null) {
+          setNodeEdit(null);
+          return;
+        }
         clearSelection();
         return;
       }
@@ -3627,6 +4147,9 @@ function WorkspaceWasmCanvasImpl({
       setAreaSelect(null);
       setDrawPreview(null);
       setCurvePreview(null);
+      setPenPreview(null);
+      setNodeEdit(null);
+      penCancelRef.current = null;
     };
   }, [sendUpdateFile]);
 

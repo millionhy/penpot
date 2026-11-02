@@ -31,6 +31,11 @@
 //   frame/rect/ellipse gesture, in world coordinates like the marquee.
 // - the curve and line previews (F9.5): the sampled polyline of the
 //   freehand stroke and the solid 1px line of the line/arrow drag.
+// - the pen draft (第3项): the path built so far, its node dots and the
+//   rubber band from the last node to the pointer.
+// - the node editor (F9.13): the rebuilt path of the edited anchors, their
+//   squares and the two handles of every anchor; the selection box and the
+//   resize/rotate handles hide while the edition runs.
 // - the transform preview (F9.6): the store matrix of a running
 //   resize/rotate gesture maps the outlines and the frame; the handles and
 //   the rotation zones hide while it runs.
@@ -65,6 +70,8 @@ import {
   type WorkspaceFile,
   type WorkspaceShape,
 } from "@/lib/workspace";
+import { penPreviewPath } from "@/lib/workspace-pen";
+import { nodesToSvgPath } from "@/lib/workspace-node-edit";
 import {
   getInitialWorkspaceState,
   getWorkspaceState,
@@ -226,6 +233,8 @@ export function WorkspaceViewportOverlay({
     drawPreview,
     curvePreview,
     linePreview,
+    penPreview,
+    nodeEdit,
     transformPreview,
   } = state;
   const storeObjects = state.objects;
@@ -235,6 +244,9 @@ export function WorkspaceViewportOverlay({
   );
   const geometry = useMemo(() => selectionGeometry(objects, selection), [objects, selection]);
   const previewMatrix = useMemo(() => matrixOf(transformPreview), [transformPreview]);
+  // The node editor owns the pointer: its own preview replaces the selection
+  // outline and the transform handles while it runs.
+  const editing = nodeEdit !== null;
 
   if (zoom === null || vbox === null) return null;
 
@@ -259,8 +271,12 @@ export function WorkspaceViewportOverlay({
   // The handles and the rotation zones only exist for an editable selection
   // of supported types, and they hide while a transform gesture runs.
   const handlesVisible =
-    canEditFile(file) && geometry !== null && previewMatrix === null;
+    canEditFile(file) && geometry !== null && previewMatrix === null && !editing;
   const handleSize = HANDLE_SIZE / zoom;
+  // The node dots and handle dots of the editor, in screen pixels, like the
+  // pen draft dots.
+  const anchorSize = 6 / zoom;
+  const handleRadius = 3 / zoom;
 
   return (
     <svg
@@ -278,7 +294,7 @@ export function WorkspaceViewportOverlay({
       />
 
       <g className="pp-overlay-outlines">
-        {selectedShapes.map((shape) => (
+        {(editing ? [] : selectedShapes).map((shape) => (
           <ShapeOutline
             key={shape.id}
             shape={shape}
@@ -289,7 +305,7 @@ export function WorkspaceViewportOverlay({
           />
         ))}
       </g>
-      {boundsPoints !== null ? (
+      {boundsPoints !== null && !editing ? (
         <g className="pp-overlay-bounds">
           <polygon
             className="pp-overlay-bounds-box"
@@ -355,6 +371,82 @@ export function WorkspaceViewportOverlay({
           y2={linePreview.end.y}
           strokeWidth={1 / zoom}
         />
+      ) : null}
+      {penPreview !== null && penPreview.nodes.length > 0 ? (
+        <g className="pp-overlay-pen">
+          <path
+            className="pp-overlay-draw"
+            data-testid="pen-preview"
+            d={penPreviewPath(penPreview.nodes, penPreview.cursor)}
+            strokeWidth={1 / zoom}
+          />
+          {penPreview.nodes.map((node, index) => (
+            <circle
+              key={index}
+              className="pp-overlay-pen-node"
+              data-testid="pen-node"
+              cx={node.point.x}
+              cy={node.point.y}
+              r={3 / zoom}
+              strokeWidth={1 / zoom}
+            />
+          ))}
+        </g>
+      ) : null}
+      {nodeEdit !== null && nodeEdit.nodes.length > 0 ? (
+        <g className="pp-overlay-node-edit" data-testid="node-edit">
+          <path
+            className="pp-overlay-draw"
+            data-testid="node-edit-path"
+            d={nodesToSvgPath(nodeEdit.nodes)}
+            strokeWidth={1 / zoom}
+          />
+          {nodeEdit.nodes.map((node, index) => (
+            <g key={index}>
+              {(
+                [
+                  ["in", node.in],
+                  ["out", node.out],
+                ] as const
+              ).map(([kind, handle]) =>
+                handle === null ? null : (
+                  <g key={kind}>
+                    <line
+                      className="pp-overlay-node-handle-line"
+                      x1={node.point.x}
+                      y1={node.point.y}
+                      x2={handle.x}
+                      y2={handle.y}
+                      strokeWidth={1 / zoom}
+                    />
+                    <circle
+                      className="pp-overlay-node-handle"
+                      data-testid="node-edit-handle"
+                      data-kind={kind}
+                      cx={handle.x}
+                      cy={handle.y}
+                      r={handleRadius}
+                      strokeWidth={1 / zoom}
+                    />
+                  </g>
+                ),
+              )}
+              <rect
+                className={
+                  index === nodeEdit.selected
+                    ? "pp-overlay-node pp-overlay-node-selected"
+                    : "pp-overlay-node"
+                }
+                data-testid="node-edit-node"
+                x={node.point.x - anchorSize / 2}
+                y={node.point.y - anchorSize / 2}
+                width={anchorSize}
+                height={anchorSize}
+                strokeWidth={1 / zoom}
+              />
+            </g>
+          ))}
+        </g>
       ) : null}
       {hoverShape !== null ? (
         <ShapeOutline

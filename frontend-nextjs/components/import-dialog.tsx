@@ -47,6 +47,7 @@ import {
   type ResolutionCandidate,
 } from "@/lib/binfile";
 import { pickFiles } from "@/lib/dom";
+import { disposeImportAnalyzer } from "@/lib/import-analyze-worker-client";
 import { tr } from "@/lib/i18n";
 
 // --- entry points -------------------------------------------------------------
@@ -575,6 +576,10 @@ export function ImportDialog({
       }
     })();
   }, [picked]);
+
+  // The analyze worker is page-scoped: a closed wizard leaves no thread
+  // behind (a StrictMode replay respawns it on the next import).
+  useEffect(() => () => disposeImportAnalyzer(), []);
 
   const successTotal =
     template !== undefined
