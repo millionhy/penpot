@@ -50,6 +50,8 @@ import {
 } from "@/lib/dashboard";
 import type { RouteName } from "@/lib/routes";
 import { useSession } from "@/lib/session";
+import { useNotifications } from "@/components/notifications";
+import { createDashboardNotifications } from "@/lib/dashboard-notifications";
 import { tr } from "@/lib/i18n";
 import {
   getFontVariants,
@@ -191,6 +193,10 @@ function DashboardProviderInner({
   children: ReactNode;
 }) {
   const { profile } = useSession();
+  const profileId = profile?.id ?? null;
+  // The stable level helper (a useCallback): depending on the whole context
+  // value would tear the subscription down on every toast show/hide.
+  const { info: notifyInfo } = useNotifications();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -380,6 +386,48 @@ function DashboardProviderInner({
     // team-initialized fetches the members for every visited team.
     void loadMembers();
   }, [teamId, loadProjects, loadRecentFiles, loadFonts, loadMembers]);
+
+  // The dashboard team subscription (F5.7): dd/initialize sends subscribe-team
+  // and refreshes the team slice when a remote change lands. A file or library
+  // change reorders the listings; a membership, role or organization change
+  // re-pulls the team list and the members. The connection re-subscribes only
+  // when the team, the profile or the team's organization actually changes, so a
+  // refetch of the teams array (which keeps the same organization id) never
+  // tears it down.
+  const organizationId = useMemo(
+    () => teams?.find((row) => row.id === teamId)?.organization?.id ?? null,
+    [teams, teamId],
+  );
+
+  useEffect(() => {
+    if (teamId === null) return;
+    const client = createDashboardNotifications(
+      { scope: { teamId, profileId, organizationId } },
+      {
+        onNotice: (notice) => {
+          switch (notice.kind) {
+            case "refetch-files":
+              void loadProjects();
+              void loadRecentFiles();
+              break;
+            case "membership-change":
+            case "role-change":
+            case "organization-change":
+              void loadTeams();
+              void loadMembers();
+              break;
+            case "system":
+              // The server fills :message on the generic path; the upgrade and
+              // maintenance codes carry no translatable text here, so only a
+              // message is surfaced (the reload dialog is a documented gap).
+              if (notice.message !== null) notifyInfo(notice.message);
+              break;
+          }
+        },
+      },
+    );
+    return () => client.stop();
+  }, [teamId, profileId, organizationId, notifyInfo, loadTeams, loadProjects, loadRecentFiles, loadMembers]);
 
   const navigate = useCallback(
     (next: RouteName, navParams: DashboardNavigateParams = {}) => {

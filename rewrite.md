@@ -6,13 +6,13 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch 与 subscription/nitrate 完成；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F8 协作四片完成，见 7.46–7.48） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1 外壳与数据基座、F5.2 完整网格与 files 路由、F5.3 libraries/deleted/search、F5.4 自定义字体、F5.5 团队管理、F5.6 templates/binfile/快捷键注册表完成，F5.7 organization/team switch、subscription/nitrate、插件注册与 dashboard `subscribe-team` 实时刷新完成，comments 待独立切片（见 7.53）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）完成；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
-| 最后更新 | 2026-10-29 |
+| 最后更新 | 2026-11-02 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -38,11 +38,11 @@
 | F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。F4 的 modal 需求由外壳自带的 `components/modal.tsx`（ModalProvider/ConfirmDialog）满足，profile 驱动的主题切换也已接上令牌；`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线推到 F5 dashboard（首个需要 menu/dropdown 的路由组） |
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 占位后随 F5.6 补齐）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes 未做（见 7.6） |
-| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.6 完成；F5.7 进行中，organization/team switch 与 subscription/nitrate 已完成），见下与第 4 节 |
+| F5 | dashboard 路由组（`/dashboard/*`） | 🔧 | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片（F5.1–F5.6 完成；F5.7 进行中，organization/team switch、subscription/nitrate、插件注册与 dashboard `subscribe-team` 实时刷新已完成，comments 待独立切片），见下与第 4 节 |
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | ✅ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；四片全部完成（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入、F7.4 完整 API 上下文：workspace 代理 + 事件派发 + 画布桥接，见 7.44）；结构写/文本/媒体/代码生成等延后项以命名错误登记 |
 | F8 | WebSocket 协作客户端 | ✅ | 四片全部完成（F8.1 传输层 / F8.2 订阅与远端变更 / F8.3 在场与指针 / F8.4 route/shell 接线），直连 `backendOrigin` 的 `/ws/notifications`；两标签页冒烟 12/12（远端形状、游标与 5s TTL、断网重连重订阅、只读无写），见 7.46–7.48 |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；浏览器冒烟 43/43（含文本提交 500 与 del-obj 反演两个缺陷，见 7.49）；F7.4 已完成（见 7.44）；F9.5 的线条/箭头与工具栏 flyout（见 7.50）、F9.13 布尔命令与路径节点编辑（见 7.51）完成；协作光标与远端变更已随 F8.3/F8.4 落地；导入分析已入 Web Worker，缩略图与索引待独立切片 |
+| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；浏览器冒烟 43/43（含文本提交 500 与 del-obj 反演两个缺陷，见 7.49）；F7.4 已完成（见 7.44）；F9.5 的线条/箭头与工具栏 flyout（见 7.50）、F9.13 布尔命令与路径节点编辑（见 7.51）与 F9.14 dashboard 缩略图 Web Worker（超时兜底产出降级图，见 7.52）完成；协作光标与远端变更已随 F8.3/F8.4 落地；导入分析与缩略图已入 Web Worker，索引待独立切片 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
@@ -265,7 +265,9 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     leave-organization 全流程与转让弹窗、org/team 两级切换器与侧边栏接线）、
     subscription/nitrate（已完成：订阅无头逻辑、nitrate 激活弹窗、侧边栏/members/团队设置
     的订阅横幅、`/settings/subscriptions` 订阅页与五个对话框、trash 的 90 天保留分支）、
-    comments、插件注册、WebSocket `subscribe-team` 实时刷新（依赖 F8）。
+    插件注册（已完成，实为 F7 的 `add-profile-plugin`/`remove-profile-plugin` 乐观更新，见
+    7.44）、WebSocket dashboard `subscribe-team` 实时刷新（已完成：`lib/dashboard-notifications.ts`
+    复用 F8.1 传输，团队/组织 topic 消息路由到 listings 与成员重拉，见 7.53）；comments 仍待独立切片。
 - **F6 viewer**：`/view` + `frame-preview` + `render-sprite`；集成 render-wasm 渲染画布（复用
   `app.render_wasm.api` 的加载方式）。切成 F6.1–F6.6 六片：
   - **F6.1 数据层（完成）**：`lib/viewer.ts`（feature 门控、bundle 拉取与 pointer
@@ -2765,6 +2767,69 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   `pointsRect`）。
 - 下一步：Web Worker 余项（缩略图、索引）、F5.7 的 comments/插件注册/
   `subscribe-team`；阶段 B 的 M0/M1 待开工。
+
+### 7.52 本轮（2026-11-02，第五十一批：F9.14 dashboard 缩略图 Web Worker）
+
+- 诉求：把 `render-thumbnail-with-wasm` 从 CLJS worker 构建移植到 Next.js 的
+  DedicatedWorker；dashboard 卡片首帧无 thumbnail-id 时离屏生成，经
+  create-file-thumbnail 持久化。承接 7.51 的 Web Worker 余项（缩略图）。
+- 数据基础（`lib/thumbnail.ts`）：THUMBNAIL_WIDTH=300、纵横比与目标尺寸；
+  `components/dashboard-grid.tsx` 用 `use-visible`（IntersectionObserver）门控，
+  仅可见卡片入队，已有 thumbnail-id 直接走 assets/by-id 出图。
+- worker 端渲染（`lib/thumbnail-render.ts`）：initialize-viewport 传
+  :force-sync true + :on-render；无 image fill 走 process-pending 同步路径即时出图。
+- 超时兜底（关键设计）：process-pending 的 beicon rx 图片管线在 worker 作用域内
+  不调度 complete（CDP 探针全程无 fetch 痕迹），on-render 永不触发。
+  initialize-viewport 返回后 8s 内未触发则强制 renderSync——形状已上传，产出无图
+  填充的降级缩略图；生产环境资源服务可达时 fetch 正常完成，超时不触发。
+- worker 入口（`lib/thumbnail.worker.ts`）：boot shared.js + wasm module；
+  installGlobals 恒置 penpotPublicURI=location.origin（cf/resolve-file-media 需绝对
+  URL）；请求串行处理。主线程客户端（`lib/thumbnail-worker-client.ts`）懒创建单例、
+  pending Map 按 id 结算、dispose。持久化（`lib/thumbnail-persist.ts`）canvas blob →
+  create-file-thumbnail。
+- 基础设施：从 `bridge.ts` 抽出 `render-wasm/module.ts`（ensureWasmModule，worker 不
+  依赖 document）；`interop.ts` 加 KEY.addHandlers（worker 侧注册 penpot/objects-map/v2，
+  该 handler 属 app.main，main.js 需 document 无法进 worker）。
+- next.config.mjs：worker chunk 末尾的 `_N_E = __webpack_exports__` 赋值在无声明的
+  独立脚本里抛 ReferenceError，processAssets 阶段按 `_worker_ts` 文件名剥离。
+- 验证：`tsc --noEmit`、`next lint`、`vitest` 全过；CDP 探针确认 create-file-thumbnail
+  命中且网格缩略图数增长（imgs 4→5）。调试痕迹（traceWasmCalls/traceThumbnail/fetch
+  wrapper）已清理。
+- 下一步：Web Worker 余项（索引，`lib/workspace-index.ts` 同步 quadtree 转常驻）、
+  F5.7 的 comments/插件注册/`subscribe-team`；阶段 B 的 M0/M1 待开工。
+
+### 7.53 本轮（2026-11-02，第五十二批：F5.7 dashboard `subscribe-team` 实时刷新）
+
+- 诉求：dashboard-context.tsx 一直承诺却从未挂载的团队 WebSocket 订阅——CLJS
+  `dd/initialize` 发 `subscribe-team`，`process-message` 在远端变更落地时刷新团队切片。
+  F8.2 的 workspace 客户端（`lib/workspace-collab.ts`）刻意把 dashboard 订阅留白
+  （见 7.46），本切片是它在 dashboard 侧的补齐。
+- 传输复用：直接用 `lib/workspace-socket.ts` 的 `createWorkspaceSocket`/
+  `workspaceSocketUri`/`encodeClientMessage`——连 `config.backendOrigin` 的
+  `/ws/notifications?session-id=<uuid>`，onOpen 与每次重连发 `subscribe-team`，stop 关闭。
+  后端 `subscribe-team` 会附带 organization topic，故团队与组织两级消息都到达。
+- 纯逻辑（`lib/dashboard-notifications.ts`）：`classifyDashboardNotice` 按
+  `workspace/notifications.cljs` 的 dashboard 分支建 `DashboardNotice` 联合——
+  file-change/file-deleted/file-restored/library-change → `refetch-files`；
+  team-membership-change（需 team-id + change∈added/removed）→ `membership-change`；
+  team-role-change / team-organization-change → 对应重拉；notification → `system`{code,message}；
+  foreign topic 或未知 type → `ignored`；已知 type 缺字段 → `malformed`（走 onError，不断连）。
+  topic 过滤对齐 workspace：只保留 zero-uuid/team/profile/organization。
+- provider 接入（`lib/dashboard-context.tsx`）：`organizationId` 从当前 team 行 memo 出，
+  订阅 effect 依赖 [teamId, profileId, organizationId, notifyInfo, load*]——只有团队/
+  资料/组织真变化才重建连接（重拉 teams 不改 organizationId 时不拆连接）；`onNotice` 路由：
+  refetch-files → loadProjects+loadRecentFiles，membership/role/organization-change →
+  loadTeams+loadMembers，system → 有 message 才 `notifyInfo` toast（升级/维护重载对话框是
+  已记录缺口）。用稳定的 `info`（useCallback）而非整个 context 值，避免每次 toast 拆连接。
+- 测试（`lib/dashboard-notifications.test.ts`，15 例）：FakeSocket harness 镜像 F8.2——分类各型、
+  topic 过滤、malformed、onOpen 订阅、重连重发、onNotice 转发、ignored 静默、malformed→onError 不断连、
+  stop 关闭。
+- 验证：`tsc --noEmit`、`next lint`、`vitest`（86 文件 1889 例）全过。传输层已由 F8.2/F8.3
+  浏览器冒烟验证，本切片复用同一套，未再跑双标签端到端（需 devenv + 触发远端团队变更）。
+- 更正：F5.7 明细里的「插件注册」实为 F7 已交付（`add-profile-plugin`/`remove-profile-plugin`
+  乐观更新，见 7.44），此前误列为待办；本切片后 F5.7 仅剩 comments。
+- 下一步：F5.7 余下 comments（数据层 + workspace 侧栏线程 + 画布 pin 气泡，全新 greenfield）；
+  Web Worker 余项（索引）；阶段 B 的 M0/M1 待开工。
 
 ---
 
