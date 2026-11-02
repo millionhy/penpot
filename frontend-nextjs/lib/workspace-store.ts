@@ -20,6 +20,7 @@ import type { DrawPoint } from "@/lib/workspace-draw";
 import type { EditNode } from "@/lib/workspace-node-edit";
 import type { PenNode } from "@/lib/workspace-pen";
 import type { PresenceState } from "@/lib/workspace-presence";
+import type { Comment, CommentThread } from "@/lib/workspace-comments";
 import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";
 import type { ViewportRect, ViewportState } from "@/lib/workspace-viewport";
 
@@ -94,6 +95,27 @@ export interface TransformPreview {
   f: number;
 }
 
+// The comments slice of the open file (F5.7): the threads the RPC loaded, the
+// replies fetched lazily per open thread, and the panel/canvas UI flags the
+// sidebar and the pin bubbles share. The controller lib/workspace-comments-actions
+// writes it from the RPC answers; the panel and the bubbles read it.
+export type CommentsStatus = "idle" | "loading" | "ready" | "error";
+export type CommentsFilter = "all" | "yours" | "mentions";
+
+export interface WorkspaceCommentsSlice {
+  status: CommentsStatus;
+  threads: CommentThread[];
+  // thread id -> its comments, filled when the thread is opened and kept after.
+  replies: Record<string, Comment[]>;
+  loadingReplies: Record<string, boolean>;
+  // The thread expanded in the panel; null shows the list.
+  openThreadId: string | null;
+  // Whether the sidebar comments panel replaces the style panel.
+  panelOpen: boolean;
+  filter: CommentsFilter;
+  showResolved: boolean;
+}
+
 export interface WorkspaceState {
   status: WorkspaceStatus;
   // The ?file-id= of the route; stays set while the file loads.
@@ -153,6 +175,8 @@ export interface WorkspaceState {
   // (F8.3): the cursor layer reads it, and the apply/prune of
   // lib/workspace-presence writes it whole.
   presence: PresenceState;
+  // The comments slice of the open file (F5.7).
+  comments: WorkspaceCommentsSlice;
 }
 
 const initialState: WorkspaceState = {
@@ -180,6 +204,16 @@ const initialState: WorkspaceState = {
   canUndo: false,
   canRedo: false,
   presence: {},
+  comments: {
+    status: "idle",
+    threads: [],
+    replies: {},
+    loadingReplies: {},
+    openThreadId: null,
+    panelOpen: false,
+    filter: "all",
+    showResolved: false,
+  },
 };
 
 let state: WorkspaceState = initialState;
@@ -345,4 +379,14 @@ export function setUndoAvailability(canUndoValue: boolean, canRedoValue: boolean
 export function setWorkspacePresence(presence: PresenceState): void {
   if (state.presence === presence) return;
   setWorkspaceState({ presence });
+}
+
+// --- Comments (F5.7) -------------------------------------------------------
+
+// Merge a patch into the comments slice. The controller and the views always
+// pass a fresh sub-object, so the initialState.comments reference is never
+// mutated in place and a later reset starts clean.
+export function setWorkspaceComments(patch: Partial<WorkspaceCommentsSlice>): void {
+  state = { ...state, comments: { ...state.comments, ...patch } };
+  notify();
 }

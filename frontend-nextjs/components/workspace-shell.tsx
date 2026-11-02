@@ -29,7 +29,7 @@
 // socket through the presence sender registry of lib/workspace-presence.
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   menuAnchorFromElement,
@@ -42,6 +42,7 @@ import {
 import { WorkspaceLayersPanel } from "@/components/workspace-layers-panel";
 import { WorkspaceMainMenu } from "@/components/workspace-main-menu";
 import { WorkspaceRightSidebar } from "@/components/workspace-right-sidebar";
+import { WorkspaceCommentsPanel } from "@/components/workspace-comments-panel";
 import { WorkspaceStylePanel } from "@/components/workspace-style-panel";
 import { WorkspaceTopToolbar } from "@/components/workspace-top-toolbar";
 import {
@@ -59,6 +60,10 @@ import {
   type WorkspaceTool,
 } from "@/lib/workspace";
 import { createWorkspaceCollab } from "@/lib/workspace-collab";
+import {
+  loadCommentThreads,
+  setCommentsPanelOpen,
+} from "@/lib/workspace-comments-actions";
 import { registerWorkspacePageOpener } from "@/lib/workspace-navigation";
 import {
   applyPointerUpdate,
@@ -67,10 +72,12 @@ import {
   registerPresencePointerSender,
 } from "@/lib/workspace-presence";
 import {
+  getInitialWorkspaceState,
   getWorkspaceState,
   getWorkspaceViewport,
   setWorkspacePresence,
   setWorkspaceState,
+  subscribeWorkspace,
 } from "@/lib/workspace-store";
 
 export interface WorkspaceShellProps {
@@ -170,6 +177,25 @@ export function WorkspaceShell({
   // The presence slice lives in the store; the file events cross the canvas
   // handle, so the canvas keeps ownership of its model and its wasm bridge.
   const knownVernRef = useRef(file.vern ?? 0);
+
+  // F5.7: the comments of the open file load once per file. The backend
+  // publishes no comment messages on the websocket (comments.clj only sends
+  // the notification emails), so the list refreshes through this load and the
+  // optimistic writes of lib/workspace-comments-actions, like the CLJS app.
+  useEffect(() => {
+    void loadCommentThreads(fileId);
+  }, [fileId]);
+
+  const commentsState = useSyncExternalStore(
+    subscribeWorkspace,
+    getWorkspaceState,
+    getInitialWorkspaceState,
+  ).comments;
+
+  const toggleComments = useCallback((): void => {
+    setCommentsPanelOpen(!getWorkspaceState().comments.panelOpen);
+  }, []);
+
   useEffect(() => {
     let live = true;
     const client = createWorkspaceCollab(
@@ -355,8 +381,15 @@ export function WorkspaceShell({
           canvas={canvasRef}
           zoomMenuAnchor={menu?.kind === "zoom" ? menu.anchor : null}
           onZoomMenuToggle={toggleZoomMenu}
+          commentsActive={commentsState.panelOpen}
+          commentsCount={commentsState.threads.length}
+          onCommentsToggle={toggleComments}
         >
-          <WorkspaceStylePanel canEdit={canEdit} canvas={canvasRef} />
+          {commentsState.panelOpen ? (
+            <WorkspaceCommentsPanel pageId={pageId} />
+          ) : (
+            <WorkspaceStylePanel canEdit={canEdit} canvas={canvasRef} />
+          )}
         </WorkspaceRightSidebar>
       )}
 

@@ -11,9 +11,9 @@
 // Deviations from the CLJS original, documented:
 // - The presence list is a static copy of the two overlapping avatars
 //   (active-sessions* needs the live team sessions stream).
-// - The comments, history and share buttons render without their CLJS
-//   behaviours (drawing tool, history panel, invite dialog); only the
-//   viewer link navigates.
+// - The history and share buttons render without their CLJS behaviours
+//   (history panel, invite dialog); only the viewer link navigates. The
+//   comments button toggles the F5.7 comments panel of the options area.
 
 import { useState, type ReactNode, type RefObject } from "react";
 
@@ -30,6 +30,11 @@ export interface WorkspaceRightSidebarProps {
   canvas: RefObject<WorkspaceCanvasHandle | null>;
   zoomMenuAnchor: MenuAnchor | null;
   onZoomMenuToggle(anchor: MenuAnchor | null): void;
+  // F5.7: the comments panel toggle of the options area; commentsCount
+  // fills the (%s) of the button title and commentsActive marks the button.
+  commentsActive: boolean;
+  commentsCount: number;
+  onCommentsToggle(): void;
   children?: ReactNode;
 }
 
@@ -58,12 +63,16 @@ export function WorkspaceRightSidebar({
   canvas,
   zoomMenuAnchor,
   onZoomMenuToggle,
+  commentsActive,
+  commentsCount,
+  onCommentsToggle,
   children,
 }: WorkspaceRightSidebarProps) {
   const [tab, setTab] = useState<OptionTabId>("design");
 
   // dcm/go-to-viewer with :section "interactions": the viewer route.
   const viewerHref = `/view?file-id=${encodeURIComponent(fileId)}&page-id=${encodeURIComponent(pageId)}`;
+  const commentsLabel = tr("workspace.toolbar.comments", commentsCount);
 
   return (
     <aside className="pp-workspace-right">
@@ -103,9 +112,15 @@ export function WorkspaceRightSidebar({
         <div className="pp-workspace-comments-section">
           <button
             type="button"
-            className="pp-workspace-header-button"
-            title={tr("workspace.toolbar.comments")}
-            aria-label={tr("workspace.toolbar.comments")}
+            className={
+              commentsActive
+                ? "pp-workspace-header-button pp-workspace-header-button--active"
+                : "pp-workspace-header-button"
+            }
+            title={commentsLabel}
+            aria-label={commentsLabel}
+            aria-pressed={commentsActive}
+            onClick={onCommentsToggle}
           >
             <CommentsIcon />
           </button>
