@@ -11,17 +11,23 @@ import { decodeTransit, encodeTransit } from "@/lib/transit";
 import {
   addComment,
   BUBBLE_OVERLAP_PX,
+  BUBBLE_UNGROUP_ZOOM_STEP,
   bubblesOverlap,
+  calculateZoomToUngroup,
+  centeredVbox,
   clientPointToWorld,
   COMMENT_MAX_LENGTH,
   createCommentThread,
+  currentMentionQuery,
   editComment,
   extractMentions,
   fetchCommentThread,
   fetchCommentThreads,
+  filterMentionCandidates,
   formatCommentContent,
   frameIdForPosition,
   groupBubbles,
+  insertMentionToken,
   isThreadUnread,
   markAllThreadsRead,
   markThreadRead,
@@ -30,6 +36,7 @@ import {
   setThreadResolved,
   sortThreads,
   threadById,
+  threadFocusCenter,
   threadsMentioning,
   updateThreadPosition,
   validCommentContent,
@@ -415,5 +422,105 @@ describe("comment commands", () => {
     expect(body["id"]).toBe(THREAD_ID);
     expect(body["position"]).toEqual({ x: 7, y: 9 });
     expect(body["frame-id"]).toBe("inner");
+  });
+});
+
+// --- Ungroup zoom and centering --------------------------------------------
+
+describe("calculateZoomToUngroup", () => {
+  it("keeps the zoom when nothing overlaps", () => {
+    expect(calculateZoomToUngroup(1, { x: 0, y: 0 }, [{ x: 500, y: 500 }])).toBe(1);
+  });
+
+  it("multiplies the zoom by the step until the pins separate", () => {
+    // 10 world px apart: screen distance 10 at zoom 1 (overlaps, <32), 17.5 at
+    // one step (still overlaps), 30.6 at two, 53.6 at three (>32, free).
+    expect(calculateZoomToUngroup(1, { x: 0, y: 0 }, [{ x: 10, y: 0 }])).toBeCloseTo(
+      Math.pow(BUBBLE_UNGROUP_ZOOM_STEP, 3),
+    );
+  });
+
+  it("caps the iterations on coincident threads instead of diverging", () => {
+    const zoom = calculateZoomToUngroup(1, { x: 5, y: 5 }, [{ x: 5, y: 5 }]);
+    expect(zoom).toBeCloseTo(Math.pow(BUBBLE_UNGROUP_ZOOM_STEP, 12));
+  });
+});
+
+describe("centeredVbox", () => {
+  it("lands the point above-left of the center by the screen padding", () => {
+    const next = centeredVbox({ x: 0, y: 0, width: 800, height: 600 }, 2, { x: 100, y: 50 });
+    // screen = (position - vbox) * zoom = (w/2 - 160, h/2 - 160)
+    expect(next.x).toBeCloseTo(100 - (400 - 80));
+    expect(next.y).toBeCloseTo(50 - (300 - 80));
+    expect(next.width).toBe(800);
+    expect(next.height).toBe(600);
+  });
+});
+
+// --- Mention autocomplete -----------------------------------------------------
+
+describe("currentMentionQuery", () => {
+  it("reads the @fragment before the caret", () => {
+    expect(currentMentionQuery("hey @ali", 9)).toEqual({ filter: "ali", start: 4 });
+  });
+
+  it("fires on a lone @", () => {
+    expect(currentMentionQuery("@", 1)).toEqual({ filter: "", start: 0 });
+  });
+
+  it("stays silent when the @ continues a word or the fragment has a space", () => {
+    expect(currentMentionQuery("me@ali", 6)).toBeNull();
+    expect(currentMentionQuery("@a li", 5)).toBeNull();
+    expect(currentMentionQuery("done", 4)).toBeNull();
+  });
+});
+
+describe("filterMentionCandidates", () => {
+  const members = [
+    { id: "1", fullname: "Alice Apple", email: "a@x.io" },
+    { id: "2", fullname: "Bob Apple", email: "b@x.io" },
+    { id: "3", fullname: "Cara", email: "carrot@x.io" },
+    { id: "4", fullname: "Dan", email: "d@x.io" },
+    { id: "5", fullname: "Eve", email: "e@x.io" },
+  ];
+
+  it("matches fullname or email case-insensitively", () => {
+    expect(filterMentionCandidates(members, "BO").map((m) => m.id)).toEqual(["2"]);
+    expect(filterMentionCandidates(members, "carrot").map((m) => m.id)).toEqual(["3"]);
+  });
+
+  it("passes everyone and takes the first four on an empty filter", () => {
+    expect(filterMentionCandidates(members, "").map((m) => m.id)).toEqual(["1", "2", "3", "4"]);
+  });
+});
+
+describe("insertMentionToken", () => {
+  it("replaces the fragment with the token and reports the caret", () => {
+    const mention = { filter: "ali", start: 4 };
+    const result = insertMentionToken("hey @ali", mention, 9, {
+      id: ALICE,
+      fullname: "Alice Apple",
+    });
+    expect(result.text).toBe(`hey @[Alice Apple](${ALICE}) `);
+    expect(result.caret).toBe(result.text.length);
+  });
+
+  it("falls back to the email label without a fullname", () => {
+    const result = insertMentionToken("@", { filter: "", start: 0 }, 1, {
+      id: BOB,
+      email: "b@x.io",
+    });
+    expect(result.text).toBe(`@[b@x.io](${BOB}) `);
+  });
+});
+
+describe("threadFocusCenter", () => {
+  it("shifts the point down-right by the padding scaled by zoom", () => {
+    // 160 screen pixels at zoom 2 is 80 world units.
+    expect(threadFocusCenter(2, { x: 100, y: 50 })).toEqual({ x: 180, y: 130 });
+  });
+
+  it("keeps the point on a degenerate zoom", () => {
+    expect(threadFocusCenter(0, { x: 7, y: 9 })).toEqual({ x: 7, y: 9 });
   });
 });

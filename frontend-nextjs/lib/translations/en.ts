@@ -41,6 +41,7 @@ export const en: Record<string, TranslationEntry> = {
   "auth.terms-of-service": "Terms of service",
   "auth.verification-sent-email": "We've sent a verification email to:",
   "auth.work-email": "Work email",
+  "comments.mentions.not-found": "No people found for @%s",
   "dasboard.team-hero.management": "Team management",
   "dasboard.team-hero.text": "Penpot is meant for teams. Invite members to work together on projects and files",
   "dasboard.team-hero.title": "Team up!",

@@ -9,8 +9,12 @@
 // the thread is created there (anchored with frameIdForPosition, like the
 // CLJS create-draft + add-comment flow).
 
-import { useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 
+import {
+  MentionSuggestions,
+  useMentionAutocomplete,
+} from "@/components/comment-mention";
 import { tr } from "@/lib/i18n";
 import { clientPointToWorld, validCommentContent } from "@/lib/workspace-comments";
 import {
@@ -24,9 +28,11 @@ import {
   subscribeWorkspace,
 } from "@/lib/workspace-store";
 
-// The composer card size in screen pixels inside the foreignObject.
+// The composer card size in screen pixels inside the foreignObject. The
+// height also reserves room for the @mention popup, which grows above the
+// textarea inside the bottom-aligned card (the foreignObject clips).
 const COMPOSER_WIDTH = 300;
-const COMPOSER_HEIGHT = 170;
+const COMPOSER_HEIGHT = 250;
 
 export function WorkspaceCommentPlacement() {
   const state = useSyncExternalStore(
@@ -40,6 +46,13 @@ export function WorkspaceCommentPlacement() {
   const zoom = state.zoom ?? 1;
 
   const [draft, setDraft] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const mention = useMentionAutocomplete(
+    state.comments.members,
+    draft,
+    setDraft,
+    textareaRef,
+  );
 
   if (!placing || vbox === null) return null;
 
@@ -60,6 +73,7 @@ export function WorkspaceCommentPlacement() {
   const submit = (): void => {
     if (!validCommentContent(draft)) return;
     setDraft("");
+    mention.close();
     void createThreadAtPlacement(draft);
   };
 
@@ -80,43 +94,55 @@ export function WorkspaceCommentPlacement() {
         >
           <circle className="pp-comment-placement-dot" r={6} />
           <foreignObject x={12} y={-COMPOSER_HEIGHT / 2} width={COMPOSER_WIDTH} height={COMPOSER_HEIGHT}>
-            <div className="pp-comment-placement-card" data-testid="comment-placement-card">
-              <textarea
-                className="pp-comments-input"
-                rows={3}
-                autoFocus
-                value={draft}
-                placeholder={tr("labels.write-new-comment")}
-                aria-label={tr("labels.write-new-comment")}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setDraft("");
-                    cancelCommentPlacement();
-                  }
-                }}
-              />
-              <div className="pp-comment-placement-actions">
-                <button
-                  type="button"
-                  className="pp-comments-back"
-                  onClick={() => {
-                    setDraft("");
-                    cancelCommentPlacement();
+            <div className="pp-comment-placement-shell">
+              <div className="pp-comment-placement-card" data-testid="comment-placement-card">
+                <MentionSuggestions mention={mention} onPick={mention.pick} />
+                <textarea
+                  className="pp-comments-input"
+                  rows={3}
+                  autoFocus
+                  ref={textareaRef}
+                  value={draft}
+                  placeholder={tr("labels.write-new-comment")}
+                  aria-label={tr("labels.write-new-comment")}
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    mention.onChange(event);
                   }}
-                >
-                  {tr("labels.close")}
-                </button>
-                <button
-                  type="button"
-                  className="pp-comments-submit"
-                  disabled={!validCommentContent(draft)}
-                  onClick={submit}
-                >
-                  {tr("labels.comment")}
-                </button>
+                  onKeyDown={(event) => {
+                    // The popup wins over the placement shortcuts while open.
+                    if (mention.onKeyDown(event)) {
+                      event.preventDefault();
+                      return;
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setDraft("");
+                      cancelCommentPlacement();
+                    }
+                  }}
+                />
+                <div className="pp-comment-placement-actions">
+                  <button
+                    type="button"
+                    className="pp-comments-back"
+                    onClick={() => {
+                      setDraft("");
+                      cancelCommentPlacement();
+                    }}
+                  >
+                    {tr("labels.close")}
+                  </button>
+                  <button
+                    type="button"
+                    className="pp-comments-submit"
+                    disabled={!validCommentContent(draft)}
+                    onClick={submit}
+                  >
+                    {tr("labels.comment")}
+                  </button>
+                </div>
               </div>
             </div>
           </foreignObject>

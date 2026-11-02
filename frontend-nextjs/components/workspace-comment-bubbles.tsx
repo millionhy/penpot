@@ -5,24 +5,33 @@
 // position, placed in world coordinates and scaled by 1/zoom like the remote
 // cursors, so a pin keeps its screen size at every zoom. groupBubbles
 // (lib/workspace-comments) collapses the pins that sit closer than 32 screen
-// pixels; a press opens the thread in the sidebar panel and a drag moves the
-// pin (setThreadDragPosition during the gesture, moveThreadToPosition on drop
-// — the CLJS update-comment-thread-position with the frame re-anchor).
+// pixels; a press opens the thread and brings it into view
+// (focusCommentThread), a drag moves the pin (setThreadDragPosition during the
+// gesture, moveThreadToPosition on drop — the CLJS
+// update-comment-thread-position with the frame re-anchor).
 //
 // Deviations from the CLJS original, documented:
-// - A grouped pin opens its first thread and the panel list shows the rest;
-//   the CLJS expands the group into a floating card of avatars. Grouped pins
-//   are not draggable — only a single-thread pin moves.
-// - Pins are numbered circles, not owner avatars: the photo needs
-//   resolve-profile-photo-url and the avatar stack is not ported yet. The
+// - A grouped pin toggles a floating card listing the group's threads
+//   (avatar, seqn and preview); a row focuses that thread, like the CLJS
+//   avatar card. The card closes on the second pin press or when the group
+//   dissolves, not on an outside click.
+// - Pins are numbered circles, not owner avatars: the avatar stack of the
+//   CLJS bubble needs the members' photos resolved per pin. The
 //   single-thread bubble carries the thread seqn, a group carries its count.
-// - A pin click does not zoom to the thread.
+// - Grouped pins are not draggable — only a single-thread pin moves.
 // - The committed position does not join the undo stack yet (documented in
 //   lib/workspace-comments-actions).
 
-import { useRef, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
-
 import {
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+
+import { CommentAvatar } from "@/components/comment-avatar";
+import {
+  formatCommentContent,
   groupBubbles,
   screenDeltaToWorld,
   sortThreads,
@@ -30,8 +39,8 @@ import {
   type CommentPosition,
 } from "@/lib/workspace-comments";
 import {
+  focusCommentThread,
   moveThreadToPosition,
-  openCommentThread,
   setThreadDragPosition,
 } from "@/lib/workspace-comments-actions";
 import {
@@ -47,6 +56,11 @@ const BUBBLE_RADIUS = 16;
 // Screen pixels a pointer must travel before the press becomes a drag; below
 // it, the release opens the thread like a plain click.
 const DRAG_THRESHOLD_PX = 4;
+
+// The group card size in screen pixels inside the foreignObject; the thread
+// rows scroll when the group is taller than the card.
+const GROUP_CARD_WIDTH = 260;
+const GROUP_CARD_HEIGHT = 220;
 
 export interface WorkspaceCommentBubblesProps {
   // Only the threads of the open page draw a pin.
@@ -70,6 +84,10 @@ export function WorkspaceCommentBubbles({ pageId, zoom }: WorkspaceCommentBubble
   );
   const groups = zoom > 0 ? groupBubbles(threads, zoom) : [];
 
+  // The open group card, keyed by its anchor thread id; a zoom change that
+  // dissolves the group drops the card with the group itself.
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
+
   // One gesture per pin: the client point the press landed on, the thread
   // position at press time and the dragged flag once the threshold passes.
   const dragRef = useRef<{
@@ -83,6 +101,8 @@ export function WorkspaceCommentBubbles({ pageId, zoom }: WorkspaceCommentBubble
   } | null>(null);
 
   if (groups.length === 0) return null;
+
+  const openGroup = groups.find((group) => group.threads[0].id === openGroupId) ?? null;
 
   return (
     <g className="pp-comment-bubbles" data-testid="comment-bubbles">
@@ -145,8 +165,12 @@ export function WorkspaceCommentBubbles({ pageId, zoom }: WorkspaceCommentBubble
                 if (drag === null) return;
                 if (drag.dragging) {
                   void moveThreadToPosition(drag.threadId, drag.current);
+                } else if (draggable) {
+                  void focusCommentThread(drag.threadId);
                 } else {
-                  void openCommentThread(drag.threadId);
+                  // The group pin toggles its floating card instead of
+                  // opening one thread.
+                  setOpenGroupId(openGroupId === drag.threadId ? null : drag.threadId);
                 }
               }}
               onPointerCancel={() => {
@@ -161,6 +185,38 @@ export function WorkspaceCommentBubbles({ pageId, zoom }: WorkspaceCommentBubble
             <text className="pp-comment-bubble-label" textAnchor="middle" dominantBaseline="central">
               {label}
             </text>
+            {openGroup?.threads[0].id === first.id ? (
+              <foreignObject
+                x={BUBBLE_RADIUS + 8}
+                y={-GROUP_CARD_HEIGHT / 2}
+                width={GROUP_CARD_WIDTH}
+                height={GROUP_CARD_HEIGHT}
+              >
+                <div className="pp-comment-group-card" data-testid="comment-group-card">
+                  {openGroup.threads.map((thread) => (
+                    <button
+                      key={thread.id}
+                      type="button"
+                      className="pp-comment-group-entry"
+                      onClick={() => {
+                        setOpenGroupId(null);
+                        void focusCommentThread(thread.id);
+                      }}
+                    >
+                      <CommentAvatar
+                        className="pp-comment-avatar--small"
+                        photoId={thread["owner-photo-id"]}
+                        name={thread["owner-fullname"] ?? ""}
+                      />
+                      <span className="pp-comment-group-seqn">#{thread.seqn}</span>
+                      <span className="pp-comment-group-preview">
+                        {formatCommentContent(thread.content)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </foreignObject>
+            ) : null}
           </g>
         );
       })}

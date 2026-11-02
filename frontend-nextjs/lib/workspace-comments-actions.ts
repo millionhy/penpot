@@ -19,6 +19,7 @@
 
 import {
   addComment,
+  calculateZoomToUngroup,
   createCommentThread,
   deleteComment,
   deleteThread,
@@ -28,6 +29,7 @@ import {
   markAllThreadsRead,
   markThreadRead,
   setThreadResolved,
+  threadById,
   updateThreadPosition,
   viewportCenter,
   type Comment,
@@ -35,7 +37,12 @@ import {
   type CommentThread,
 } from "@/lib/workspace-comments";
 import { pageObjects } from "@/lib/workspace";
-import { getWorkspaceState, setWorkspaceComments } from "@/lib/workspace-store";
+import { getTeamMembers } from "@/lib/team";
+import {
+  getWorkspaceState,
+  getWorkspaceViewport,
+  setWorkspaceComments,
+} from "@/lib/workspace-store";
 
 // Replace one thread in the slice by id, keeping the array identity stable for
 // the others so a partial update re-renders only what changed.
@@ -78,6 +85,18 @@ export async function loadCommentThreads(fileId: string): Promise<void> {
   }
 }
 
+// Load the team members for the @mention autocomplete (the shell runs it on
+// mount when the route carries a team-id). A failure leaves the previous list
+// in place; an empty one keeps the suggestion popup closed.
+export async function loadCommentMembers(teamId: string): Promise<void> {
+  try {
+    const members = await getTeamMembers(teamId);
+    setWorkspaceComments({ members });
+  } catch {
+    /* the autocomplete stays without candidates */
+  }
+}
+
 // Re-read the whole list (the panel refresh button and after a create, whose
 // resolved row the list query returns).
 export async function refreshCommentThreads(fileId: string): Promise<void> {
@@ -93,6 +112,36 @@ export async function refreshCommentThreads(fileId: string): Promise<void> {
 
 export function setCommentsPanelOpen(open: boolean): void {
   setWorkspaceComments({ panelOpen: open });
+}
+
+// The viewport command of the canvas component (the single store write path,
+// the registerPresencePointerSender pattern): focusing a thread scales the
+// viewport to separate a grouped pin and centers its point. The shell
+// registers it from the canvas handle; without one the focus only opens the
+// thread.
+export type CommentViewportFocus = (position: CommentPosition, zoomScale: number) => void;
+
+let viewportFocus: CommentViewportFocus | null = null;
+
+export function registerCommentViewportFocus(next: CommentViewportFocus | null): void {
+  viewportFocus = next;
+}
+
+// Open a thread and bring its pin into view: the zoom that un-groups it from
+// the page threads (calculateZoomToUngroup, the CLJS navigate flow) and the
+// centering the canvas then applies.
+export async function focusCommentThread(threadId: string): Promise<void> {
+  const state = getWorkspaceState();
+  const viewport = getWorkspaceViewport();
+  const thread = threadById(state.comments.threads, threadId);
+  if (viewport !== null && thread !== null) {
+    const others = state.comments.threads
+      .filter((t) => t["page-id"] === thread["page-id"] && t.id !== thread.id)
+      .map((t) => t.position ?? { x: 0, y: 0 });
+    const targetZoom = calculateZoomToUngroup(viewport.zoom, thread.position, others);
+    if (viewportFocus !== null) viewportFocus(thread.position, targetZoom / viewport.zoom);
+  }
+  await openCommentThread(threadId);
 }
 
 // The canvas click-to-place flow (the :comments drawing tool of the CLJS

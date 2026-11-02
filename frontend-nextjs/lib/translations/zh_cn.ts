@@ -43,6 +43,7 @@ export const zh_cn: Record<string, TranslationEntry> = {
   "auth.terms-of-service": "服务条款",
   "auth.verification-sent-email": "我们已将验证邮件发送至：",
   "auth.work-email": "工作邮件地址",
+  "comments.mentions.not-found": "未找到 @%s 相关人员",
   "dasboard.team-hero.management": "团队管理",
   "dasboard.team-hero.text": "Penpot 专为团队协作而设计。邀请成员共同处理项目和文件",
   "dasboard.team-hero.title": "组建团队！",

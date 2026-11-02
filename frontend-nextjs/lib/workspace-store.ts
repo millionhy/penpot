@@ -20,7 +20,12 @@ import type { DrawPoint } from "@/lib/workspace-draw";
 import type { EditNode } from "@/lib/workspace-node-edit";
 import type { PenNode } from "@/lib/workspace-pen";
 import type { PresenceState } from "@/lib/workspace-presence";
-import type { Comment, CommentPosition, CommentThread } from "@/lib/workspace-comments";
+import type {
+  Comment,
+  CommentPosition,
+  CommentThread,
+  MentionCandidate,
+} from "@/lib/workspace-comments";
 import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";
 import type { ViewportRect, ViewportState } from "@/lib/workspace-viewport";
 
@@ -119,6 +124,9 @@ export interface WorkspaceCommentsSlice {
   // composer edits before the thread is created.
   placing: boolean;
   placementPoint: CommentPosition | null;
+  // The team members for the @mention autocomplete (loaded once per team by
+  // the controller; empty until then, which keeps the popup closed).
+  members: MentionCandidate[];
 }
 
 export interface WorkspaceState {
@@ -220,6 +228,7 @@ const initialState: WorkspaceState = {
     showResolved: false,
     placing: false,
     placementPoint: null,
+    members: [],
   },
 };
 

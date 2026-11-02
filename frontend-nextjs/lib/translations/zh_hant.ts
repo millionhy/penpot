@@ -44,6 +44,7 @@ export const zh_hant: Record<string, TranslationEntry> = {
   "auth.terms-of-service": "服務條款",
   "auth.verification-sent-email": "我們已寄送驗證郵件至：",
   "auth.work-email": "工作信箱",
+  "comments.mentions.not-found": "找不到符合 @%s 的使用者",
   "dasboard.team-hero.management": "團隊管理",
   "dasboard.team-hero.text": "Penpot 專為團隊打造。邀請成員一起協作處理專案與檔案",
   "dasboard.team-hero.title": "組隊！",

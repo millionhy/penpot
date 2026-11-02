@@ -369,6 +369,122 @@ export function groupBubbles(
   return groups;
 }
 
+// The zoom that separates a pin from the rest: multiply the current zoom by
+// the CLJS step until nothing overlaps. The recursion of
+// calculate-zoom-scale-to-ungroup-current-bubble diverges on coincident
+// threads (distance 0 always overlaps); the port caps the iterations instead.
+export const BUBBLE_UNGROUP_ZOOM_STEP = 1.75;
+const BUBBLE_UNGROUP_MAX_STEPS = 12;
+
+export function calculateZoomToUngroup(
+  zoom: number,
+  position: CommentPosition,
+  others: readonly CommentPosition[],
+): number {
+  let current = zoom;
+  for (let step = 0; step < BUBBLE_UNGROUP_MAX_STEPS; step++) {
+    if (!others.some((other) => bubblesOverlap(current, position, other))) return current;
+    current *= BUBBLE_UNGROUP_ZOOM_STEP;
+  }
+  return current;
+}
+
+// The 160 screen-pixel offset of center-to-comment-thread: the point lands
+// above-left of the viewport center, leaving room for the open thread card.
+const THREAD_CENTER_PADDING_PX = 160;
+
+export interface ViewportBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// The vbox origin that centers a thread point (with the padding), keeping the
+// box size and the zoom untouched.
+export function centeredVbox(
+  vbox: ViewportBox,
+  zoom: number,
+  position: CommentPosition,
+): ViewportBox {
+  const pad = zoom > 0 ? THREAD_CENTER_PADDING_PX / zoom : 0;
+  return {
+    ...vbox,
+    x: position.x - (vbox.width / 2 - pad),
+    y: position.y - (vbox.height / 2 - pad),
+  };
+}
+
+// The world point that must land in the viewport center to show a thread with
+// the center-to-comment-thread padding: the point shifted down-right by the
+// padding, leaving room for the open thread card at the top-left. Equivalent
+// to the center of centeredVbox, without needing the box size.
+export function threadFocusCenter(zoom: number, position: CommentPosition): CommentPosition {
+  const pad = zoom > 0 ? THREAD_CENTER_PADDING_PX / zoom : 0;
+  return { x: position.x + pad, y: position.y + pad };
+}
+
+// --- Mention autocomplete ----------------------------------------------------
+
+// The CLJS shows the suggestions while the text before the caret matches
+// "@\w*" and the @ does not continue a word (the at-symbol-inside-word?
+// guard). The fragment starts at MentionQuery.start and ends at the caret; the
+// filter is the text typed after the @.
+export interface MentionQuery {
+  filter: string;
+  start: number;
+}
+
+export function currentMentionQuery(text: string, caret: number): MentionQuery | null {
+  const before = text.slice(0, Math.max(0, Math.min(caret, text.length)));
+  const match = /(^|[^\w@])@(\w*)$/.exec(before);
+  if (match === null) return null;
+  const at = match[1] === "" ? match.index : match.index + 1;
+  return { filter: match[2], start: at };
+}
+
+// take 4 of the CLJS: the members whose fullname or email contains the filter
+// (case-insensitive; an empty filter passes everyone).
+export const MENTION_MAX_RESULTS = 4;
+
+export interface MentionCandidate {
+  id: string;
+  fullname?: string;
+  email?: string;
+  "photo-id"?: string | null;
+}
+
+export function filterMentionCandidates<T extends MentionCandidate>(
+  members: readonly T[],
+  filter: string,
+): T[] {
+  const term = filter.toLowerCase();
+  const hits =
+    term === ""
+      ? members
+      : members.filter(
+          (member) =>
+            (member.fullname ?? "").toLowerCase().includes(term) ||
+            (member.email ?? "").toLowerCase().includes(term),
+        );
+  return hits.slice(0, MENTION_MAX_RESULTS);
+}
+
+// Replace the mention fragment ending at the caret with the stored token form
+// (the @[fullname](id) shape parseCommentContent reads back) plus a space, and
+// report the new caret. The label falls back to the email, then the id.
+export function insertMentionToken(
+  text: string,
+  mention: MentionQuery,
+  caret: number,
+  user: MentionCandidate,
+): { text: string; caret: number } {
+  const name = user.fullname ?? user.email ?? user.id;
+  const token = `@[${name}](${user.id}) `;
+  const next = text.slice(0, mention.start) + token + text.slice(caret);
+  return { text: next, caret: mention.start + token.length };
+}
+
 // --- Commands --------------------------------------------------------------
 
 // get-comment-threads for one file (GET: the command name starts with "get-").

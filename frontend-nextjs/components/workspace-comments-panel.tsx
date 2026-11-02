@@ -14,14 +14,15 @@
 // Deviations from the CLJS original, documented:
 // - The panel lists the threads of the open page only; the CLJS groups every
 //   page of the file under a per-page title.
-// - No time-ago stamps (app.util.time is not ported): the cards show the
-//   author and the content only.
+// - The stamps go through lib/timeago (the port of app.common.time/timeago);
+//   the cards show author, avatar and relative time like the CLJS list.
 // - Deleting a reply has no confirm step; deleting a thread keeps the CLJS
 //   confirm modal (modals.delete-comment-thread). The CLJS thread options
 //   dropdown is flattened into a single delete button, shown to the thread
 //   owner like the CLJS checks.
-// - The @mention autocomplete and the reply edition are later slices; a
-//   mention stored in the content renders as a chip through
+// - The @mention autocomplete runs through components/comment-mention (the
+//   suggestions popup of app.main.ui.comments); the reply edition is a later
+//   slice and a mention stored in the content renders as a chip through
 //   parseCommentContent.
 // - The CLJS resolve control is a textless checkbox (the checkbox* call in
 //   comments.cljs carries no label); this port keeps that shape and its
@@ -30,11 +31,17 @@
 //   drawing tool): the list footer enters placement and the floating composer
 //   on the canvas collects the text, like the CLJS create-draft gesture.
 
-import { useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 
+import { CommentAvatar } from "@/components/comment-avatar";
+import {
+  MentionSuggestions,
+  useMentionAutocomplete,
+} from "@/components/comment-mention";
 import { ConfirmDialog, useModal } from "@/components/modal";
 import { tr } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
+import { timeAgo } from "@/lib/timeago";
 import {
   sortThreads,
   threadById,
@@ -106,6 +113,13 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
   const profileId = profile?.id ?? null;
   const { open: openModal } = useModal();
   const [draft, setDraft] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const mention = useMentionAutocomplete(
+    comments.members,
+    draft,
+    setDraft,
+    textareaRef,
+  );
 
   const pageThreads = comments.threads.filter((thread) => thread["page-id"] === pageId);
   const visible = visibleThreads(pageThreads, {
@@ -121,6 +135,7 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
   const submitAnswer = (): void => {
     if (openThread === null || !validCommentContent(draft)) return;
     setDraft("");
+    mention.close();
     void submitReply(openThread.id, draft);
   };
 
@@ -204,8 +219,16 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
           </div>
           <ul className="pp-comments-replies">
             <li className="pp-comments-reply" data-testid="comment-first">
-              <span className="pp-comments-reply-author">
-                {openThread["owner-fullname"] ?? ""}
+              <span className="pp-comments-reply-meta">
+                <CommentAvatar
+                  className="pp-comment-avatar--small"
+                  photoId={openThread["owner-photo-id"]}
+                  name={openThread["owner-fullname"] ?? ""}
+                />
+                <span className="pp-comments-reply-author">
+                  {openThread["owner-fullname"] ?? ""}
+                </span>
+                <span className="pp-comments-time">{timeAgo(openThread["created-at"])}</span>
               </span>
               <span className="pp-comments-reply-body">
                 <CommentBody content={openThread.content} />
@@ -213,8 +236,16 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
             </li>
             {replies.slice(1).map((reply) => (
               <li key={reply.id} className="pp-comments-reply" data-testid="comment-reply">
-                <span className="pp-comments-reply-author">
-                  {reply["owner-fullname"] ?? ""}
+                <span className="pp-comments-reply-meta">
+                  <CommentAvatar
+                    className="pp-comment-avatar--small"
+                    photoId={reply["owner-photo-id"]}
+                    name={reply["owner-fullname"] ?? ""}
+                  />
+                  <span className="pp-comments-reply-author">
+                    {reply["owner-fullname"] ?? ""}
+                  </span>
+                  <span className="pp-comments-time">{timeAgo(reply["created-at"])}</span>
                 </span>
                 <span className="pp-comments-reply-body">
                   <CommentBody content={reply.content} />
@@ -236,13 +267,21 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
             ) : null}
           </ul>
           <div className="pp-comments-composer">
+            <MentionSuggestions mention={mention} onPick={mention.pick} />
             <textarea
               className="pp-comments-input"
               rows={3}
+              ref={textareaRef}
               value={draft}
               placeholder={tr("labels.write-new-comment")}
               aria-label={tr("labels.write-new-comment")}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                mention.onChange(event);
+              }}
+              onKeyDown={(event) => {
+                if (mention.onKeyDown(event)) event.preventDefault();
+              }}
             />
             <button
               type="button"
@@ -299,9 +338,15 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
               data-testid="comment-thread-card"
               onClick={() => void openCommentThread(thread.id)}
             >
+              <CommentAvatar
+                className="pp-comments-thread-avatar"
+                photoId={thread["owner-photo-id"]}
+                name={thread["owner-fullname"] ?? ""}
+              />
               <span className="pp-comments-thread-seqn">#{thread.seqn}</span>
               <span className="pp-comments-thread-author">
                 {thread["owner-fullname"] ?? ""}
+                <span className="pp-comments-time">{timeAgo(thread["created-at"])}</span>
               </span>
               <span className="pp-comments-thread-preview">
                 <CommentBody content={thread.content} />

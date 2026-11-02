@@ -12,10 +12,13 @@ import {
   closeCommentThread,
   createThreadAtCenter,
   createThreadAtPlacement,
+  focusCommentThread,
+  loadCommentMembers,
   loadCommentThreads,
   markAllLoadedRead,
   moveThreadToPosition,
   openCommentThread,
+  registerCommentViewportFocus,
   removeThread,
   setCommentsFilter,
   setCommentsPanelOpen,
@@ -31,6 +34,7 @@ import {
   resetWorkspaceState,
   setWorkspaceComments,
   setWorkspaceState,
+  setWorkspaceViewport,
 } from "@/lib/workspace-store";
 import type { Comment, CommentThread } from "@/lib/workspace-comments";
 
@@ -248,6 +252,84 @@ describe("setThreadDragPosition", () => {
 
     expect(getWorkspaceState().comments.threads[0].position).toEqual({ x: 9, y: 4 });
     expect(calls.length).toBe(0);
+  });
+});
+
+describe("focusCommentThread", () => {
+  afterEach(() => {
+    registerCommentViewportFocus(null);
+  });
+
+  it("scales to ungroup, centers through the command and opens the thread", async () => {
+    setWorkspaceViewport({
+      zoom: 1,
+      vbox: { x: 0, y: 0, width: 800, height: 600 },
+      vport: { width: 800, height: 600 },
+    });
+    setWorkspaceComments({
+      threads: [
+        thread({ id: THREAD_ID, position: { x: 10, y: 0 } }),
+        thread({ id: "other", position: { x: 0, y: 0 } }),
+      ],
+    });
+    const seen: { position: { x: number; y: number }; scale: number }[] = [];
+    registerCommentViewportFocus((position, scale) => seen.push({ position, scale }));
+    stubFetch(emptyResponse());
+
+    await focusCommentThread(THREAD_ID);
+
+    // The pins overlap at zoom 1 (10 screen px), so the scale must exceed 1.
+    expect(seen).toHaveLength(1);
+    expect(seen[0].position).toEqual({ x: 10, y: 0 });
+    expect(seen[0].scale).toBeGreaterThan(1);
+    expect(getWorkspaceState().comments.openThreadId).toBe(THREAD_ID);
+  });
+
+  it("only opens the thread when no viewport command is registered", async () => {
+    setWorkspaceViewport({
+      zoom: 1,
+      vbox: { x: 0, y: 0, width: 800, height: 600 },
+      vport: { width: 800, height: 600 },
+    });
+    setWorkspaceComments({ threads: [thread({ id: THREAD_ID })] });
+    stubFetch(emptyResponse());
+
+    await focusCommentThread(THREAD_ID);
+
+    expect(getWorkspaceState().comments.openThreadId).toBe(THREAD_ID);
+    expect(getWorkspaceState().vbox).toEqual({ x: 0, y: 0, width: 800, height: 600 });
+  });
+});
+
+describe("loadCommentMembers", () => {
+  it("stores the team members for the mention autocomplete", async () => {
+    const members = [
+      { id: "99999999-0000-1111-2222-333333333333", email: "a@x.io", fullname: "Ann" },
+    ];
+    const calls = stubFetch(jsonResponse(members));
+
+    await loadCommentMembers("11111111-2222-3333-4444-555555555555");
+
+    expect(calls[0].url).toContain("get-team-members");
+    expect(getWorkspaceState().comments.members).toEqual(members);
+  });
+
+  it("keeps the previous list when the fetch fails", async () => {
+    setWorkspaceComments({ members: [{ id: "keep", fullname: "Kept" }] });
+    // A 500 with a transit error body raises a non-retryable RpcError; a
+    // network failure would send the GET through the retry backoffs.
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(encodeTransit({ type: "internal", code: "boom" }), {
+          status: 500,
+          headers: { "content-type": "application/transit+json" },
+        }),
+    );
+
+    await loadCommentMembers("11111111-2222-3333-4444-555555555555");
+
+    expect(getWorkspaceState().comments.members).toEqual([{ id: "keep", fullname: "Kept" }]);
   });
 });
 

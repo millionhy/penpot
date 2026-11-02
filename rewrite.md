@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）完成；F8 协作四片完成，见 7.46–7.48） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）完成；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
@@ -38,7 +38,7 @@
 | F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。F4 的 modal 需求由外壳自带的 `components/modal.tsx`（ModalProvider/ConfirmDialog）满足，profile 驱动的主题切换也已接上令牌；`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线推到 F5 dashboard（首个需要 menu/dropdown 的路由组） |
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 占位后随 F5.6 补齐）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes 未做（见 7.6） |
-| F5 | dashboard 路由组（`/dashboard/*`） | ✅ | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片全部完成（F5.7 的 organization/team switch、subscription/nitrate、`subscribe-team` 实时刷新见 7.53，comments 数据层/控制层/侧栏面板/画布 pin 气泡见 7.54，点选落位与 pin 拖动见 7.55），见下与第 4 节 |
+| F5 | dashboard 路由组（`/dashboard/*`） | ✅ | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片全部完成（F5.7 的 organization/team switch、subscription/nitrate、`subscribe-team` 实时刷新见 7.53，comments 数据层/控制层/侧栏面板/画布 pin 气泡见 7.54，点选落位与 pin 拖动见 7.55，@提及补全/组浮卡/头像/timeago/zoom 到线程见 7.56），见下与第 4 节 |
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | ✅ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；四片全部完成（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入、F7.4 完整 API 上下文：workspace 代理 + 事件派发 + 画布桥接，见 7.44）；结构写/文本/媒体/代码生成等延后项以命名错误登记 |
 | F8 | WebSocket 协作客户端 | ✅ | 四片全部完成（F8.1 传输层 / F8.2 订阅与远端变更 / F8.3 在场与指针 / F8.4 route/shell 接线），直连 `backendOrigin` 的 `/ws/notifications`；两标签页冒烟 12/12（远端形状、游标与 5s TTL、断网重连重订阅、只读无写），见 7.46–7.48 |
@@ -271,7 +271,9 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     （已完成：`lib/workspace-comments.ts` 数据层 + `lib/workspace-comments-actions.ts` 控制层 +
     `components/workspace-comments-panel.tsx` 侧栏线程面板 + `components/workspace-comment-bubbles.tsx`
     画布 pin 气泡；后端不广播 comment 事件，采用 RPC 加载 + 乐观更新，见 7.54；
-    后续独立切片完成画布点选落位与 pin 拖动，见 7.55）。
+    后续独立切片完成画布点选落位与 pin 拖动，见 7.55；
+    再一切片补齐 @提及自动补全、组 pin 浮卡、owner 头像、timeago 时间戳与
+    点击 pin zoom 到线程，见 7.56）。
 - **F6 viewer**：`/view` + `frame-preview` + `render-sprite`；集成 render-wasm 渲染画布（复用
   `app.render_wasm.api` 的加载方式）。切成 F6.1–F6.6 六片：
   - **F6.1 数据层（完成）**：`lib/viewer.ts`（feature 门控、bundle 拉取与 pointer
@@ -2909,6 +2911,51 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 剩余延后项：@提及自动补全、气泡组浮卡、owner 头像、timeago、图片附件、
   点击气泡 zoom 到线程、pin 拖动进 undo、dashboard 未读卡片。
 - 下一步：阶段 B 的 M0/M1；Web Worker 余项（索引）；comments 余下延后项按需切片。
+
+### 7.56 本轮（2026-11-02，第五十五批：comments @提及补全、组浮卡、头像、timeago 与 zoom 到线程）
+
+- 诉求：7.55 余下延后项的第二独立切片——@提及自动补全、组 pin 浮卡、owner
+  头像、timeago 时间戳与点击 pin zoom 到线程（CLJS
+  `comments-mentions-choice`、`comment-avatar*`、`app.common.time/timeago`、
+  `center-to-comment-thread` 的角色）。
+- 数据层：新 `lib/timeago.ts`（`Intl.RelativeTimeFormat` 替代 date-fns 的
+  distanceToNow+addSuffix，同语言短语零依赖，nowMs 可注入）；
+  `lib/workspace-comments.ts` 加 mention 三件套（`currentMentionQuery` 正则定位
+  非词内 `@` 片段、`filterMentionCandidates` 大小写不敏感匹配 fullname/email 并
+  截四、`insertMentionToken` 写 `@[fullname](id) ` 并回报新光标）与 zoom 三件套
+  （`calculateZoomToUngroup` 1.75 步长 + 12 步上限防重合点发散、`centeredVbox`
+  与 `threadFocusCenter` 的 160px center-to-comment-thread 偏移）；
+  `profilePhotoUrl`（lib/settings.ts）入参放宽为 `{ "photo-id" }`，comment 行
+  可直接复用。
+- 控制层：store comments 切片加 `members`；`loadCommentMembers`（get-team-members，
+  失败保留旧列表）；`registerCommentViewportFocus` 注册点（canvas 拥有视口，
+  命令跨 handle 边界，同插件桥接口径）与 `focusCommentThread`（按
+  `calculateZoomToUngroup` 缩放居中后打开；未注册时退化为仅打开）。
+- UI：新 `components/comment-avatar.tsx`（照片走 assets/by-id，缺图客户端
+  canvas 生成 initials，仿 TeamPicture 不在 SSR 生成）；新
+  `components/comment-mention.tsx`（`useMentionAutocomplete` hook +
+  `MentionSuggestions` 弹窗：ArrowUp/Down 移动、Enter/Tab 插入、pointerdown
+  抢在 blur 前拾取、无候选显示 `comments.mentions.not-found`）；panel 列表卡片
+  与回复行加头像 + timeago、详情/落位两处 composer 接补全弹窗；bubbles 单线程
+  pin 点击改 `focusCommentThread`，组 pin 改为切换浮卡（每行
+  头像/#seqn/preview，点击行 focus 对应线程）；shell 接线
+  `loadCommentMembers`（teamId 存在时）与 focus 注册（canvas handle 的
+  setZoom/setCenter + `threadFocusCenter`）；`workspace.css` +140（头像圆片
+  32/24、时间戳、弹窗、组浮卡、placement shell 贴底、thread-card 网格改
+  avatar 跨两行的三列）。落位浮动 composer 加高 170→250 为弹窗留位
+  （foreignObject 裁剪溢出）。
+- 偏差与剩余延后项（如实登记）：组浮卡不做点击外部关闭（二次点 pin 或
+  组解散时关闭）；pin 本体保持编号圆片非头像；图片附件、dashboard 未读卡片、
+  pin 拖动进 undo、回复编辑仍延后。
+- 测试：`lib/timeago.test.ts` 4 例；数据层 49 例（+13：mention 三件套、
+  `calculateZoomToUngroup`、`centeredVbox`、`threadFocusCenter`）；actions 22 例
+  （+4：`loadCommentMembers` 成功/失败保留——error 分支仍用不可重试 500，沿用
+  7.54 纠正——与 `focusCommentThread` 居中/退化两路）。验证：`extract-translations`
+  1020/1020（首次收进 `comments.mentions.not-found`）0、`tsc --noEmit` 0、全量
+  `vitest` 89 文件 1964 例（+21）0、`next lint` 14 文件 0；浏览器冒烟未跑（本机无
+  docker 后端，同上批口径）。
+- 下一步：阶段 B 的 M0/M1（backend-rust，排除目录需先授权）；Web Worker
+  余项（索引）；comments 余下（图片附件、dashboard 未读卡片、进 undo、回复编辑）。
 
 ---
 

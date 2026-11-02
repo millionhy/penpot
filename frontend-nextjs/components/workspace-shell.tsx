@@ -60,8 +60,11 @@ import {
   type WorkspaceTool,
 } from "@/lib/workspace";
 import { createWorkspaceCollab } from "@/lib/workspace-collab";
+import { threadFocusCenter } from "@/lib/workspace-comments";
 import {
+  loadCommentMembers,
   loadCommentThreads,
+  registerCommentViewportFocus,
   setCommentsPanelOpen,
 } from "@/lib/workspace-comments-actions";
 import { registerWorkspacePageOpener } from "@/lib/workspace-navigation";
@@ -185,6 +188,28 @@ export function WorkspaceShell({
   useEffect(() => {
     void loadCommentThreads(fileId);
   }, [fileId]);
+
+  // The @mention candidates: the team members behind the suggestions popup.
+  // Without a team-id (a bare file route) the list stays empty and the
+  // popup never opens, like the reference app outside a project context.
+  useEffect(() => {
+    if (teamId !== null) void loadCommentMembers(teamId);
+  }, [teamId]);
+
+  // The zoom-to-thread command of focusCommentThread: the canvas owns the
+  // viewport, so the focus lands through its handle (the plugin-bridge
+  // zoom/center pair) with the CLJS center-to-comment-thread padding.
+  useEffect(() => {
+    registerCommentViewportFocus((position, scale) => {
+      const canvas = canvasRef.current;
+      const viewport = getWorkspaceViewport();
+      if (canvas === null || viewport === null) return;
+      const targetZoom = viewport.zoom * scale;
+      canvas.setZoom(targetZoom);
+      canvas.setCenter(threadFocusCenter(targetZoom, position));
+    });
+    return () => registerCommentViewportFocus(null);
+  }, []);
 
   const commentsState = useSyncExternalStore(
     subscribeWorkspace,

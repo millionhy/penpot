@@ -27,8 +27,10 @@ export interface RuntimeProfile extends Profile {
 
 // resolve-profile-photo-url in app.config: a stored photo is served from
 // assets/by-id, otherwise the caller falls back to the generated avatar.
+// The row shape is deliberately loose: comment rows carry the owner photo on
+// the joined owner- fields, and only the photo id is read here.
 export function profilePhotoUrl(
-  profile: RuntimeProfile | null,
+  profile: { "photo-id"?: string | null } | null,
   publicUri: string,
 ): string | null {
   const photoId = profile?.["photo-id"];
