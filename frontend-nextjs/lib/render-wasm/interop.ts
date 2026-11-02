@@ -84,6 +84,13 @@ export const KEY = {
 
   // app.common
   decodeStr: "$app$common$transit$decode_str$$",
+  // app.common.transit/add-handlers!, the variadic entry point. The worker
+  // registers penpot/objects-map/v2 with it because that handler lives in
+  // app.main (main.js), which needs a document and cannot load in a worker.
+  // The variadic extraction takes the rest argument as an array: call it as
+  // call(app, KEY.addHandlers, [handlerMap]).
+  addHandlers:
+    "$app$common$transit$add_handlers_BANG_$cljs$0core$0IFn$0_invoke$0arity$0variadic$$",
   uuidParse: "$app$common$uuid$parse$$",
   pointerQmark: "$app$common$transit$pointer_QMARK_$$",
   getObjectBounds: "$app$common$geom$shapes$bounds$get_object_bounds$$",

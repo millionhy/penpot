@@ -5,13 +5,13 @@
 // plus the dynamic-width hook that derives how many cards fit per row.
 //
 // Deviations from the CLJS original, documented:
-// - Thumbnails only display a stored thumbnail-id through assets/by-id
-//   (cf/resolve-media). The client-side regeneration through the media worker
-//   (render-thumbnail + rasterizer + create-file-thumbnail) needs the F9
-//   renderer and is deferred; cards without a stored thumbnail show the file
-//   background color and a loader slot.
-// - use-visible (IntersectionObserver) gating of the thumbnail is replaced by
-//   native loading="lazy".
+// - Thumbnails paint a stored thumbnail-id through assets/by-id
+//   (cf/resolve-media). A file without one is rendered by the thumbnail
+//   worker (lib/thumbnail.worker.ts) the first time its card becomes visible,
+//   then persisted through create-file-thumbnail; until the id arrives the
+//   card keeps the file background and a loader slot.
+// - use-visible (IntersectionObserver) gates the thumbnail generation. A
+//   stored image still loads with the native loading="lazy".
 // - The drag image counter element is dropped; the HTML5 default drag image
 //   is used. The "penpot/files" drag type and the cross-project drop that
 //   calls move-files are ported, so drag-to-move works in the recent view.
@@ -54,6 +54,11 @@ import { useDashboard } from "@/lib/dashboard-context";
 import { ensureLoaded } from "@/lib/fonts";
 import { config } from "@/lib/config";
 import { tr } from "@/lib/i18n";
+import { persistFileThumbnail } from "@/lib/thumbnail-persist";
+import {
+  generateFileThumbnail,
+  retainThumbnailRenderer,
+} from "@/lib/thumbnail-worker-client";
 import { useNotifications } from "@/components/notifications";
 
 // --- Dynamic width hook -------------------------------------------------------
@@ -103,14 +108,57 @@ function GridItemThumbnail({
   canEdit: boolean;
   canRestore?: boolean;
 }) {
+  const nodeRef = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [generatedId, setGeneratedId] = useState<string | null>(null);
+
+  const storedId = file["thumbnail-id"];
+  const thumbnailId =
+    typeof storedId === "string" && storedId.length > 0 ? storedId : generatedId;
   const background = file.data?.background ?? "var(--color-background-quaternary)";
-  const thumbnailId = file["thumbnail-id"];
-  const src =
-    typeof thumbnailId === "string" && thumbnailId.length > 0
-      ? resolveMediaUri(config.publicUri, thumbnailId)
-      : null;
+  const src = thumbnailId !== null ? resolveMediaUri(config.publicUri, thumbnailId) : null;
+
+  // use-visible: flip to visible once, the first time the card intersects.
+  useEffect(() => {
+    const node = nodeRef.current;
+    if (node === null) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisible(true);
+        observer.disconnect();
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  // render-thumbnail behind the reference's `can-edit && visible? && (not
+  // thumbnail-id)` gate: a file stored without a thumbnail gets one the
+  // first time its card is seen, and create-file-thumbnail keeps it for the
+  // next visit. Both legs fail quietly; the card keeps its loader.
+  useEffect(() => {
+    if (!canEdit || !visible || thumbnailId !== null) return;
+    const revn = file.revn;
+    if (typeof revn !== "number") return;
+    let cancelled = false;
+    void (async () => {
+      const blob = await generateFileThumbnail(file.id, revn);
+      if (blob === null || cancelled) return;
+      const id = await persistFileThumbnail(file.id, revn, blob);
+      if (id !== null && !cancelled) setGeneratedId(id);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canEdit, visible, thumbnailId, file.id, file.revn]);
+
   return (
     <div
+      ref={nodeRef}
       className={
         canRestore === true ? "pp-grid-item-thumbnail is-deleted" : "pp-grid-item-thumbnail"
       }
@@ -712,6 +760,10 @@ export function DashboardGrid({
   const { openFiles, openPicker } = useImportFile(project?.id ?? null, onImported);
   const [dragging, setDragging] = useState(false);
 
+  // The thumbnail worker is page-scoped; each mounted grid holds it and the
+  // last release drops the thread (a StrictMode replay respawns it).
+  useEffect(() => retainThumbnailRenderer(), []);
+
   // The grid* drag handlers: OS files open the import dialog on drop and
   // highlight the insertion slot meanwhile. Everything but penpot/files is
   // left to the browser default, like the CLJS cond with no further branch.
@@ -861,6 +913,9 @@ export function LineGrid({
   const { selection, clearSelection } = useDashboard();
   const notifications = useNotifications();
   const { openFiles, openPicker } = useImportFile(project.id, onImported);
+
+  // Same page-scoped worker as DashboardGrid.
+  useEffect(() => retainThumbnailRenderer(), []);
 
   const hasFiles = (event: React.DragEvent) => event.dataTransfer.types.includes("penpot/files");
 

@@ -40,6 +40,16 @@ export function renderSyncShape(app: RendererApp, id: string): void {
   app[KEY.internalFrameId] = null;
 }
 
+// render-sync (app.render-wasm.api): the whole-viewport counterpart of
+// renderSyncShape, used by the thumbnail pass when the page has no frame
+// marked use-for-thumbnail. Same ending: the internal call paints, then the
+// scheduled-render handle is cleared.
+export function renderSync(app: RendererApp): void {
+  const internal = app[KEY.internalModule] as Record<string, (...args: number[]) => unknown>;
+  internal._render_sync();
+  app[KEY.internalFrameId] = null;
+}
+
 // draw-bitmap!: GPU-side blit of the offscreen canvas through an
 // ImageBitmap (correct orientation, no CPU readback) plus the canvas id
 // the handlers look for. `finish` always runs, also when the blit fails —

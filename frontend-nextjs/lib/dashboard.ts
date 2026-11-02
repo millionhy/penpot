@@ -72,9 +72,10 @@ export interface FileSummary {
   "is-shared"?: boolean;
   "modified-at"?: InstantValue | null;
   "created-at"?: InstantValue | null;
-  // file_thumbnail id served from assets/by-id (cf/resolve-media). The client
-  // side regeneration through the media worker is deferred; see the F5.2 note
-  // in components/dashboard-grid.tsx.
+  // file_thumbnail id served from assets/by-id (cf/resolve-media). Files
+  // without one get a thumbnail from the dashboard worker
+  // (lib/thumbnail-worker-client.ts) and create-file-thumbnail; see the F9.14
+  // note in components/dashboard-grid.tsx.
   "thumbnail-id"?: string | null;
   // get-project-files and get-team-recent-files rows carry the file data; the
   // grid card uses [:data :background] as the thumbnail backdrop and

@@ -63,7 +63,45 @@ const nextConfig = {
   // draft-js/lib/..., immutable, the tokenscript interpreter) walk up
   // ../frontend — which has no node_modules here — and fail. Redirect exactly
   // those specifiers to this workspace's copies.
-  webpack: (config) => {
+  webpack: (config, { isServer }) => {
+    // Next sets output.library = "_N_E" with libraryTarget "assign" for the
+    // client build, so every entry chunk ends with `_N_E = __webpack_exports__`.
+    // Page chunks can do that: the Next runtime declares the binding. A worker
+    // chunk is its own script and has no such declaration, so the assignment
+    // throws ReferenceError and the worker dies right after evaluating its
+    // entry module (lib/thumbnail.worker.ts never handles a message). Strip the
+    // assignment from the worker chunks; nothing else in them reads it.
+    if (!isServer) {
+      config.plugins.push({
+        apply(compiler) {
+          const { Compilation, sources } = compiler.webpack;
+          compiler.hooks.thisCompilation.tap("strip-worker-library", (compilation) => {
+            compilation.hooks.processAssets.tap(
+              {
+                name: "strip-worker-library",
+                stage: Compilation.PROCESS_ASSETS_STAGE_OPTIMIZE_COMPATIBILITY,
+              },
+              () => {
+                for (const asset of compilation.getAssets()) {
+                  // new Worker(new URL("./x.worker.ts")) emits
+                  // static/chunks/_app-pages-browser_..._x_worker_ts(.js|-hash.js).
+                  if (!/_worker_ts(-[0-9a-z]+)?\.js$/i.test(asset.name)) continue;
+                  const source = String(asset.source.source());
+                  // Dev builds prefix the line with the /******/ banner.
+                  const stripped = source.replace(
+                    /^(?:\/\*{6}\/\s*)?_N_E = __webpack_exports__;[ \t]*$/m,
+                    "",
+                  );
+                  if (stripped === source) continue;
+                  compilation.updateAsset(asset.name, new sources.RawSource(stripped));
+                }
+              },
+            );
+          });
+        },
+      });
+    }
+
     const linkedTreeSpecifiers = [
       "draft-js",
       "immutable",
