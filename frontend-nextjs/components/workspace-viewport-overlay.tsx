@@ -64,6 +64,7 @@ import { useMemo, useSyncExternalStore, type PointerEvent as ReactPointerEvent }
 
 import { WorkspaceFrameTitles } from "@/components/workspace-frame-titles";
 import { WorkspaceCommentBubbles } from "@/components/workspace-comment-bubbles";
+import { WorkspaceCommentPlacement } from "@/components/workspace-comment-placement";
 import { WorkspacePresenceCursors } from "@/components/workspace-presence-cursors";
 import {
   canEditFile,
@@ -471,6 +472,7 @@ export function WorkspaceViewportOverlay({
       ) : null}
       <WorkspacePresenceCursors pageId={pageId} zoom={zoom} teamId={teamId} />
       <WorkspaceCommentBubbles pageId={pageId} zoom={zoom} />
+      <WorkspaceCommentPlacement />
     </svg>
   );
 }

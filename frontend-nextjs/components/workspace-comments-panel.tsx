@@ -26,6 +26,9 @@
 // - The CLJS resolve control is a textless checkbox (the checkbox* call in
 //   comments.cljs carries no label); this port keeps that shape and its
 //   meaning: checked resolves the thread.
+// - New threads go through the canvas click-to-place flow (the :comments
+//   drawing tool): the list footer enters placement and the floating composer
+//   on the canvas collects the text, like the CLJS create-draft gesture.
 
 import { useState, useSyncExternalStore } from "react";
 
@@ -43,7 +46,6 @@ import {
 } from "@/lib/workspace-comments";
 import {
   closeCommentThread,
-  createThreadAtCenter,
   markAllLoadedRead,
   openCommentThread,
   removeReplyFromThread,
@@ -51,6 +53,7 @@ import {
   setCommentsFilter,
   setCommentsPanelOpen,
   setCommentsShowResolved,
+  startCommentPlacement,
   submitReply,
   toggleThreadResolved,
 } from "@/lib/workspace-comments-actions";
@@ -114,12 +117,6 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
   );
 
   const openThread = threadById(comments.threads, comments.openThreadId);
-
-  const submitNewThread = (): void => {
-    if (!validCommentContent(draft)) return;
-    setDraft("");
-    void createThreadAtCenter(draft);
-  };
 
   const submitAnswer = (): void => {
     if (openThread === null || !validCommentContent(draft)) return;
@@ -320,19 +317,10 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
         ) : null}
       </ul>
       <div className="pp-comments-composer">
-        <textarea
-          className="pp-comments-input"
-          rows={3}
-          value={draft}
-          placeholder={tr("labels.write-new-comment")}
-          aria-label={tr("labels.write-new-comment")}
-          onChange={(event) => setDraft(event.target.value)}
-        />
         <button
           type="button"
           className="pp-comments-submit"
-          disabled={!validCommentContent(draft)}
-          onClick={submitNewThread}
+          onClick={startCommentPlacement}
         >
           {tr("labels.comment")}
         </button>

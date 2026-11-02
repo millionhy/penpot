@@ -12,6 +12,7 @@ import {
   addComment,
   BUBBLE_OVERLAP_PX,
   bubblesOverlap,
+  clientPointToWorld,
   COMMENT_MAX_LENGTH,
   createCommentThread,
   editComment,
@@ -25,6 +26,7 @@ import {
   markAllThreadsRead,
   markThreadRead,
   parseCommentContent,
+  screenDeltaToWorld,
   setThreadResolved,
   sortThreads,
   threadById,
@@ -178,6 +180,35 @@ describe("threadById", () => {
 describe("viewportCenter", () => {
   it("returns the world center of the box", () => {
     expect(viewportCenter({ x: 0, y: 10, width: 200, height: 100 })).toEqual({ x: 100, y: 60 });
+  });
+});
+
+describe("clientPointToWorld", () => {
+  it("maps a client point through the element and viewBox", () => {
+    const box = { x: 100, y: 50, width: 400, height: 300 };
+    const vbox = { x: -20, y: 10, width: 800, height: 600 };
+    // The element center maps to the vbox center.
+    expect(clientPointToWorld(box, vbox, 300, 200)).toEqual({ x: 380, y: 310 });
+    // The element top-left maps to the vbox origin.
+    expect(clientPointToWorld(box, vbox, 100, 50)).toEqual({ x: -20, y: 10 });
+  });
+
+  it("falls back to the vbox origin on a degenerate element box", () => {
+    const vbox = { x: 5, y: 6, width: 100, height: 100 };
+    expect(clientPointToWorld({ x: 0, y: 0, width: 0, height: 0 }, vbox, 10, 10)).toEqual({
+      x: 5,
+      y: 6,
+    });
+  });
+});
+
+describe("screenDeltaToWorld", () => {
+  it("divides the screen travel by the zoom", () => {
+    expect(screenDeltaToWorld(40, -20, 2)).toEqual({ x: 20, y: -10 });
+  });
+
+  it("freezes the point on a non-positive zoom", () => {
+    expect(screenDeltaToWorld(40, 20, 0)).toEqual({ x: 0, y: 0 });
   });
 });
 

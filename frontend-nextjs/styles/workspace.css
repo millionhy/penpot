@@ -2136,6 +2136,41 @@
   pointer-events: none;
 }
 
+/* The click-to-place flow (F5.7 follow-up): the catcher rect covers the
+   canvas while placing, the dot marks the picked world point and the card is
+   the floating composer inside the foreignObject (screen pixels, the group
+   scales by 1/zoom). */
+.pp-comment-placement-catcher {
+  fill: transparent;
+  cursor: crosshair;
+}
+
+.pp-comment-placement-dot {
+  fill: var(--color-accent-tertiary);
+  stroke: var(--color-static-white);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.pp-comment-placement-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: var(--sp-m);
+  border-radius: var(--br-4);
+  background-color: var(--color-background-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.pp-comment-placement-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-s);
+}
+
 /* The comments panel (F5.7) replaces the style panel in the options area of
    the right sidebar: a header row, the radio filters, the resolved toggle,
    the thread cards and the composer at the bottom. */

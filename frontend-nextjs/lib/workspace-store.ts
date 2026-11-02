@@ -20,7 +20,7 @@ import type { DrawPoint } from "@/lib/workspace-draw";
 import type { EditNode } from "@/lib/workspace-node-edit";
 import type { PenNode } from "@/lib/workspace-pen";
 import type { PresenceState } from "@/lib/workspace-presence";
-import type { Comment, CommentThread } from "@/lib/workspace-comments";
+import type { Comment, CommentPosition, CommentThread } from "@/lib/workspace-comments";
 import { orderedUnique, selectionAfterClick } from "@/lib/workspace-selection";
 import type { ViewportRect, ViewportState } from "@/lib/workspace-viewport";
 
@@ -114,6 +114,11 @@ export interface WorkspaceCommentsSlice {
   panelOpen: boolean;
   filter: CommentsFilter;
   showResolved: boolean;
+  // The canvas click-to-place flow (F5.7): placing covers the canvas waiting
+  // for the click; placementPoint is the picked world point whose floating
+  // composer edits before the thread is created.
+  placing: boolean;
+  placementPoint: CommentPosition | null;
 }
 
 export interface WorkspaceState {
@@ -213,6 +218,8 @@ const initialState: WorkspaceState = {
     panelOpen: false,
     filter: "all",
     showResolved: false,
+    placing: false,
+    placementPoint: null,
   },
 };
 

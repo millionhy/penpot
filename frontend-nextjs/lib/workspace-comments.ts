@@ -223,6 +223,42 @@ export function viewportCenter(box: {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
+// --- Coordinate mapping ----------------------------------------------------
+
+// A box in screen (client) coordinates: the getBoundingClientRect of the
+// overlay svg element.
+export interface ClientBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// The inverse of the overlay's viewBox mapping: a client point on the svg
+// element maps into the world vbox space (the role of the CLJS pointer
+// conversion for the comments tool click). A degenerate element box (zero
+// size, e.g. mid-animation) falls back to the vbox origin.
+export function clientPointToWorld(
+  box: ClientBox,
+  vbox: ClientBox,
+  clientX: number,
+  clientY: number,
+): CommentPosition {
+  if (box.width <= 0 || box.height <= 0) return { x: vbox.x, y: vbox.y };
+  return {
+    x: vbox.x + ((clientX - box.x) / box.width) * vbox.width,
+    y: vbox.y + ((clientY - box.y) / box.height) * vbox.height,
+  };
+}
+
+// A screen-pixel drag delta in world units: the pins scale by 1/zoom, so the
+// pointer travel divides by the zoom to follow the cursor exactly. A
+// non-positive zoom freezes the point instead of dividing by zero.
+export function screenDeltaToWorld(dx: number, dy: number, zoom: number): CommentPosition {
+  const k = zoom > 0 ? 1 / zoom : 0;
+  return { x: dx * k, y: dy * k };
+}
+
 // --- Frame resolution ------------------------------------------------------
 
 function containsPoint(shape: WorkspaceShape, point: CommentPosition): boolean {

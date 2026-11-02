@@ -9,9 +9,11 @@
 //   app.main.data.workspace.notifications has no comment routing, so comments
 //   refresh through RPC (a load on mount and the optimistic writes below), not
 //   a live push. This matches the reference app.
-// - Creating a thread places it at the center of the current viewport and
-//   anchors it to the frame under that point, instead of a canvas click that
-//   picks an arbitrary position (a later slice adds the click-to-place gesture).
+// - Creating a thread goes through the canvas click-to-place flow (see
+//   startCommentPlacement); submitting without a click anchors the thread at
+//   the center of the current viewport instead.
+// - A moved pin commits through update-comment-thread-position but does not
+//   join the undo stack yet (the shell undo only records page object changes).
 // - A reply, a resolve and a delete update the local slice from the RPC answer
 //   rather than refetching the whole thread list.
 
@@ -26,8 +28,10 @@ import {
   markAllThreadsRead,
   markThreadRead,
   setThreadResolved,
+  updateThreadPosition,
   viewportCenter,
   type Comment,
+  type CommentPosition,
   type CommentThread,
 } from "@/lib/workspace-comments";
 import { pageObjects } from "@/lib/workspace";
@@ -91,6 +95,27 @@ export function setCommentsPanelOpen(open: boolean): void {
   setWorkspaceComments({ panelOpen: open });
 }
 
+// The canvas click-to-place flow (the :comments drawing tool of the CLJS
+// workspace): the placement layer covers the canvas, the first click picks
+// the world point and the floating composer edits it. Starting the placement
+// also opens the panel, so submitting shows the fresh thread.
+export function startCommentPlacement(): void {
+  setWorkspaceComments({
+    placing: true,
+    placementPoint: null,
+    openThreadId: null,
+    panelOpen: true,
+  });
+}
+
+export function cancelCommentPlacement(): void {
+  setWorkspaceComments({ placing: false, placementPoint: null });
+}
+
+export function setPlacementPoint(point: CommentPosition): void {
+  setWorkspaceComments({ placementPoint: point });
+}
+
 export function closeCommentThread(): void {
   setWorkspaceComments({ openThreadId: null });
 }
@@ -144,16 +169,17 @@ export async function submitReply(threadId: string, content: string): Promise<vo
   }
 }
 
-// Create a thread at the viewport center anchored to the frame under it. The
-// store carries the file, page, objects and viewport the CLJS reads off @state.
-export async function createThreadAtCenter(content: string): Promise<CommentThread | null> {
+// Create a thread at a world position anchored to the frame under it. The
+// store carries the file, page and objects the CLJS reads off @state.
+export async function createThreadAtPosition(
+  content: string,
+  position: CommentPosition,
+): Promise<CommentThread | null> {
   const state = getWorkspaceState();
   const fileId = state.fileId;
   const pageId = state.pageId;
   if (fileId === null || pageId === null) return null;
 
-  const box = state.vbox ?? { x: 0, y: 0, width: 0, height: 0 };
-  const position = viewportCenter(box);
   const objects = state.objects ?? (state.file ? pageObjects(state.file, pageId) : {});
   const frameId = frameIdForPosition(objects, position);
 
@@ -170,6 +196,49 @@ export async function createThreadAtCenter(content: string): Promise<CommentThre
     })
     .catch(() => undefined);
   return thread;
+}
+
+// Create a thread at the center of the current viewport (the fallback when
+// the placement flow never got a click).
+export async function createThreadAtCenter(content: string): Promise<CommentThread | null> {
+  const box = getWorkspaceState().vbox ?? { x: 0, y: 0, width: 0, height: 0 };
+  return createThreadAtPosition(content, viewportCenter(box));
+}
+
+// Submit the floating composer of the placement flow: create at the picked
+// point (viewport center when no click landed) and leave the placing mode.
+export async function createThreadAtPlacement(content: string): Promise<CommentThread | null> {
+  const point = getWorkspaceState().comments.placementPoint;
+  const thread = point !== null
+    ? await createThreadAtPosition(content, point)
+    : await createThreadAtCenter(content);
+  if (thread !== null) cancelCommentPlacement();
+  return thread;
+}
+
+// Live drag feedback for a pin: update the position in the slice without
+// re-anchoring or talking to the backend; the drop commits through
+// moveThreadToPosition.
+export function setThreadDragPosition(threadId: string, position: CommentPosition): void {
+  patchThread(threadId, { position });
+}
+
+// Move a pin: re-anchor it to the frame under the new point, update the slice
+// and commit the position to the backend (the CLJS
+// update-comment-thread-position). The optimistic write goes first, like the
+// CLJS set-comment-thread before the RPC; the join of the position into the
+// undo stack stays a documented delay (see the header).
+export async function moveThreadToPosition(
+  threadId: string,
+  position: CommentPosition,
+): Promise<void> {
+  const state = getWorkspaceState();
+  const pageId = state.pageId;
+  const objects =
+    state.objects ?? (state.file && pageId !== null ? pageObjects(state.file, pageId) : {});
+  const frameId = frameIdForPosition(objects, position);
+  patchThread(threadId, { position, "frame-id": frameId });
+  await updateThreadPosition(threadId, position, frameId);
 }
 
 // Resolve or reopen a thread.

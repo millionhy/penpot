@@ -6,16 +6,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { encodeTransit } from "@/lib/transit";
+import { ZERO_UUID } from "@/lib/file-data";
 import {
+  cancelCommentPlacement,
   closeCommentThread,
   createThreadAtCenter,
+  createThreadAtPlacement,
   loadCommentThreads,
   markAllLoadedRead,
+  moveThreadToPosition,
   openCommentThread,
   removeThread,
   setCommentsFilter,
   setCommentsPanelOpen,
   setCommentsShowResolved,
+  setPlacementPoint,
+  setThreadDragPosition,
+  startCommentPlacement,
   submitReply,
   toggleThreadResolved,
 } from "@/lib/workspace-comments-actions";
@@ -168,6 +175,79 @@ describe("createThreadAtCenter", () => {
   it("returns null without an open file or page", async () => {
     stubFetch(jsonResponse(thread({ id: THREAD_ID })));
     expect(await createThreadAtCenter("hello")).toBeNull();
+  });
+});
+
+describe("placement flow", () => {
+  it("starts the placement covering the canvas with an open panel", () => {
+    startCommentPlacement();
+    const { comments } = getWorkspaceState();
+    expect(comments.placing).toBe(true);
+    expect(comments.placementPoint).toBeNull();
+    expect(comments.panelOpen).toBe(true);
+    expect(comments.openThreadId).toBeNull();
+  });
+
+  it("picks a point and cancels back to the idle flags", () => {
+    setPlacementPoint({ x: 30, y: 40 });
+    expect(getWorkspaceState().comments.placementPoint).toEqual({ x: 30, y: 40 });
+    cancelCommentPlacement();
+    const { comments } = getWorkspaceState();
+    expect(comments.placing).toBe(false);
+    expect(comments.placementPoint).toBeNull();
+  });
+
+  it("creates the thread at the picked point and leaves the placing mode", async () => {
+    setWorkspaceState({ fileId: FILE_ID, pageId: PAGE_ID });
+    startCommentPlacement();
+    setPlacementPoint({ x: 30, y: 40 });
+    const row = thread({ id: THREAD_ID, position: { x: 30, y: 40 } });
+    const calls = stubFetch(jsonResponse(row));
+
+    const result = await createThreadAtPlacement("here");
+
+    expect(result?.id).toBe(THREAD_ID);
+    const { comments } = getWorkspaceState();
+    expect(comments.placing).toBe(false);
+    expect(comments.placementPoint).toBeNull();
+    expect(comments.threads.some((t) => t.id === THREAD_ID)).toBe(true);
+    // The create-comment-thread leg ran before the resolved read.
+    expect(calls[0].url).toContain("create-comment-thread");
+  });
+
+  it("keeps the placement open when there is no file to create on", async () => {
+    startCommentPlacement();
+    setPlacementPoint({ x: 1, y: 2 });
+    stubFetch(jsonResponse(thread({ id: THREAD_ID })));
+    expect(await createThreadAtPlacement("here")).toBeNull();
+    expect(getWorkspaceState().comments.placing).toBe(true);
+  });
+});
+
+describe("moveThreadToPosition", () => {
+  it("re-anchors, patches the slice and commits the position", async () => {
+    setWorkspaceComments({ threads: [thread({ id: THREAD_ID, position: { x: 1, y: 2 } })] });
+    const calls = stubFetch(emptyResponse());
+
+    await moveThreadToPosition(THREAD_ID, { x: 70, y: 80 });
+
+    const moved = getWorkspaceState().comments.threads[0];
+    expect(moved.position).toEqual({ x: 70, y: 80 });
+    // No page objects are loaded, so the point re-anchors to the root frame.
+    expect(moved["frame-id"]).toBe(ZERO_UUID);
+    expect(calls[0].url).toContain("update-comment-thread-position");
+  });
+});
+
+describe("setThreadDragPosition", () => {
+  it("patches the position without talking to the backend", () => {
+    setWorkspaceComments({ threads: [thread({ id: THREAD_ID, position: { x: 1, y: 2 } })] });
+    const calls = stubFetch(emptyResponse());
+
+    setThreadDragPosition(THREAD_ID, { x: 9, y: 4 });
+
+    expect(getWorkspaceState().comments.threads[0].position).toEqual({ x: 9, y: 4 });
+    expect(calls.length).toBe(0);
   });
 });
 
