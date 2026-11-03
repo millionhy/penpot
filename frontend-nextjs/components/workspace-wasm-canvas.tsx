@@ -323,6 +323,10 @@ import {
   type UndoState,
 } from "@/lib/workspace-undo";
 import {
+  applyCommentThreadPositionChange,
+  registerCommentMoveCommit,
+} from "@/lib/workspace-comments-actions";
+import {
   applyTransformEntries,
   buildTransformEntryChanges,
   isIdentityMatrix,
@@ -1020,6 +1024,25 @@ function WorkspaceWasmCanvasImpl({
     },
     [],
   );
+
+  // F5.7 batch 7.58: the pin-drop commit the comments actions call at the
+  // end of a drag. The change rides the shared write path, so the move lands
+  // on the file projection and on the undo stack (invertChanges builds the
+  // pair from the client-only companions the drag carries); a busy or failed
+  // commit answers false and the action rolls the optimistic write back,
+  // the CLJS move-comment :on-error branch.
+  useEffect(() => {
+    registerCommentMoveCommit(async (change) => {
+      try {
+        return (await sendUpdateFile([change])) !== null;
+      } catch (cause: unknown) {
+        console.error("[comments] pin move commit failed:", cause);
+        setWorkspaceState({ error: cause });
+        return false;
+      }
+    });
+    return () => registerCommentMoveCommit(null);
+  }, [sendUpdateFile]);
 
   // F9.11: the shell half of a layout reflow. The renderer owns the layout
   // algorithm (reflow_flex_layout / reflow_grid_layout), so the shell marks
@@ -2422,6 +2445,14 @@ function WorkspaceWasmCanvasImpl({
         objectsRef.current = after;
         indexRef.current = createWorkspaceIndex(after);
         setWorkspaceObjects(after);
+        // A pin move lives outside the shape model: mirror it into the
+        // comments slice and re-sync the comment-thread table, the CLJS
+        // undo-origins watcher (sync-comment-thread-position).
+        for (const change of changes) {
+          if (change.type === "set-comment-thread-position") {
+            applyCommentThreadPositionChange(change);
+          }
+        }
         // The wasm handover: the parents whose children changed, then the
         // shapes that still exist. A wasm failure never fails the commit.
         const app = appRef.current;

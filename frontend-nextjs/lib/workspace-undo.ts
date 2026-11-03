@@ -210,6 +210,20 @@ export function invertChanges(
         }
         break;
       }
+      case "set-comment-thread-position":
+        // The pin's old placement is not in the shape model: the drag
+        // carries it on the change itself (undoPosition/undoFrameId,
+        // client-only fields) so this mirrors the CLJS changes builder,
+        // which emits the redo and the undo pair together. The wire
+        // encoding drops the companions.
+        inverted.push({
+          type: "set-comment-thread-position",
+          "page-id": change["page-id"],
+          "comment-thread-id": change["comment-thread-id"],
+          "frame-id": change.undoFrameId ?? null,
+          position: change.undoPosition ?? null,
+        });
+        break;
     }
   }
 
@@ -280,6 +294,9 @@ export function applyUpdateChanges(
   let next = objects;
 
   for (const change of changes) {
+    // Comment pins live outside the shape model: the history step applies
+    // them to the comments slice instead of the objects map.
+    if (change.type === "set-comment-thread-position") continue;
     switch (change.type) {
       case "mod-obj": {
         const shape = next[change.id];

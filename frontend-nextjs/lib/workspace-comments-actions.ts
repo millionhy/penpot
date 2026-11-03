@@ -12,8 +12,10 @@
 // - Creating a thread goes through the canvas click-to-place flow (see
 //   startCommentPlacement); submitting without a click anchors the thread at
 //   the center of the current viewport instead.
-// - A moved pin commits through update-comment-thread-position but does not
-//   join the undo stack yet (the shell undo only records page object changes).
+// - A moved pin joins the undo stack through the canvas update-file commit
+//   pipeline (registerCommentMoveCommit) and syncs the comment-thread table
+//   through the update-comment-thread-position RPC, the CLJS move-comment;
+//   without a mounted canvas the drop falls back to the plain RPC.
 // - A reply, a resolve and a delete update the local slice from the RPC answer
 //   rather than refetching the whole thread list.
 
@@ -38,6 +40,7 @@ import {
   type CommentThread,
 } from "@/lib/workspace-comments";
 import { pageObjects } from "@/lib/workspace";
+import type { UpdateFileSetCommentThreadPositionChange } from "@/lib/transit";
 import { getTeamMembers } from "@/lib/team";
 import {
   getWorkspaceState,
@@ -273,11 +276,31 @@ export function setThreadDragPosition(threadId: string, position: CommentPositio
   patchThread(threadId, { position });
 }
 
-// Move a pin: re-anchor it to the frame under the new point, update the slice
-// and commit the position to the backend (the CLJS
-// update-comment-thread-position). The optimistic write goes first, like the
-// CLJS set-comment-thread before the RPC; the join of the position into the
-// undo stack stays a documented delay (see the header).
+// The canvas half of a pin drop (batch 7.58): the wasm canvas registers a
+// function that sends a :set-comment-thread-position change through its
+// update-file commit pipeline, so the move lands on the file projection AND
+// on the undo stack, like the CLJS move-comment putting the change through
+// dwc/commit. Null when no canvas is mounted; then a drop falls back to the
+// plain RPC (no undo entry).
+export type CommentMoveCommit = (
+  change: UpdateFileSetCommentThreadPositionChange,
+) => Promise<boolean>;
+
+let commentMoveCommit: CommentMoveCommit | null = null;
+
+export function registerCommentMoveCommit(commit: CommentMoveCommit | null): void {
+  commentMoveCommit = commit;
+}
+
+// Move a pin: re-anchor it to the frame under the new point, update the
+// slice optimistically, then commit the position like the CLJS
+// update-comment-thread-position. With a canvas registered the change goes
+// through the update-file pipeline (undo stack join) and the
+// update-comment-thread-position RPC only syncs the comment-thread table
+// afterwards, best-effort — the CLJS ::aux change, whose failures are logged
+// only. Without one (or when the commit fails) the RPC is the write itself:
+// failures bubble up; a failed commit restores the pre-drag placement, the
+// CLJS :on-error rollback-position.
 export async function moveThreadToPosition(
   threadId: string,
   position: CommentPosition,
@@ -287,8 +310,60 @@ export async function moveThreadToPosition(
   const objects =
     state.objects ?? (state.file && pageId !== null ? pageObjects(state.file, pageId) : {});
   const frameId = frameIdForPosition(objects, position);
+  const thread = state.comments.threads.find((t) => t.id === threadId) ?? null;
+  // The pre-drag placement the inverse restores (the slice keeps it as the
+  // change's client-only companions; a thread always has a position).
+  const undoPosition = thread?.position;
+  const undoFrameId = thread?.["frame-id"];
   patchThread(threadId, { position, "frame-id": frameId });
+
+  const commit = commentMoveCommit;
+  if (thread !== null && commit !== null) {
+    const committed = await commit({
+      type: "set-comment-thread-position",
+      "page-id": thread["page-id"],
+      "comment-thread-id": threadId,
+      "frame-id": frameId,
+      position,
+      undoPosition,
+      undoFrameId,
+    });
+    if (!committed) {
+      // The CLJS :on-error branch: roll the local state back.
+      patchThread(threadId, { position: thread.position, "frame-id": undoFrameId });
+      return;
+    }
+    void updateThreadPosition(threadId, position, frameId).catch((cause: unknown) => {
+      console.warn("[comments] could not sync the pin position to the table:", cause);
+    });
+    return;
+  }
   await updateThreadPosition(threadId, position, frameId);
+}
+
+// Undo/redo application of a pin move (batch 7.58): the history step has
+// already persisted the change through update-file; this mirrors it into the
+// comments slice and re-syncs the comment-thread table, the CLJS
+// watch-undo-changes sync-comment-thread-position (which also swallows the
+// RPC failure — the projection is the truth for rendering).
+export function applyCommentThreadPositionChange(
+  change: UpdateFileSetCommentThreadPositionChange,
+): void {
+  // The slice's position is the pin's truth: a nil (a move that detached
+  // the thread) leaves the stored placement alone and only the frame anchor
+  // changes; the backend drops the projection entry in that case.
+  const patch: Partial<CommentThread> = { "frame-id": change["frame-id"] ?? undefined };
+  if (change.position !== null) patch.position = change.position;
+  patchThread(change["comment-thread-id"], patch);
+  if (change.position !== null && change["frame-id"] !== null) {
+    void updateThreadPosition(
+      change["comment-thread-id"],
+      change.position,
+      change["frame-id"],
+    ).catch((cause: unknown) => {
+      console.warn("[comments] could not sync the undone pin position:", cause);
+    });
+  }
 }
 
 // Resolve or reopen a thread.

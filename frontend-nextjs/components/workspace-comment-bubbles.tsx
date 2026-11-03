@@ -19,8 +19,9 @@
 //   CLJS bubble needs the members' photos resolved per pin. The
 //   single-thread bubble carries the thread seqn, a group carries its count.
 // - Grouped pins are not draggable — only a single-thread pin moves.
-// - The committed position does not join the undo stack yet (documented in
-//   lib/workspace-comments-actions).
+// - The drop commits through the canvas update-file pipeline, so a pin move
+//   joins the undo stack (batch 7.58, see lib/workspace-comments-actions
+//   registerCommentMoveCommit); the comment-thread table sync is best-effort.
 
 import {
   useRef,

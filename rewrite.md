@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）完成；F8 协作四片完成，见 7.46–7.48） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）完成；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
@@ -38,7 +38,7 @@
 | F2 | 设计系统基线 | 🔧 | 令牌移植完成：`styles/tokens.css`（调色板/双主题语义色 light+default/spacing/sizes/borders/z-index/elevations/typography 变量）+ `app/globals.css`（@font-face worksans/vazirmatn/robotomono、`.pp-typ-*` 排版工具类、token 化基础样式）+ 字体资产 `public/fonts/`。F4 的 modal 需求由外壳自带的 `components/modal.tsx`（ModalProvider/ConfirmDialog）满足，profile 驱动的主题切换也已接上令牌；`@penpot/ui`（React + react-aria-components + SCSS modules，exports 指向未构建的 dist）接线推到 F5 dashboard（首个需要 menu/dropdown 的路由组） |
 | F3 | auth 路由组（`/auth/*`） | ✅ | login/register/register-validate/register-success/recovery-request/recovery/verify-token 七页 + `app/auth/layout.tsx`（对应 `app.main.ui.auth/auth*`）；命令链 `login-with-password`、`prepare-register-profile`→`register-profile`、`request-profile-recovery`、`recover-profile`、`verify-token`、`create-demo-profile`；随附公共件：词条生成器 + `lib/forms` + 通知 + `lib/storage` + flags 解析；vitest 91 例；SSO/LDAP 未做（需 OIDC 配置，另立任务） |
 | F4 | settings 路由组（`/settings/*`） | ✅ | `app/settings/{layout,profile,password,notifications,options,feedback,shortcuts}`（shortcuts 占位后随 F5.6 补齐）；命令 `update-profile`、`update-profile-password`、`update-profile-notifications`、`update-profile-props`、`update-profile-photo`、`delete-profile-photo`、`request-email-change`、`delete-profile`、`send-user-feedback`；随附公共件 `cmdUpload`（multipart）、ModalProvider/ConfirmDialog、ThemeManager（profile → `<html>` class）、canvas 头像、forms 的 select/radio/textarea + `oneOf`；修两处缺陷：词条抽取漏扫 `labelKey` 数据字段（169→174 条）、dev 下 `/assets` 反代拿不到 `x-accel-redirect` 的文件（拆出 `PENPOT_ASSETS_ORIGIN`）；vitest 137 例 + headless Chrome/CDP 33 项端到端断言；subscription/integrations/release-notes 未做（见 7.6） |
-| F5 | dashboard 路由组（`/dashboard/*`） | ✅ | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片全部完成（F5.7 的 organization/team switch、subscription/nitrate、`subscribe-team` 实时刷新见 7.53，comments 数据层/控制层/侧栏面板/画布 pin 气泡见 7.54，点选落位与 pin 拖动见 7.55，@提及补全/组浮卡/头像/timeago/zoom 到线程见 7.56，回复编辑与 dashboard 未读通知卡片见 7.57），见下与第 4 节 |
+| F5 | dashboard 路由组（`/dashboard/*`） | ✅ | 11 个路由、约 7000 行 CLJS UI + 1600 行 data 层，切成 F5.1–F5.7 七片全部完成（F5.7 的 organization/team switch、subscription/nitrate、`subscribe-team` 实时刷新见 7.53，comments 数据层/控制层/侧栏面板/画布 pin 气泡见 7.54，点选落位与 pin 拖动见 7.55，@提及补全/组浮卡/头像/timeago/zoom 到线程见 7.56，回复编辑与 dashboard 未读通知卡片见 7.57，pin 拖动进 undo 见 7.58），见下与第 4 节 |
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | ✅ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；四片全部完成（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入、F7.4 完整 API 上下文：workspace 代理 + 事件派发 + 画布桥接，见 7.44）；结构写/文本/媒体/代码生成等延后项以命名错误登记 |
 | F8 | WebSocket 协作客户端 | ✅ | 四片全部完成（F8.1 传输层 / F8.2 订阅与远端变更 / F8.3 在场与指针 / F8.4 route/shell 接线），直连 `backendOrigin` 的 `/ws/notifications`；两标签页冒烟 12/12（远端形状、游标与 5s TTL、断网重连重订阅、只读无写），见 7.46–7.48 |
@@ -275,7 +275,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
     再一切片补齐 @提及自动补全、组 pin 浮卡、owner 头像、timeago 时间戳与
     点击 pin zoom 到线程，见 7.56；
     最后切片落地回复内联编辑与 dashboard 未读通知卡片（含 `?thread-id=`
-    深链），见 7.57；comments 仅剩 pin 拖动进 undo（方案已调研，独立批次）。
+    深链），见 7.57；pin 拖动进 undo 见 7.58，F5.7 comments 至此全部交付。
 - **F6 viewer**：`/view` + `frame-preview` + `render-sprite`；集成 render-wasm 渲染画布（复用
   `app.render_wasm.api` 的加载方式）。切成 F6.1–F6.6 六片：
   - **F6.1 数据层（完成）**：`lib/viewer.ts`（feature 门控、bundle 拉取与 pointer
@@ -2999,6 +2999,40 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   （本机无 docker 后端，同上批口径）。
 - 下一步：pin 拖动进 undo（按上节调研落地）；阶段 B 的 M0/M1（backend-rust，
   排除目录需先授权）；Web Worker 余项（索引）。
+
+### 7.58 本轮（2026-11-03，第五十七批：comments pin 拖动接入 undo 栈）
+
+- 诉求：7.56/7.57 登记的最后一项 comments 余项——pin 拖动进 undo，按 7.57 节
+  调研的接入点落地（对齐 CLJS `move-comment`：拖动经 `commit-changes!` 入 undo，
+  undo/redo 时 watch 再同步 comment-thread 表）。本批后 F5.7 comments 全部交付。
+- wire 层（`lib/transit.ts`）：`UpdateFileChange` 联合新增
+  `set-comment-thread-position` 分支（page-id/comment-thread-id/frame-id?/position?，
+  与后端 `schema:change` 对齐）；position 走 `"point"` record tag（后端
+  `point?` instance 检查，与 selrect/points 同族）；frame-id/position 可为 nil。
+  逆对 `undoPosition`/`undoFrameId` 为 client-only 伴随字段，`encodeUpdateChange`
+  不上 wire（测试钉住）。
+- undo 层（`lib/workspace-undo.ts`）：`invertChanges` 新增分支从伴随字段构造逆
+  change（镜像 CLJS changes_builder 的 redo/undo 成对产出）；
+  `applyUpdateChanges` 显式跳过该类型（pin 位置不在 shape 模型内）。
+- 提交管线（`lib/workspace-comments-actions.ts` + canvas）：actions 新增
+  `registerCommentMoveCommit` 注册表（同 7.56 `registerCommentViewportFocus`
+  模式）；`moveThreadToPosition` 改造——乐观写 → 经 canvas `sendUpdateFile` 提交
+  （入 undo 栈与文件投影）→ RPC `update-comment-thread-position` 降级为表同步
+  best-effort（CLJS ::aux 语义，失败仅记日志）；提交被拒/失败回滚乐观写
+  （CLJS `:on-error` rollback-position）；无 canvas 时回退纯 RPC（旧行为）。
+  canvas 注册 effect 包住 `sendUpdateFile`；`performHistory`（undo/redo）应用后
+  逐条 `applyCommentThreadPositionChange`——patch comments slice 并重发表 RPC
+  （CLJS undo-origins 的 sync-comment-thread-position）。bubbles 未改（drop 仍调
+  `moveThreadToPosition`，管线在 action 内部切换）。
+- 偏差：undo 后 position 为 nil 的 change 只改帧锚点、保留 slice 中位置
+  （`CommentThread.position` 类型必填；CLJS 该场景删投影条目）。
+- 测试：+7（invert 伴随字段互换、apply 忽略模型不变、encode point tag 与
+  伴随字段不上 wire、nil 对 round-trip、commit 路由含 undo 对与表同步、
+  提交被拒回滚不发 RPC、undo 应用镜像+重同步）；`tsc` 0、全量 `vitest`
+  89 文件 1977 例 0、`next lint` 0。浏览器冒烟未跑（本机无 docker 后端，同
+  上批口径）。
+- 下一步：F5.7 comments 无余项；阶段 B 的 M0/M1（backend-rust，排除目录需先
+  授权）；Web Worker 余项（索引）。
 
 ---
 

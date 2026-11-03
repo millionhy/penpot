@@ -10,6 +10,7 @@ import { ZERO_UUID } from "@/lib/file-data";
 import {
   cancelCommentPlacement,
   closeCommentThread,
+  applyCommentThreadPositionChange,
   createThreadAtCenter,
   createThreadAtPlacement,
   editCommentInThread,
@@ -19,6 +20,7 @@ import {
   markAllLoadedRead,
   moveThreadToPosition,
   openCommentThread,
+  registerCommentMoveCommit,
   registerCommentViewportFocus,
   removeThread,
   setCommentsFilter,
@@ -38,6 +40,7 @@ import {
   setWorkspaceViewport,
 } from "@/lib/workspace-store";
 import type { Comment, CommentThread } from "@/lib/workspace-comments";
+import type { UpdateFileSetCommentThreadPositionChange } from "@/lib/transit";
 
 const FILE_ID = "11111111-2222-3333-4444-555555555555";
 const PAGE_ID = "aaaaaaaabbbbccccdddd000000000001";
@@ -273,6 +276,70 @@ describe("moveThreadToPosition", () => {
     const moved = getWorkspaceState().comments.threads[0];
     expect(moved.position).toEqual({ x: 70, y: 80 });
     // No page objects are loaded, so the point re-anchors to the root frame.
+    expect(moved["frame-id"]).toBe(ZERO_UUID);
+    expect(calls[0].url).toContain("update-comment-thread-position");
+  });
+});
+
+// Batch 7.58: with the canvas registered, the drop rides the update-file
+// commit pipeline (the undo pair) and the RPC only syncs the table.
+describe("moveThreadToPosition with a canvas commit", () => {
+  afterEach(() => {
+    registerCommentMoveCommit(null);
+  });
+
+  it("routes the drop through the commit, keeps the undo pair and syncs the table", async () => {
+    setWorkspaceComments({
+      threads: [thread({ id: THREAD_ID, position: { x: 1, y: 2 }, "frame-id": ZERO_UUID })],
+    });
+    const seen: UpdateFileSetCommentThreadPositionChange[] = [];
+    registerCommentMoveCommit(async (change) => {
+      seen.push(change);
+      return true;
+    });
+    const calls = stubFetch(emptyResponse());
+
+    await moveThreadToPosition(THREAD_ID, { x: 70, y: 80 });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]["page-id"]).toBe(PAGE_ID);
+    expect(seen[0].position).toEqual({ x: 70, y: 80 });
+    expect(seen[0].undoPosition).toEqual({ x: 1, y: 2 });
+    expect(seen[0].undoFrameId).toBe(ZERO_UUID);
+    expect(getWorkspaceState().comments.threads[0].position).toEqual({ x: 70, y: 80 });
+    // The comment-thread table sync runs best-effort after the commit.
+    expect(calls[0].url).toContain("update-comment-thread-position");
+  });
+
+  it("rolls the optimistic write back when the commit is refused", async () => {
+    setWorkspaceComments({ threads: [thread({ id: THREAD_ID, position: { x: 1, y: 2 } })] });
+    registerCommentMoveCommit(async () => false);
+    const calls = stubFetch(emptyResponse());
+
+    await moveThreadToPosition(THREAD_ID, { x: 70, y: 80 });
+
+    // The CLJS :on-error rollback-position: the slice lands on the pre-drag
+    // placement and no table RPC fires.
+    expect(getWorkspaceState().comments.threads[0].position).toEqual({ x: 1, y: 2 });
+    expect(calls.length).toBe(0);
+  });
+});
+
+describe("applyCommentThreadPositionChange", () => {
+  it("mirrors an undone pin move into the slice and re-syncs the table", () => {
+    setWorkspaceComments({ threads: [thread({ id: THREAD_ID, position: { x: 70, y: 80 } })] });
+    const calls = stubFetch(emptyResponse());
+
+    applyCommentThreadPositionChange({
+      type: "set-comment-thread-position",
+      "page-id": PAGE_ID,
+      "comment-thread-id": THREAD_ID,
+      "frame-id": ZERO_UUID,
+      position: { x: 1, y: 2 },
+    });
+
+    const moved = getWorkspaceState().comments.threads[0];
+    expect(moved.position).toEqual({ x: 1, y: 2 });
     expect(moved["frame-id"]).toBe(ZERO_UUID);
     expect(calls[0].url).toContain("update-comment-thread-position");
   });

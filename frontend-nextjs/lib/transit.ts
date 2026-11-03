@@ -462,6 +462,25 @@ export interface UpdateFileAddObjChange {
   index?: number;
 }
 
+// {:type :set-comment-thread-position :page-id <uuid>
+//  :comment-thread-id <uuid> :frame-id <uuid?> :position <point?>}: moves a
+// comment pin (F5.7, batch 7.58). The backend process-change writes the
+// page's :comment-thread-positions projection; the comment-thread table is
+// synced separately through the update-comment-thread-position RPC, like the
+// CLJS ::aux/set-comment-thread-position change of the changes builder.
+// The undo pair lives on the client: the old position is not in the shape
+// model, so the drag supplies it through the undoPosition/undoFrameId
+// companions, which invertChanges reads and encodeUpdateChange never sends.
+export interface UpdateFileSetCommentThreadPositionChange {
+  type: "set-comment-thread-position";
+  "page-id": string;
+  "comment-thread-id": string;
+  "frame-id": string | null;
+  position: { x: number; y: number } | null;
+  undoPosition?: { x: number; y: number } | null;
+  undoFrameId?: string | null;
+}
+
 // {:type :mov-objects :page-id <uuid> :parent-id <uuid> :shapes [<uuid>..]
 //  [:index <int>]}: re-parents or re-orders shapes (T4). The ids ride in
 // reverse order like change-parent, no index means append at the tail, and
@@ -518,6 +537,7 @@ export type UpdateFileChange =
   | UpdateFileModObjChange
   | UpdateFileMovObjectsChange
   | UpdateFileDelObjChange
+  | UpdateFileSetCommentThreadPositionChange
   | UpdateFilePageChange;
 
 export interface UpdateFileParams {
@@ -755,6 +775,18 @@ function encodeUpdateChange(change: UpdateFileChange): unknown {
       type: keyword("del-obj"),
       "page-id": uuid(change["page-id"]),
       id: uuid(change.id),
+    });
+  }
+  if (change.type === "set-comment-thread-position") {
+    return keywordMap({
+      type: keyword("set-comment-thread-position"),
+      "page-id": uuid(change["page-id"]),
+      "comment-thread-id": uuid(change["comment-thread-id"]),
+      "frame-id": change["frame-id"] === null ? null : uuid(change["frame-id"]),
+      // The backend schema point?-checks the value, so it rides the same
+      // "point" record tag the shape geometry uses.
+      position:
+        change.position === null ? null : encodeRecordValue("point", change.position),
     });
   }
   return keywordMap({

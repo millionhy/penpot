@@ -121,6 +121,32 @@ describe("undo cursor", () => {
 });
 
 describe("invertChanges", () => {
+  it("inverts a pin move from the companions the drag carries", () => {
+    // Batch 7.58: the old placement is not in the shape model, so the
+    // change carries it client-only and the inverse swaps the pair.
+    const changes: UpdateFileChange[] = [
+      {
+        type: "set-comment-thread-position",
+        "page-id": PAGE_ID,
+        "comment-thread-id": RECT,
+        "frame-id": FRAME_A,
+        position: { x: 70, y: 80 },
+        undoPosition: { x: 1, y: 2 },
+        undoFrameId: null,
+      },
+    ];
+
+    expect(invertChanges(model(), changes)).toEqual([
+      {
+        type: "set-comment-thread-position",
+        "page-id": PAGE_ID,
+        "comment-thread-id": RECT,
+        "frame-id": null,
+        position: { x: 1, y: 2 },
+      },
+    ]);
+  });
+
   it("writes the previous value of every mod-obj attribute", () => {
     const changes: UpdateFileChange[] = [
       {
@@ -327,6 +353,21 @@ describe("invertChanges", () => {
 });
 
 describe("applyUpdateChanges", () => {
+  it("ignores a pin move: the comments slice owns that state", () => {
+    const before = model();
+    const next = applyUpdateChanges(before, [
+      {
+        type: "set-comment-thread-position",
+        "page-id": PAGE_ID,
+        "comment-thread-id": RECT,
+        "frame-id": null,
+        position: { x: 70, y: 80 },
+      },
+    ]);
+
+    expect(next).toEqual(before);
+  });
+
   it("merges the mod-obj set operations over the shape", () => {
     const before = model();
     const next = applyUpdateChanges(before, [

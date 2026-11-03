@@ -531,6 +531,70 @@ describe("encodeUpdateFile", () => {
     expect(decoded).toEqual(params);
   });
 
+  it("writes a pin move with the point record and drops the undo companions", () => {
+    const params: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 8,
+      vern: 2,
+      changes: [
+        {
+          type: "set-comment-thread-position",
+          "page-id": PAGE_ID,
+          "comment-thread-id": SHAPE_ID,
+          "frame-id": PAGE_ID,
+          position: { x: 12, y: 34 },
+          undoPosition: { x: 1, y: 2 },
+          undoFrameId: FILE_ID,
+        },
+      ],
+    };
+    const doc = encodeUpdateFile(params);
+    expect(doc).toContain('"~:set-comment-thread-position"');
+    expect(doc).toContain('"~:comment-thread-id"');
+    // The backend schema point?-checks the position, so it must ride the
+    // record tag, not a plain map.
+    expect(doc).toContain('"~#point"');
+    // The client-only companions must never reach the wire document.
+    expect(doc).not.toContain("undoPosition");
+    expect(doc).not.toContain("undoFrameId");
+    const expected: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 8,
+      vern: 2,
+      changes: [
+        {
+          type: "set-comment-thread-position",
+          "page-id": PAGE_ID,
+          "comment-thread-id": SHAPE_ID,
+          "frame-id": PAGE_ID,
+          position: { x: 12, y: 34 },
+        },
+      ],
+    };
+    expect(decodeTransit<UpdateFileParams>(doc)).toEqual(expected);
+  });
+
+  it("writes a detached pin move with nil frame-id and position", () => {
+    const params: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 8,
+      vern: 2,
+      changes: [
+        {
+          type: "set-comment-thread-position",
+          "page-id": PAGE_ID,
+          "comment-thread-id": SHAPE_ID,
+          "frame-id": null,
+          position: null,
+        },
+      ],
+    };
+    expect(decodeTransit<UpdateFileParams>(encodeUpdateFile(params))).toEqual(params);
+  });
+
   it("tags the uuid refs of a position-data op and keeps lookalikes plain", () => {
     const refFile = "11111111-2222-3333-4444-555555555555";
     const refId = "66666666-7777-8888-9999-000000000000";
