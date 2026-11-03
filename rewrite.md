@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）完成；F8 协作四片完成，见 7.46–7.48） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
 | 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
@@ -42,7 +42,7 @@
 | F6 | viewer（`/view`） | ✅ | 六片全部完成（F6.1–F6.6：数据层、外壳、导航与缩放、WASM 渲染、interactions、收尾），见下与第 4 节；集成 `render-wasm`（route B 复用编译产物） |
 | F7 | 插件运行时 | ✅ | 复用 SES 沙箱与 Plugin API（`frontend/src/app/plugins*`、`plugins/`）；四片全部完成（F7.1 数据层、F7.2 安装与管理 UI、F7.3 运行时接入、F7.4 完整 API 上下文：workspace 代理 + 事件派发 + 画布桥接，见 7.44）；结构写/文本/媒体/代码生成等延后项以命名错误登记 |
 | F8 | WebSocket 协作客户端 | ✅ | 四片全部完成（F8.1 传输层 / F8.2 订阅与远端变更 / F8.3 在场与指针 / F8.4 route/shell 接线），直连 `backendOrigin` 的 `/ws/notifications`；两标签页冒烟 12/12（远端形状、游标与 5s TTL、断网重连重订阅、只读无写），见 7.46–7.48 |
-| F9 | workspace 编辑器 | 🔧 | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；浏览器冒烟 43/43（含文本提交 500 与 del-obj 反演两个缺陷，见 7.49）；F7.4 已完成（见 7.44）；F9.5 的线条/箭头与工具栏 flyout（见 7.50）、F9.13 布尔命令与路径节点编辑（见 7.51）与 F9.14 dashboard 缩略图 Web Worker（超时兜底产出降级图，见 7.52）完成；协作光标与远端变更已随 F8.3/F8.4 落地；导入分析与缩略图已入 Web Worker，索引待独立切片 |
+| F9 | workspace 编辑器 | ✅ | 最高风险，按切片推进：F9.1 数据基础与只读画布（f94a–f94j，见 7.23）、F9.2 画布交互与选择（悬停/点选/框选/平移，SVG 覆盖层，零写入，见 7.24）、F9.3 拖动移动与保存（首个写路径，见 7.25）、F9.4 外壳与菜单（三栏、左头/主菜单/缩放/图层/工具栏/帧标题，见 7.27）、F9.5 绘制工具与样式面板（frame/rect/ellipse 绘制 + 右栏基础样式段，见 7.29）、F9.6 resize/rotate 手柄（八手柄 + 四旋转区、修饰键、一次提交，见 7.30）、F9.7 撤销/重做（客户端栈、自动反向、Ctrl/Cmd+Z 与菜单，见 7.31）与 F9.8 z-order 插入（四条命令、index 全链路、撤销保真，见 7.32）完成；F9.3 伴随变更（hide-in-viewer、layout-item 清理、组件元数据同步、flex sizing，见 7.33）与 drop-index（flex 插入/重排、绘制插入、mov index，见 7.34）完成；F9.9 样式面板扩展（尺寸/位置/旋转、阴影/模糊、布局/布局项/约束、多选批量，见 7.36–7.37）与 F9.10 子级传播与约束（resize 按约束重排子级、rotate 刚性带动子树，见 7.38）完成；F9.11 布局 reflow（约束与重排统一走 wasm 的 propagate，见 7.39）与 F9.12 grid cells 入口（面板 Grid cell 段、cell map 分区维护、uuid/keyword 编码，见 7.40）完成；F9.5 的文本/图片/自由手绘路径补齐（行内文本编辑、媒体上传与 wasm 图像注册、curve 手势，见 7.45）；浏览器冒烟 43/43（含文本提交 500 与 del-obj 反演两个缺陷，见 7.49）；F7.4 已完成（见 7.44）；F9.5 的线条/箭头与工具栏 flyout（见 7.50）、F9.13 布尔命令与路径节点编辑（见 7.51）与 F9.14 dashboard 缩略图 Web Worker（超时兜底产出降级图，见 7.52）完成；协作光标与远端变更已随 F8.3/F8.4 落地；导入分析、缩略图与命中检测索引均已入 Web Worker（索引 Worker 化见 7.59），阶段 F 登记余项清零 |
 
 ### 阶段 B：backend-rust（Rust + axum，计划已批准）
 
@@ -3033,6 +3033,37 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   上批口径）。
 - 下一步：F5.7 comments 无余项；阶段 B 的 M0/M1（backend-rust，排除目录需先
   授权）；Web Worker 余项（索引）。
+
+### 7.59 本轮（2026-11-03，第五十八批：F9.15 命中检测索引 Worker 化）
+
+- 诉求：阶段 F 最后一个登记余项——Web Worker 余项（索引），对齐 CLJS
+  `frontend/src/app/worker/selection.cljs`：quadtree 构建移入 DedicatedWorker。
+  此前 canvas 内 16 个增量重建点（除页面装载外）全在主线程重建索引。
+- worker 层（`lib/workspace-index.worker.ts`）：只搬重的一半——build——并跨页
+  常驻；索引本体是纯数据（quadtree 节点、parents/clip 条目、shape 快照），
+  structured clone 原样送回，指针热路径继续同步查询。查询裁决留在主线程
+  （与 CLJS selection worker 的偏差，代码注释已登记）：hover/area 裁决走
+  wasm `$APP` 适配器（sort-ids/intersect-position），绑定 canvas GL 上下文
+  不可序列化；build 是每 shape 一次 quadtree 插入的贵半，查询是对数级走树。
+  `buildIndexReply` 纯函数（seq 回声 + error 字符串兜底），`typeof self` 守卫
+  使 vitest 可导入（同 `lib/thumbnail.worker.ts` 装置）。
+- client（`lib/workspace-index-client.ts`）：`createIndexBuilder`——常驻 worker +
+  序号协议：每次 schedule 盖新 seq，旧回复丢弃（被取代模型的慢 build 永不
+  覆盖当前索引）；同步构建三级兜底（环境无 Worker、spawn 失败、pass 抛出或
+  channel 错误），失败后置 broken 旗永久回主线程；`dispose` terminate 后下次
+  schedule 重生。契约上注入的 spawn 负责接线 message/error 监听（与
+  `defaultSpawn`、`thumbnail-worker-client` 同构）。
+- canvas 接线：`scheduleIndex` helper（`indexBuilderRef`），16 个增量模型变更点
+  全部改走 schedule——`indexRef` 以旧索引继续同步服务指针查询直至回复落地；
+  页面装载点保留同步构建（页面首次 hover 永不见空索引）；卸载时 dispose。
+- 测试：+8（buildIndexReply 2：与同步构建等值、毒 getter 迫使 build 抛产出
+  error 回复；createIndexBuilder 6：最新 seq 送达、superseded 丢弃、pass 失败
+  兜底结算、channel 错误结算、无 worker 同步构建、dispose 终止与重生）；
+  其中 4 例本轮修复：测试 `spawnFake` 未履行 spawn 契约的监听接线，导致
+  client 的 reply 处理从未被调用。`tsc` 0、全量 `vitest` 90 文件 1985 例全过、
+  `next lint` 0。浏览器冒烟未跑（本机无 docker 后端，同上批口径）。
+- 下一步：阶段 F 登记余项清零（唯 F2 行的 `@penpot/ui` 接线为历史口径，
+  实质已由自研组件满足）；阶段 B 的 M0/M1（backend-rust，排除目录需先授权）。
 
 ---
 

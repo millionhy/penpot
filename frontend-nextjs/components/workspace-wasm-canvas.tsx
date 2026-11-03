@@ -216,6 +216,7 @@ import {
   type WorkspaceTool,
 } from "@/lib/workspace";
 import { createWorkspaceIndex, type WorkspaceIndex } from "@/lib/workspace-index";
+import { createIndexBuilder, type IndexBuilder } from "@/lib/workspace-index-client";
 import {
   applyAddShape,
   clickDrawRect,
@@ -778,6 +779,32 @@ function WorkspaceWasmCanvasImpl({
   const objectsRef = useRef<WorkspaceObjects | null>(null);
   const wasmObjectsRef = useRef<unknown>(null);
   const indexRef = useRef<WorkspaceIndex | null>(null);
+  // F9.15: the resident index worker. Every incremental model update hands
+  // its objects to the builder (scheduleIndex) instead of rebuilding the
+  // quadtree on this thread; indexRef keeps serving the pointer queries
+  // from the previous index until the reply lands. The page-load effect
+  // builds synchronously, so the first hover of a page never sees a partial
+  // index; the builder itself is created on the first update.
+  const indexBuilderRef = useRef<IndexBuilder | null>(null);
+  const scheduleIndex = useCallback((next: WorkspaceObjects): void => {
+    let builder = indexBuilderRef.current;
+    if (builder === null) {
+      builder = createIndexBuilder();
+      indexBuilderRef.current = builder;
+    }
+    builder.schedule(next, (index) => {
+      indexRef.current = index;
+    });
+  }, []);
+  // The worker only dies with the canvas; a StrictMode replay respawns it on
+  // the next update.
+  useEffect(
+    () => () => {
+      indexBuilderRef.current?.dispose();
+      indexBuilderRef.current = null;
+    },
+    [],
+  );
   const adaptersRef = useRef<InteractionAdapters | null>(null);
   const hoverCacheRef = useRef<HoverIdsCache | null>(null);
   // The move drag needs the internal modifier ABI; the load effect gates
@@ -1073,7 +1100,7 @@ function WorkspaceWasmCanvasImpl({
         if (revn === null) return;
         const next = applyReflow(after, transforms);
         objectsRef.current = next;
-        indexRef.current = createWorkspaceIndex(next);
+        scheduleIndex(next);
         setWorkspaceObjects(next);
         try {
           const shapes: WorkspaceShape[] = [];
@@ -1137,7 +1164,7 @@ function WorkspaceWasmCanvasImpl({
         if (currentObjects === null) return false;
         const next = applyTransformEntries(currentObjects, entries);
         objectsRef.current = next;
-        indexRef.current = createWorkspaceIndex(next);
+        scheduleIndex(next);
         setWorkspaceObjects(next);
         const app = appRef.current;
         if (app !== null) {
@@ -1351,7 +1378,7 @@ function WorkspaceWasmCanvasImpl({
           }
           const next = { ...currentObjects, [id]: nextShape };
           objectsRef.current = next;
-          indexRef.current = createWorkspaceIndex(next);
+          scheduleIndex(next);
           setWorkspaceObjects(next);
           const app = appRef.current;
           if (app !== null) {
@@ -1398,7 +1425,7 @@ function WorkspaceWasmCanvasImpl({
           if (currentObjects === null) return false;
           const after = applyUpdateChanges(currentObjects, changes);
           objectsRef.current = after;
-          indexRef.current = createWorkspaceIndex(after);
+          scheduleIndex(after);
           setWorkspaceObjects(after);
           const app = appRef.current;
           if (app !== null) {
@@ -1469,7 +1496,7 @@ function WorkspaceWasmCanvasImpl({
           const patched = applyUpdateChanges({ [id]: currentShape }, [change])[id];
           const next = applyTransformEntries({ ...currentObjects, [id]: patched }, descendants);
           objectsRef.current = next;
-          indexRef.current = createWorkspaceIndex(next);
+          scheduleIndex(next);
           setWorkspaceObjects(next);
           const app = appRef.current;
           if (app !== null) {
@@ -1534,7 +1561,7 @@ function WorkspaceWasmCanvasImpl({
           // the RPC ran.
           const next = applyAddShape(objectsRef.current ?? objects, shape, parentId);
           objectsRef.current = next;
-          indexRef.current = createWorkspaceIndex(next);
+          scheduleIndex(next);
           setWorkspaceObjects(next);
           const app = appRef.current;
           if (app !== null) {
@@ -1604,7 +1631,7 @@ function WorkspaceWasmCanvasImpl({
           plan.changes.length === 0 ? before : applyUpdateChanges(before, plan.changes);
         if (after !== before) {
           objectsRef.current = after;
-          indexRef.current = createWorkspaceIndex(after);
+          scheduleIndex(after);
           setWorkspaceObjects(after);
           const app = appRef.current;
           if (app !== null) {
@@ -2393,7 +2420,7 @@ function WorkspaceWasmCanvasImpl({
         // state (the same handover as the move commit).
         const next = applyTransformEntries(objects, entries);
         objectsRef.current = next;
-        indexRef.current = createWorkspaceIndex(next);
+        scheduleIndex(next);
         setWorkspaceObjects(next);
         stopTransformState();
         setTransformPreview(null);
@@ -2443,7 +2470,7 @@ function WorkspaceWasmCanvasImpl({
         if (revn === null) return;
         const after = applyUpdateChanges(before, changes);
         objectsRef.current = after;
-        indexRef.current = createWorkspaceIndex(after);
+        scheduleIndex(after);
         setWorkspaceObjects(after);
         // A pin move lives outside the shape model: mirror it into the
         // comments slice and re-sync the comment-thread table, the CLJS
@@ -2513,7 +2540,7 @@ function WorkspaceWasmCanvasImpl({
         if (revn === null) return;
         const after = applyUpdateChanges(objects, changes);
         objectsRef.current = after;
-        indexRef.current = createWorkspaceIndex(after);
+        scheduleIndex(after);
         setWorkspaceObjects(after);
         const app = appRef.current;
         if (app !== null) {
@@ -2561,7 +2588,7 @@ function WorkspaceWasmCanvasImpl({
         if (revn === null) return;
         const after = applyUpdateChanges(objects, [change]);
         objectsRef.current = after;
-        indexRef.current = createWorkspaceIndex(after);
+        scheduleIndex(after);
         setWorkspaceObjects(after);
         const next = after[shapeId];
         if (next === undefined || next === null) {
@@ -2618,7 +2645,7 @@ function WorkspaceWasmCanvasImpl({
         const before = objectsRef.current ?? objects;
         const after = applyUpdateChanges(before, [change]);
         objectsRef.current = after;
-        indexRef.current = createWorkspaceIndex(after);
+        scheduleIndex(after);
         setWorkspaceObjects(after);
         setSelection(
           getWorkspaceState().selection.filter((id) => id !== edit.shapeId),
@@ -2672,7 +2699,7 @@ function WorkspaceWasmCanvasImpl({
         if (revn === null) return;
         const after = applyUpdateChanges(objects, creation.changes);
         objectsRef.current = after;
-        indexRef.current = createWorkspaceIndex(after);
+        scheduleIndex(after);
         setWorkspaceObjects(after);
         setSelection([creation.shape.id]);
         try {
@@ -2822,7 +2849,7 @@ function WorkspaceWasmCanvasImpl({
         const moved = applyMove(objects, ids, dx, dy);
         const next = relocate.length === 0 ? moved : applyUpdateChanges(moved, relocate);
         objectsRef.current = next;
-        indexRef.current = createWorkspaceIndex(next);
+        scheduleIndex(next);
         setWorkspaceObjects(next);
         // The geometry handover (AD7): the same task as the model swap, so
         // the canvas never renders between the preview and the committed
@@ -2921,7 +2948,7 @@ function WorkspaceWasmCanvasImpl({
         // hit-testing index (hidden/blocked affect the next queries).
         const next = applyAddShape(objects, shape, parentId, dropIndex ?? undefined);
         objectsRef.current = next;
-        indexRef.current = createWorkspaceIndex(next);
+        scheduleIndex(next);
         setWorkspaceObjects(next);
         if (select) setSelection([shape.id]);
         // AD5: the incremental wasm sync. A failure here never rolls back
@@ -3098,7 +3125,7 @@ function WorkspaceWasmCanvasImpl({
           const before = objectsRef.current ?? objects;
           const next = applyUpdateChanges(before, [change]);
           objectsRef.current = next;
-          indexRef.current = createWorkspaceIndex(next);
+          scheduleIndex(next);
           setWorkspaceObjects(next);
           if (empty) {
             setSelection(
