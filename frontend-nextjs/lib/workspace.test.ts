@@ -62,12 +62,14 @@ describe("parseWorkspaceQuery", () => {
       "project-id": PROJECT_ID,
       "file-id": FILE_ID,
       "page-id": PAGE_ID,
+      "thread-id": "dddddddd-eeee-ffff-0000-111111111111",
     });
     expect(parseWorkspaceQuery(search)).toEqual({
       fileId: FILE_ID,
       pageId: PAGE_ID,
       teamId: TEAM_ID,
       projectId: PROJECT_ID,
+      threadId: "dddddddd-eeee-ffff-0000-111111111111",
     });
   });
 
@@ -78,6 +80,7 @@ describe("parseWorkspaceQuery", () => {
       pageId: null,
       teamId: null,
       projectId: null,
+      threadId: null,
     });
   });
 });

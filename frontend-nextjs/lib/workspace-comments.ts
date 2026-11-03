@@ -166,6 +166,52 @@ export function sortThreads(threads: readonly CommentThread[]): CommentThread[] 
   });
 }
 
+// The dashboard feed order: newest activity first (the sort-by :modified-at
+// reverse of app.main.ui.dashboard.comments), created-at backing an absent
+// stamp and id keeping equal stamps stable.
+export function sortByModifiedDesc(threads: readonly CommentThread[]): CommentThread[] {
+  return [...threads].sort((a, b) => {
+    const delta =
+      toMs(b["modified-at"] ?? b["created-at"]) - toMs(a["modified-at"] ?? a["created-at"]);
+    if (delta !== 0) return delta;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+// Threads sharing one file and page, as the dashboard groups them
+// (group-threads-by-file-and-page): the input order decides the group order
+// and only consecutive threads merge.
+export interface ThreadGroup {
+  "file-id": string;
+  "file-name"?: string;
+  "page-id": string;
+  "page-name"?: string;
+  items: CommentThread[];
+}
+
+export function groupThreadsByFileAndPage(threads: readonly CommentThread[]): ThreadGroup[] {
+  const groups: ThreadGroup[] = [];
+  for (const thread of threads) {
+    const tail = groups[groups.length - 1];
+    if (
+      tail !== undefined &&
+      tail["file-id"] === thread["file-id"] &&
+      tail["page-id"] === thread["page-id"]
+    ) {
+      tail.items.push(thread);
+    } else {
+      groups.push({
+        "file-id": thread["file-id"],
+        "file-name": thread["file-name"],
+        "page-id": thread["page-id"],
+        "page-name": thread["page-name"],
+        items: [thread],
+      });
+    }
+  }
+  return groups;
+}
+
 export interface ThreadFilter {
   // When false (default) resolved threads are hidden, matching the CLJS
   // hide-resolved-comments default; the toggle passes true.
@@ -491,6 +537,15 @@ export function insertMentionToken(
 export function fetchCommentThreads(fileId: string): Promise<CommentThread[]> {
   const params = { "file-id": fileId } as RpcParams["get-comment-threads"];
   return cmd<CommentThread[]>("get-comment-threads", params);
+}
+
+// get-unread-comment-threads: the dashboard notification feed of a team, the
+// same thread rows restricted to the ones with unread comments (the backend
+// applies the profile's notification preference, so the client lists them
+// all).
+export function fetchUnreadCommentThreads(teamId: string): Promise<CommentThread[]> {
+  const params = { "team-id": teamId } as RpcParams["get-unread-comment-threads"];
+  return cmd<CommentThread[]>("get-unread-comment-threads", params);
 }
 
 // get-comment-thread: the fully resolved single row (owner fields joined).

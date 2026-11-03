@@ -291,16 +291,21 @@ export function dashboardHref(section: RouteName, params: DashboardNavParams = {
 }
 
 // go-to-workspace in app.main.data.common: team-id, file-id and page-id travel
-// as query params on the workspace route.
+// as query params on the workspace route; thread-id is the deep link of the
+// dashboard notification feed (navigate-to-comment-from-dashboard).
 export function workspaceHref(params: {
   teamId?: string | null;
   fileId: string;
   pageId?: string | null;
+  threadId?: string | null;
 }): string {
   const search = new URLSearchParams();
   if (params.teamId !== null && params.teamId !== undefined) search.set("team-id", params.teamId);
   search.set("file-id", params.fileId);
   if (params.pageId !== null && params.pageId !== undefined) search.set("page-id", params.pageId);
+  if (params.threadId !== null && params.threadId !== undefined) {
+    search.set("thread-id", params.threadId);
+  }
   return routePaths.workspace + "?" + search.toString();
 }
 

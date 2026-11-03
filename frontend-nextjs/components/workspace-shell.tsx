@@ -62,6 +62,7 @@ import {
 import { createWorkspaceCollab } from "@/lib/workspace-collab";
 import { threadFocusCenter } from "@/lib/workspace-comments";
 import {
+  focusCommentThread,
   loadCommentMembers,
   loadCommentThreads,
   registerCommentViewportFocus,
@@ -93,6 +94,9 @@ export interface WorkspaceShellProps {
   // channel and the names of the remote cursors; null when the URL carries
   // no team-id, which only skips both.
   teamId: string | null;
+  // The thread the dashboard notification feed deep-links to (?thread-id=):
+  // opened and centered once the file's threads are loaded; null normally.
+  threadId: string | null;
 }
 
 // Only one workspace menu is open at a time: the main menu and the zoom
@@ -107,6 +111,7 @@ export function WorkspaceShell({
   file,
   projectName,
   teamId,
+  threadId,
 }: WorkspaceShellProps) {
   const canEdit = canEditFile(file);
   const router = useRouter();
@@ -216,6 +221,17 @@ export function WorkspaceShell({
     getWorkspaceState,
     getInitialWorkspaceState,
   ).comments;
+
+  // navigate-to-comment-from-dashboard: a ?thread-id= deep link focuses its
+  // thread once the threads are ready, one time per mount (a missing or
+  // already handled id simply no-ops inside focusCommentThread).
+  const deepLinkRef = useRef(false);
+  useEffect(() => {
+    if (threadId === null || deepLinkRef.current) return;
+    if (commentsState.status !== "ready") return;
+    deepLinkRef.current = true;
+    void focusCommentThread(threadId);
+  }, [threadId, commentsState.status]);
 
   const toggleComments = useCallback((): void => {
     setCommentsPanelOpen(!getWorkspaceState().comments.panelOpen);

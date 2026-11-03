@@ -167,6 +167,9 @@ describe("href builders", () => {
       "/workspace?team-id=t1&file-id=f1&page-id=pg1",
     );
     expect(workspaceHref({ fileId: "f1" })).toBe("/workspace?file-id=f1");
+    expect(
+      workspaceHref({ teamId: "t1", fileId: "f1", pageId: "pg1", threadId: "th1" }),
+    ).toBe("/workspace?team-id=t1&file-id=f1&page-id=pg1&thread-id=th1");
   });
 
   it("reads the first page of a created file", () => {

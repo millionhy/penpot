@@ -12,7 +12,9 @@
 // the rest of the CLJS sidebar is deliberately not here yet: the project
 // context menu (rename, duplicate, move, delete) arrives with the full grid in
 // F5.2, so a pinned project only offers the pin toggle that put it in the
-// list; and the comments panel is a SaaS feature that stays out of the shell.
+// list. The comment notifications bell and feed (components/
+// dashboard-comments) arrived with F5.7: the CLJS gates them on team and
+// profile only, not on a subscription, so the shell ports them too.
 //
 // The CLJS list items are clickable <li>; the shell uses real links so they are
 // keyboard reachable and the App Router owns the navigation.
@@ -20,6 +22,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardProfileMenu } from "@/components/dashboard-profile-menu";
+import { DashboardComments } from "@/components/dashboard-comments";
 import { OrgTeamSwitch } from "@/components/org-team-switch";
 import { SubscriptionSection } from "@/components/subscription";
 import {
@@ -151,6 +154,8 @@ export function DashboardSidebar() {
     <nav className="pp-dashboard-sidebar" data-testid="dashboard-sidebar">
       <div className="pp-sidebar-content">
         <OrgTeamSwitch />
+
+        <DashboardComments />
 
         <SidebarSearch />
 

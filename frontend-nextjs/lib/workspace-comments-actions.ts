@@ -23,6 +23,7 @@ import {
   createCommentThread,
   deleteComment,
   deleteThread,
+  editComment,
   frameIdForPosition,
   fetchCommentThreads,
   fetchComments,
@@ -308,6 +309,32 @@ export async function removeThread(threadId: string): Promise<void> {
 export async function removeReplyFromThread(threadId: string, commentId: string): Promise<void> {
   await deleteComment(commentId);
   removeReply(threadId, commentId);
+}
+
+// Edit one comment of the open thread (own rows only, the CLJS options menu
+// entry). The update-comment command answers with the fresh row, so the reply
+// list takes its values; editing the first comment also refreshes the content
+// projection the thread list and the pins read.
+export async function editCommentInThread(
+  threadId: string,
+  commentId: string,
+  content: string,
+): Promise<void> {
+  const updated = await editComment(commentId, content);
+  const { comments } = getWorkspaceState();
+  const current = comments.replies[threadId] ?? [];
+  const isFirst = current.length > 0 && current[0].id === commentId;
+
+  setWorkspaceComments({
+    replies: {
+      ...comments.replies,
+      [threadId]: current.map((comment) =>
+        comment.id === commentId ? { ...comment, ...updated, content } : comment,
+      ),
+    },
+  });
+
+  if (isFirst) patchThread(threadId, { content });
 }
 
 // Mark every currently-loaded thread read: the command takes the ids, and the

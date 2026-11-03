@@ -169,6 +169,7 @@ function WorkspaceRoute({ params }: { params: URLSearchParams }) {
       file={file}
       projectName={projectName}
       teamId={query.teamId}
+      threadId={query.threadId}
     />
   );
 }

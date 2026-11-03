@@ -23,10 +23,12 @@ import {
   extractMentions,
   fetchCommentThread,
   fetchCommentThreads,
+  fetchUnreadCommentThreads,
   filterMentionCandidates,
   formatCommentContent,
   frameIdForPosition,
   groupBubbles,
+  groupThreadsByFileAndPage,
   insertMentionToken,
   isThreadUnread,
   markAllThreadsRead,
@@ -34,6 +36,7 @@ import {
   parseCommentContent,
   screenDeltaToWorld,
   setThreadResolved,
+  sortByModifiedDesc,
   sortThreads,
   threadById,
   threadFocusCenter,
@@ -128,6 +131,37 @@ describe("sortThreads", () => {
     const b = thread({ id: "a", "created-at": new Date(1000) });
     const c = thread({ id: "c", "created-at": "1970-01-01T00:00:02Z" });
     expect(sortThreads([a, b, c]).map((t) => t.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("sortByModifiedDesc", () => {
+  it("orders by last activity newest first, created-at backing an absent stamp", () => {
+    const a = thread({ id: "a", "modified-at": new Date(2000) });
+    const b = thread({ id: "b", "created-at": new Date(3000) });
+    const c = thread({ id: "c", "modified-at": new Date(1000) });
+    expect(sortByModifiedDesc([a, b, c]).map((t) => t.id)).toEqual(["b", "a", "c"]);
+  });
+});
+
+describe("groupThreadsByFileAndPage", () => {
+  it("merges only consecutive threads sharing file and page, keeping input order", () => {
+    const PAGE2 = "aaaaaaaabbbbccccdddd000000000002";
+    const rows = [
+      thread({ id: "t1", "file-name": "f", "page-name": "p" }),
+      thread({ id: "t2" }),
+      thread({ id: "t3", "page-id": PAGE2 }),
+      thread({ id: "t4", "file-id": "22222222-2222-3333-4444-555555555555" }),
+    ];
+    const groups = groupThreadsByFileAndPage(rows);
+    expect(groups).toHaveLength(3);
+    expect(groups[0].items.map((t) => t.id)).toEqual(["t1", "t2"]);
+    expect(groups[0]["file-name"]).toBe("f");
+    expect(groups[1].items.map((t) => t.id)).toEqual(["t3"]);
+    expect(groups[2].items.map((t) => t.id)).toEqual(["t4"]);
+  });
+
+  it("returns no group for an empty feed", () => {
+    expect(groupThreadsByFileAndPage([])).toEqual([]);
   });
 });
 
@@ -343,6 +377,16 @@ describe("comment commands", () => {
     expect(calls[0].init.method).toBe("GET");
     expect(calls[0].url).toContain("get-comment-threads");
     expect(calls[0].url).toContain("file-id=");
+    expect(result).toEqual(rows);
+  });
+
+  it("fetches the unread threads of a team with a GET and the team-id query", async () => {
+    const rows = [thread({ id: THREAD_ID, "count-unread-comments": 1 })];
+    const calls = stubFetch(jsonResponse(rows));
+    const result = await fetchUnreadCommentThreads(ALICE);
+    expect(calls[0].init.method).toBe("GET");
+    expect(calls[0].url).toContain("get-unread-comment-threads");
+    expect(calls[0].url).toContain("team-id=");
     expect(result).toEqual(rows);
   });
 

@@ -237,6 +237,9 @@ export interface WorkspaceQueryParams {
   pageId: string | null;
   teamId: string | null;
   projectId: string | null;
+  // The thread the dashboard notification feed deep-links to (navigate-to-
+  // comment-from-dashboard): opened and centered once the threads load.
+  threadId: string | null;
 }
 
 // rt/get-params + uuid/parse over the workspace parameters (the shape of
@@ -247,5 +250,6 @@ export function parseWorkspaceQuery(search: URLSearchParams): WorkspaceQueryPara
     pageId: parseUuid(search.get("page-id")),
     teamId: parseUuid(search.get("team-id")),
     projectId: parseUuid(search.get("project-id")),
+    threadId: parseUuid(search.get("thread-id")),
   };
 }

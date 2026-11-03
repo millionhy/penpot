@@ -12,6 +12,7 @@ import {
   closeCommentThread,
   createThreadAtCenter,
   createThreadAtPlacement,
+  editCommentInThread,
   focusCommentThread,
   loadCommentMembers,
   loadCommentThreads,
@@ -158,6 +159,40 @@ describe("submitReply", () => {
     const { comments } = getWorkspaceState();
     expect(comments.replies[THREAD_ID]).toEqual([created]);
     expect(comments.threads[0]["count-comments"]).toBe(2);
+  });
+});
+
+describe("editCommentInThread", () => {
+  const first: Comment = { id: "c1", "thread-id": THREAD_ID, "file-id": FILE_ID, "owner-id": "p", content: "first" };
+  const second: Comment = { id: "c2", "thread-id": THREAD_ID, "file-id": FILE_ID, "owner-id": "p", content: "second" };
+
+  it("replaces the edited reply row without touching the thread projection", async () => {
+    setWorkspaceComments({
+      threads: [thread({ id: THREAD_ID, content: "first" })],
+      replies: { [THREAD_ID]: [first, second] },
+    });
+    const calls = stubFetch(jsonResponse({ ...second, content: "edited" }));
+
+    await editCommentInThread(THREAD_ID, "c2", "edited");
+
+    expect(calls[0].url).toContain("update-comment");
+    const { comments } = getWorkspaceState();
+    expect(comments.replies[THREAD_ID].map((c) => c.content)).toEqual(["first", "edited"]);
+    expect(comments.threads[0].content).toBe("first");
+  });
+
+  it("refreshes the content projection when the first comment is edited", async () => {
+    setWorkspaceComments({
+      threads: [thread({ id: THREAD_ID, content: "first" })],
+      replies: { [THREAD_ID]: [first, second] },
+    });
+    stubFetch(jsonResponse({ ...first, content: "rewritten" }));
+
+    await editCommentInThread(THREAD_ID, "c1", "rewritten");
+
+    const { comments } = getWorkspaceState();
+    expect(comments.replies[THREAD_ID][0].content).toBe("rewritten");
+    expect(comments.threads[0].content).toBe("rewritten");
   });
 });
 

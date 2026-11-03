@@ -2390,6 +2390,29 @@
   top: 0;
 }
 
+/* The inline edition of a comment row: the pencil sits next to the delete
+   cross and the editor takes the body place. */
+.pp-comments-reply-edit-btn {
+  background: none;
+  border: none;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  position: absolute;
+  right: 22px;
+  top: 0;
+}
+
+.pp-comments-reply-edit {
+  display: block;
+  width: 100%;
+}
+
+.pp-comments-edit-actions {
+  display: flex;
+  gap: var(--sp-xs);
+  margin-top: var(--sp-xxs);
+}
+
 /* The mention chip: @[name](id) rendered as a label, the role of the
    comment-content mention span in comments.scss. */
 .pp-comment-mention {

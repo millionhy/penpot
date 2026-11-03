@@ -21,9 +21,10 @@
 //   dropdown is flattened into a single delete button, shown to the thread
 //   owner like the CLJS checks.
 // - The @mention autocomplete runs through components/comment-mention (the
-//   suggestions popup of app.main.ui.comments); the reply edition is a later
-//   slice and a mention stored in the content renders as a chip through
-//   parseCommentContent.
+//   suggestions popup of app.main.ui.comments); a mention stored in the
+//   content renders as a chip through parseCommentContent. The inline reply
+//   editor (the CLJS options-menu edit entry) takes plain text: the suggestion
+//   popup stays on the composer only.
 // - The CLJS resolve control is a textless checkbox (the checkbox* call in
 //   comments.cljs carries no label); this port keeps that shape and its
 //   meaning: checked resolves the thread.
@@ -53,6 +54,7 @@ import {
 } from "@/lib/workspace-comments";
 import {
   closeCommentThread,
+  editCommentInThread,
   markAllLoadedRead,
   openCommentThread,
   removeReplyFromThread,
@@ -97,6 +99,44 @@ function CommentBody({ content }: { content: string }) {
   );
 }
 
+// The inline editor of one comment row (the CLJS comment-edit-form*, without
+// its mention popup): the row remounts per edited id, so no reset effect.
+function ReplyEditor({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: string;
+  onSave: (content: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(initial);
+  return (
+    <span className="pp-comments-reply-edit">
+      <textarea
+        className="pp-comments-input"
+        rows={3}
+        value={value}
+        aria-label={tr("labels.edit")}
+        onChange={(event) => setValue(event.target.value)}
+      />
+      <span className="pp-comments-edit-actions">
+        <button
+          type="button"
+          className="pp-comments-submit"
+          disabled={!validCommentContent(value)}
+          onClick={() => onSave(value)}
+        >
+          {tr("labels.save")}
+        </button>
+        <button type="button" className="pp-comments-back" onClick={onCancel}>
+          {tr("labels.cancel")}
+        </button>
+      </span>
+    </span>
+  );
+}
+
 export interface WorkspaceCommentsPanelProps {
   // The open page: threads of other pages stay out of the list.
   pageId: string;
@@ -113,6 +153,9 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
   const profileId = profile?.id ?? null;
   const { open: openModal } = useModal();
   const [draft, setDraft] = useState("");
+  // The comment row in inline edition (the CLJS edition? local flag, one at a
+  // time): id of the row plus the content it started with.
+  const [editing, setEditing] = useState<{ id: string; content: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const mention = useMentionAutocomplete(
     comments.members,
@@ -191,6 +234,16 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
     const replies = comments.replies[openThread.id] ?? [];
     const loadingReplies = comments.loadingReplies[openThread.id] === true;
     const resolved = openThread["is-resolved"] === true;
+    // The first comment is replies[0] once the replies loaded: the thread row
+    // only carries its content projection, so edition needs the reply row.
+    const firstComment = replies[0];
+    const canEditFirst =
+      profileId !== null && profileId === openThread["owner-id"] && firstComment !== undefined;
+
+    const saveEdit = (commentId: string, content: string): void => {
+      setEditing(null);
+      void editCommentInThread(openThread.id, commentId, content);
+    };
     return (
       <div className="pp-comments-panel" data-testid="comments-panel">
         {header}
@@ -230,9 +283,28 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
                 </span>
                 <span className="pp-comments-time">{timeAgo(openThread["created-at"])}</span>
               </span>
-              <span className="pp-comments-reply-body">
-                <CommentBody content={openThread.content} />
-              </span>
+              {canEditFirst && editing?.id === firstComment.id ? (
+                <ReplyEditor
+                  key={editing.id}
+                  initial={editing.content}
+                  onSave={(content) => saveEdit(firstComment.id, content)}
+                  onCancel={() => setEditing(null)}
+                />
+              ) : (
+                <span className="pp-comments-reply-body">
+                  <CommentBody content={openThread.content} />
+                </span>
+              )}
+              {canEditFirst ? (
+                <button
+                  type="button"
+                  className="pp-comments-reply-edit-btn"
+                  aria-label={tr("labels.edit")}
+                  onClick={() => setEditing({ id: firstComment.id, content: openThread.content })}
+                >
+                  ✎
+                </button>
+              ) : null}
             </li>
             {replies.slice(1).map((reply) => (
               <li key={reply.id} className="pp-comments-reply" data-testid="comment-reply">
@@ -247,18 +319,37 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
                   </span>
                   <span className="pp-comments-time">{timeAgo(reply["created-at"])}</span>
                 </span>
-                <span className="pp-comments-reply-body">
-                  <CommentBody content={reply.content} />
-                </span>
+                {editing?.id === reply.id ? (
+                  <ReplyEditor
+                    key={editing.id}
+                    initial={editing.content}
+                    onSave={(content) => saveEdit(reply.id, content)}
+                    onCancel={() => setEditing(null)}
+                  />
+                ) : (
+                  <span className="pp-comments-reply-body">
+                    <CommentBody content={reply.content} />
+                  </span>
+                )}
                 {profileId !== null && profileId === reply["owner-id"] ? (
-                  <button
-                    type="button"
-                    className="pp-comments-reply-delete"
-                    aria-label={tr("labels.delete-comment")}
-                    onClick={() => void removeReplyFromThread(openThread.id, reply.id)}
-                  >
-                    ×
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="pp-comments-reply-edit-btn"
+                      aria-label={tr("labels.edit")}
+                      onClick={() => setEditing({ id: reply.id, content: reply.content })}
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      className="pp-comments-reply-delete"
+                      aria-label={tr("labels.delete-comment")}
+                      onClick={() => void removeReplyFromThread(openThread.id, reply.id)}
+                    >
+                      ×
+                    </button>
+                  </>
                 ) : null}
               </li>
             ))}
