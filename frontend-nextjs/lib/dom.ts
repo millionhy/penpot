@@ -5,14 +5,21 @@ import { useEffect } from "react";
 // dom/set-html-title in app.util.dom. The CLJS pages call it from
 // mf/with-effect on mount; the shell pages are client components, so a hook
 // keeps the same shape and updates on a locale change.
-export function useDocumentTitle(title: string): void {
+export function useDocumentTitle(title: string, deps: readonly unknown[] = []): void {
   useEffect(() => {
     // The empty string means "leave the title alone": CLJS pages only call
     // dom/set-html-title once their data resolved (files-section* waits for
     // the project), and rendering nothing must not blank the tab title.
     if (title === "") return;
     document.title = title;
-  }, [title]);
+    // The App Router re-applies the root layout metadata title ("Penpot") on
+    // an in-page navigation that only changes the search (the viewer's index
+    // normalization router.replace). Callers that face such a navigation pass
+    // the search field that changes into `deps`, so this effect re-runs and
+    // re-asserts the resolved title after that metadata write. The spread
+    // hides the caller's dynamic deps from the linter on purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, ...deps]);
 }
 
 // dom/trigger-download in app.util.dom: an object URL on a synthetic anchor,

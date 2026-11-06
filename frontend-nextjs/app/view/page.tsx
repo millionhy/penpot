@@ -323,7 +323,11 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   const permissions = (data?.permissions ?? {}) as Record<string, unknown>;
   const inTeam = permissions["in-team"] === true;
 
-  useDocumentTitle(data === null ? "" : "\u25b6 " + tr("title.viewer", data.file.name));
+  // The bundle-fetched normalization below router.replaces the URL to add
+  // the resolved index once the file loads; that in-page navigation makes
+  // the App Router re-assert the root layout's default "Penpot" title, so
+  // query.index is passed as a dep to re-write the resolved title after it.
+  useDocumentTitle(data === null ? "" : "\u25b6 " + tr("title.viewer", data.file.name), [query.index]);
 
   // bundle-fetched: pick the frame from frame-id / index / the first flow
   // and mirror it into the URL. The href rebuilds the full param set, so
