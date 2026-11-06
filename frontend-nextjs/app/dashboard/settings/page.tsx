@@ -127,7 +127,7 @@ export default function DashboardSettingsPage() {
                 </span>
               ) : null}
 
-              <img className="pp-team-image" src={photo ?? teamAvatar ?? ""} alt="" />
+              <img className="pp-team-image" src={photo ?? teamAvatar ?? undefined} alt="" />
 
               {canEditTeam ? (
                 <input

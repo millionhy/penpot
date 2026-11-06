@@ -78,7 +78,7 @@ export function Field({
         type={type}
         name={name}
         value={value}
-        placeholder={placeholder}
+        placeholder={placeholder ?? label}
         autoComplete={autoComplete}
         autoFocus={autoFocus}
         disabled={disabled}

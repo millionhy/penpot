@@ -16,6 +16,12 @@
   gap: var(--sp-xxxl);
   grid-template-columns: repeat(5, 1fr);
   inline-size: 100%;
+  /* The old CLJS shell stretches html/body to 100% so the centered grid fills
+     the viewport; the Next root does not set that chain (and the provider
+     wrappers in app/layout.tsx are height:auto), so block-size:100% alone
+     collapses the section to content height and the form sticks to the top.
+     min-block-size keeps the full-viewport vertical centering regardless. */
+  min-block-size: 100vh;
   overflow: auto;
   padding: var(--sp-xxxl);
   position: relative;
@@ -157,6 +163,12 @@
   gap: var(--sp-s);
   justify-content: center;
   padding: 0;
+}
+
+/* The forgot-password row is right-aligned (flush with the form edge) in the
+   CLJS login-form*, while the register row stays centered. */
+.auth-row-end {
+  justify-content: flex-end;
 }
 
 .auth-row-text {

@@ -75,6 +75,17 @@ form input {
   color: var(--color-foreground-primary);
   font: inherit;
 }
+/* The text-field fallback above must not reach the interactive control types:
+   radios/checkboxes are not text inputs, so they inherit none of its min-width,
+   padding, border or fill (otherwise a radio box becomes 252px wide and the
+   label text is pushed far from the circle). */
+form input[type="radio"],
+form input[type="checkbox"] {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
 form input:focus-visible {
   outline: var(--b-2) solid var(--color-accent-primary);
   outline-offset: 0;

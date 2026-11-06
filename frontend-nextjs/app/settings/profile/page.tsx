@@ -98,7 +98,7 @@ function ProfilePhotoForm({ runtime }: { runtime: RuntimeProfile | null }) {
           </button>
         </span>
 
-        <img className="pp-avatar-image" src={photo ?? avatar ?? ""} alt="" width={80} height={80} />
+        <img className="pp-avatar-image" src={photo ?? avatar ?? undefined} alt="" width={80} height={80} />
 
         {hasPhoto ? (
           <button

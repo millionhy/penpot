@@ -15,27 +15,46 @@
 }
 
 .pp-field-label {
-  color: var(--color-foreground-secondary);
+  color: var(--color-foreground-primary);
   font-size: var(--fs-12);
   font-weight: var(--fw-medium);
   line-height: var(--lh-dense);
   margin: 0;
+  text-transform: uppercase;
 }
 
+/*
+   The ds input (app.main.ui.components.input-forms / input-with-label-form)
+   is a *filled* field: its background is --color-background-tertiary and its
+   border is the same color, so no stroke shows at rest (it only reveals an
+   accent border on focus). Radius 8, padding 0 8. Verified against the CLJS
+   baseline in both themes: tertiary == #f3f4f6 (light /settings) and #212426
+   (dark /auth), the exact values the old input reports.
+*/
 .pp-field-input {
-  background: var(--color-background-primary);
+  background: var(--color-background-tertiary);
   block-size: var(--sz-40);
-  border: var(--b-1) solid var(--color-icon-default);
-  border-radius: var(--br-6);
+  border: var(--b-1) solid var(--color-background-tertiary);
+  border-radius: var(--br-8);
   color: var(--color-foreground-primary);
   font-family: inherit;
   font-size: var(--fs-14);
   inline-size: 100%;
-  padding: 0 var(--sp-m);
+  padding: 0 var(--sp-s);
 }
 
 .pp-field-input::placeholder {
   color: var(--color-foreground-secondary);
+}
+
+/* Textareas are multi-line: let `rows` drive the height instead of the
+   single-line 40px the shared `.pp-field-input` rule gives, and add vertical
+   padding (the base rule is 0 vertical). Matches the CLJS ds textarea. */
+.pp-field-textarea {
+  block-size: auto;
+  min-block-size: 7.5rem;
+  padding-block: var(--sp-s);
+  resize: vertical;
 }
 
 .pp-field-input:focus-visible {

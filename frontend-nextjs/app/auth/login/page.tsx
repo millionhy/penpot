@@ -106,7 +106,7 @@ function LoginContent({ params }: { params: URLSearchParams }) {
         />
 
         {showPasswordLogin ? (
-          <div className="auth-row">
+          <div className="auth-row auth-row-end">
             <Link className="auth-row-link" href={routePaths["auth-recovery-request"]} data-testid="forgot-password">
               {tr("auth.forgot-password")}
             </Link>
