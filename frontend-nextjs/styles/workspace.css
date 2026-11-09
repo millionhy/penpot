@@ -2010,6 +2010,22 @@
   stroke: var(--color-accent-tertiary);
 }
 
+/* The selection size badge (D2): the W x H pill under the selection frame,
+   the port of measurements.cljs selection-size-badge*. The box, the radius
+   and the font size ride inline in world units (scaled by the zoom); only
+   the palette lives here. Never takes a pointer event. */
+.pp-overlay-size-badge {
+  pointer-events: none;
+}
+
+.pp-overlay-size-badge rect {
+  fill: var(--color-accent-tertiary);
+}
+
+.pp-overlay-size-badge text {
+  fill: var(--color-static-white);
+}
+
 /* The dashed box of a live draw gesture (F9.5): the stroke width and the
    dash lengths ride inline, scaled by the zoom, so the preview keeps one
    screen pixel like the marquee. */
