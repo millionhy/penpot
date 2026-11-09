@@ -81,6 +81,7 @@ import {
   type TransformPreview,
 } from "@/lib/workspace-store";
 import type { ViewportRect } from "@/lib/workspace-viewport";
+import { selectionSizeBadge, type SizeBadge } from "@/lib/workspace-size-badge";
 import {
   frameCorners,
   resizeHandlePoints,
@@ -280,14 +281,68 @@ export function WorkspaceViewportOverlay({
   const anchorSize = 6 / zoom;
   const handleRadius = 3 / zoom;
 
+  // The selection size badge (D2): the W x H pill under the selection, the
+  // port of selection-size-badge* of measurements.cljs. It hides while the
+  // node editor or a resize/rotate preview runs (the gesture owns the
+  // pointer) but follows a move drag through the translation.
+  const badgeTranslate =
+    previewMatrix === null && dragDelta !== null
+      ? translationMatrix(dragDelta.dx, dragDelta.dy)
+      : null;
+  let sizeBadge: SizeBadge | null = null;
+  if (
+    !editing &&
+    previewMatrix === null &&
+    selectedShapes.length > 0 &&
+    canEditFile(file)
+  ) {
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const shape of selectedShapes) {
+      const points = shapeWorldPoints(shape);
+      if (points === null) continue;
+      for (const point of points) {
+        const world =
+          badgeTranslate === null ? point : transformPoint(point, badgeTranslate);
+        minX = Math.min(minX, world.x);
+        minY = Math.min(minY, world.y);
+        maxX = Math.max(maxX, world.x);
+        maxY = Math.max(maxY, world.y);
+      }
+    }
+    if (Number.isFinite(minX) && Number.isFinite(minY)) {
+      const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+      let width = bounds.width;
+      let height = bounds.height;
+      // A single shape reports its own (unrotated) size; a multi-selection
+      // reports the bounding box, like the CLJS :width / shapes->rect split.
+      if (selectedShapes.length === 1) {
+        const rect = selrectOf(selectedShapes[0]);
+        if (rect !== null) {
+          width = rect.width;
+          height = rect.height;
+        }
+      }
+      sizeBadge = selectionSizeBadge(bounds, width, height, zoom, vbox);
+    }
+  }
+
   return (
     <svg
       className="pp-workspace-overlay"
       data-testid="viewport-overlay"
       viewBox={`${vbox.x} ${vbox.y} ${vbox.width} ${vbox.height}`}
       preserveAspectRatio="xMidYMid meet"
-      aria-hidden="true"
     >
+      {/* The decorative layer (frame titles, outlines, handles, previews,
+          remote cursors and the size badge) stays hidden from assistive
+          tech. The comment bubbles and the placement composer below it are
+          interactive, so they live outside this group: the composer owns a
+          focusable textarea, and a focusable node must not sit inside an
+          aria-hidden subtree. */}
+      <g aria-hidden="true" data-testid="viewport-overlay-decoration">
       <WorkspaceFrameTitles
         objects={objects}
         selection={selection}
@@ -471,6 +526,32 @@ export function WorkspaceViewportOverlay({
         />
       ) : null}
       <WorkspacePresenceCursors pageId={pageId} zoom={zoom} teamId={teamId} />
+      {sizeBadge !== null ? (
+        <g
+          className="pp-overlay-size-badge"
+          data-testid="selection-size-badge"
+          transform={`translate(${sizeBadge.cx},${sizeBadge.cy})`}
+        >
+          <rect
+            x={-sizeBadge.width / 2}
+            y={-sizeBadge.height / 2}
+            width={sizeBadge.width}
+            height={sizeBadge.height}
+            rx={sizeBadge.radius}
+            ry={sizeBadge.radius}
+          />
+          <text
+            x={0}
+            y={0}
+            fontSize={12 / zoom}
+            textAnchor="middle"
+            dominantBaseline="middle"
+          >
+            {sizeBadge.text}
+          </text>
+        </g>
+      ) : null}
+      </g>
       <WorkspaceCommentBubbles pageId={pageId} zoom={zoom} />
       <WorkspaceCommentPlacement />
     </svg>
