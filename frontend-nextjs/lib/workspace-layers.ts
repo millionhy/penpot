@@ -1,10 +1,14 @@
 // Workspace layer tree (F9.4): the pure data behind the Layers panel.
 //
 // Port of the tree walk in app.main.ui.workspace.sidebar.layers. The CLJS
-// layers-tree* iterates (get root :shapes) in array order and recurses
-// through each shape's :shapes; this module does the same, with no
-// reversal and no sorting (AD9). The panel only renders the rows, so the
-// traversal and the filter stay testable in vitest's node environment.
+// layers-tree* and layer-item* build their row list with (conj (list) ...),
+// which prepends each :shapes id, so every level renders the container's
+// children in REVERSE array order (the topmost shape, i.e. the last id in
+// :shapes, shows first). This module walks :shapes from the end so the tree
+// comes out in the same display order the CLJS panel renders.
+//
+// The panel only renders the rows, so the traversal and the filter stay
+// testable in vitest's node environment.
 //
 // Defensive rules that the CLJS gets from the resolved file:
 // - a root child stays visible even when its parent-id points nowhere;
@@ -47,7 +51,11 @@ export function buildLayerTree(objects: WorkspaceObjects): LayerNode[] {
 
   const build = (shape: WorkspaceShape, depth: number): LayerNode => {
     const children: LayerNode[] = [];
-    for (const childId of shape.shapes ?? []) {
+    const ids = shape.shapes ?? [];
+    // Reverse array order: the last id in :shapes (the topmost shape) is
+    // built first, matching the (conj (list)) prepending of the CLJS panel.
+    for (let i = ids.length - 1; i >= 0; i--) {
+      const childId = ids[i];
       if (seen.has(childId)) continue;
       const child = objects[childId];
       if (child === undefined || child === null) continue;
@@ -65,7 +73,9 @@ export function buildLayerTree(objects: WorkspaceObjects): LayerNode[] {
 
   const root = objects[ZERO_UUID];
   const nodes: LayerNode[] = [];
-  for (const id of root?.shapes ?? []) {
+  const rootIds = root?.shapes ?? [];
+  for (let i = rootIds.length - 1; i >= 0; i--) {
+    const id = rootIds[i];
     if (seen.has(id)) continue;
     const shape = objects[id];
     if (shape === undefined || shape === null) continue;

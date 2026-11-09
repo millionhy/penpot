@@ -1,6 +1,6 @@
-// Unit tests for the workspace layer tree (lib/workspace-layers): array
-// order, depth, name fallback, missing ids and parents, cycles, the name
-// filter with ancestor retention and the collapsed/filtered row walk.
+// Unit tests for the workspace layer tree (lib/workspace-layers): reverse
+// array order, depth, name fallback, missing ids and parents, cycles, the
+// name filter with ancestor retention and the collapsed/filtered row walk.
 
 import { describe, expect, it } from "vitest";
 
@@ -46,33 +46,33 @@ function makeObjects(): WorkspaceObjects {
 }
 
 describe("buildLayerTree", () => {
-  it("walks the root shapes in array order and nests the children", () => {
+  it("walks the root shapes in reverse array order and nests the children", () => {
     const tree = buildLayerTree(makeObjects());
 
-    expect(tree.map((node) => node.id)).toEqual(["frame", "orphan"]);
-    expect(tree[0].depth).toBe(0);
-    expect(tree[0].children.map((node) => node.id)).toEqual(["group", "child"]);
-    expect(tree[0].children[0].depth).toBe(1);
-    expect(tree[0].children[0].children.map((node) => node.id)).toEqual(["leaf"]);
-    expect(tree[0].children[0].children[0].depth).toBe(2);
+    expect(tree.map((node) => node.id)).toEqual(["orphan", "frame"]);
+    expect(tree[1].depth).toBe(0);
+    expect(tree[1].children.map((node) => node.id)).toEqual(["child", "group"]);
+    expect(tree[1].children[1].depth).toBe(1);
+    expect(tree[1].children[1].children.map((node) => node.id)).toEqual(["leaf"]);
+    expect(tree[1].children[1].children[0].depth).toBe(2);
   });
 
   it("skips missing child ids and keeps a root child with a missing parent", () => {
     const tree = buildLayerTree(makeObjects());
 
     expect(tree.map((node) => node.id)).not.toContain("missing");
-    expect(tree[1].id).toBe("orphan");
-    expect(tree[1].name).toBe("Orphan");
+    expect(tree[0].id).toBe("orphan");
+    expect(tree[0].name).toBe("Orphan");
   });
 
   it("falls back to the shape type for a blank name", () => {
     const tree = buildLayerTree(makeObjects());
-    expect(tree[0].children[0].children[0].name).toBe("rect");
+    expect(tree[1].children[1].children[0].name).toBe("rect");
   });
 
   it("renders a repeated id once and terminates on a cycle", () => {
     const tree = buildLayerTree(makeObjects());
-    const ids = tree[0].children[0].children.map((node) => node.id);
+    const ids = tree[1].children[1].children.map((node) => node.id);
     expect(ids).toEqual(["leaf"]);
   });
 
@@ -115,7 +115,7 @@ describe("visibleLayerRows", () => {
     const tree = buildLayerTree(makeObjects());
     const rows = visibleLayerRows(tree, new Set(), false);
 
-    expect(rows.map((row) => row.node.id)).toEqual(["frame", "orphan"]);
+    expect(rows.map((row) => row.node.id)).toEqual(["orphan", "frame"]);
     expect(rows.map((row) => row.depth)).toEqual([0, 0]);
   });
 
@@ -124,13 +124,13 @@ describe("visibleLayerRows", () => {
 
     expect(
       visibleLayerRows(tree, new Set(["frame"]), false).map((row) => row.node.id),
-    ).toEqual(["frame", "group", "child", "orphan"]);
+    ).toEqual(["orphan", "frame", "child", "group"]);
 
     expect(
       visibleLayerRows(tree, new Set(["frame", "group"]), false).map(
         (row) => row.node.id,
       ),
-    ).toEqual(["frame", "group", "leaf", "child", "orphan"]);
+    ).toEqual(["orphan", "frame", "child", "group", "leaf"]);
   });
 
   it("shows every remaining node in a filtered tree regardless of expansion", () => {
