@@ -193,7 +193,10 @@ export interface SelectOption {
 }
 
 export interface SelectFieldProps {
-  // The visible label, also the accessible name.
+  // The visible label, also the accessible name. With hideLabel it is only
+  // the accessible name: the CLJS panel renders a few controls (the two
+  // constraint selects) without a caption, so the shell keeps the aria name
+  // and drops the untranslated text (D9).
   label: string;
   // The store value; "" renders the disabled mixed option first.
   value: string;
@@ -201,6 +204,10 @@ export interface SelectFieldProps {
   disabled: boolean;
   // The text of the mixed option ("Mixed"): shown when the shapes disagree.
   mixedLabel: string;
+  // Drop the visible caption span; the label stays as the aria name.
+  hideLabel?: boolean;
+  // The e2e test id of the select (CLJS constraint-h-select / -v-select).
+  dataTestId?: string;
   onChange: (value: string) => void;
 }
 
@@ -213,16 +220,21 @@ export function SelectField({
   options,
   disabled,
   mixedLabel,
+  hideLabel = false,
+  dataTestId,
   onChange,
 }: SelectFieldProps) {
   return (
     <label className="pp-workspace-style-field">
-      <span className="pp-workspace-style-label">{label}</span>
+      {hideLabel ? null : (
+        <span className="pp-workspace-style-label">{label}</span>
+      )}
       <select
         className="pp-workspace-style-select pp-workspace-style-select--field"
         value={value}
         disabled={disabled}
         aria-label={label}
+        data-testid={dataTestId}
         onChange={(event) => onChange(event.currentTarget.value)}
       >
         {value === "" ? (

@@ -807,6 +807,8 @@ export function ConstraintsOptions({
       <div className="pp-workspace-style-grid">
         <SelectField
           label="Horizontal"
+          hideLabel
+          dataTestId="constraint-h-select"
           value={values.h}
           options={hOptions}
           disabled={disabled}
@@ -815,6 +817,8 @@ export function ConstraintsOptions({
         />
         <SelectField
           label="Vertical"
+          hideLabel
+          dataTestId="constraint-v-select"
           value={values.v}
           options={vOptions}
           disabled={disabled}
