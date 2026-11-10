@@ -1869,6 +1869,17 @@
   padding: 0;
 }
 
+/* D7: a color row pairs a fixed square swatch with an editable hex field
+   that takes the remaining width of the input wrap. */
+.pp-workspace-style-color-swatch {
+  flex: 0 0 auto;
+  width: var(--sz-28);
+}
+
+.pp-workspace-style-color-hex {
+  text-transform: uppercase;
+}
+
 .pp-workspace-style-unit {
   color: var(--color-foreground-secondary);
   font-size: var(--fs-12);

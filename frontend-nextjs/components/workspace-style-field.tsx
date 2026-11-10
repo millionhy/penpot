@@ -12,7 +12,9 @@
 // The hook owns no RPC: the caller passes the send, which keeps the pending
 // flag, the error and the canvas handle in the panel that owns them.
 
-import { useRef, useState } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
+
+import { normalizeHexInput } from "@/lib/hex-input";
 
 // <input type="color"> only accepts the six-digit form; a stored color in any
 // other notation falls back to black for the swatch.
@@ -99,36 +101,84 @@ export function DraftField({
   onCommit,
   onCancel,
 }: DraftFieldProps) {
+  const rawValue = draft ?? value;
+
+  // A color row edits the same draft through the native swatch and the hex
+  // box. Blur/Enter commits: a non-color value passes through untouched, and
+  // a color value is normalized to #rrggbb so every commit closure (fill,
+  // stroke, shadow) still sees a plain hex. Bad hex drops the draft instead
+  // of sending a value the store cannot hold (D7).
+  const commit = (): void => {
+    if (type !== "color" || draft === undefined) {
+      onCommit(fieldId, draft);
+      return;
+    }
+    const normalized = normalizeHexInput(draft);
+    if (normalized === null) onCancel(fieldId);
+    else onCommit(fieldId, normalized);
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.currentTarget.blur();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      onCancel(fieldId);
+    }
+  };
+
   return (
     <label className="pp-workspace-style-field">
       {type === "color" ? null : (
         <span className="pp-workspace-style-label">{label}</span>
       )}
       <span className="pp-workspace-style-input-wrap">
-        <input
-          type={type}
-          className="pp-workspace-style-input"
-          value={draft ?? value}
-          placeholder={placeholder}
-          min={type === "color" ? undefined : min}
-          max={type === "color" ? undefined : max}
-          step={type === "color" ? undefined : step}
-          disabled={disabled}
-          aria-label={label}
-          onChange={(event) => onDraft(fieldId, event.currentTarget.value)}
-          onBlur={() => onCommit(fieldId, draft)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              event.currentTarget.blur();
-            } else if (event.key === "Escape") {
-              event.preventDefault();
-              onCancel(fieldId);
-            }
-          }}
-        />
-        {unit === undefined ? null : (
-          <span className="pp-workspace-style-unit">{unit}</span>
+        {type === "color" ? (
+          <>
+            <input
+              type="color"
+              className="pp-workspace-style-input pp-workspace-style-color-swatch"
+              value={rawValue.startsWith("#") ? rawValue : `#${rawValue}`}
+              disabled={disabled}
+              aria-label={label}
+              onChange={(event) => onDraft(fieldId, event.currentTarget.value)}
+              onBlur={commit}
+              onKeyDown={onKeyDown}
+            />
+            <input
+              type="text"
+              className="pp-workspace-style-input pp-workspace-style-color-hex"
+              value={rawValue.replace(/^#/, "")}
+              aria-label={`${label} (hex)`}
+              spellCheck={false}
+              maxLength={6}
+              disabled={disabled}
+              onChange={(event) => onDraft(fieldId, event.currentTarget.value)}
+              onBlur={commit}
+              onKeyDown={onKeyDown}
+            />
+          </>
+        ) : (
+          <>
+            <input
+              type={type}
+              className="pp-workspace-style-input"
+              value={rawValue}
+              placeholder={placeholder}
+              min={min}
+              max={max}
+              step={step}
+              disabled={disabled}
+              aria-label={label}
+              onChange={(event) => onDraft(fieldId, event.currentTarget.value)}
+              onBlur={commit}
+              onKeyDown={onKeyDown}
+            />
+            {unit === undefined ? null : (
+              <span className="pp-workspace-style-unit">{unit}</span>
+            )}
+          </>
         )}
       </span>
     </label>
