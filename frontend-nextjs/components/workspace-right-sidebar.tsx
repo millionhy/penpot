@@ -35,6 +35,10 @@ export interface WorkspaceRightSidebarProps {
   commentsActive: boolean;
   commentsCount: number;
   onCommentsToggle(): void;
+  // F5.7/D10: when the comments panel is open the options tabs (设计/原型/
+  // 检查) leave the sidebar, so the panel fills the area under the header and
+  // matches the CLJS comments-sidebar box geometry.
+  hideOptionsTabs?: boolean;
   children?: ReactNode;
 }
 
@@ -66,6 +70,7 @@ export function WorkspaceRightSidebar({
   commentsActive,
   commentsCount,
   onCommentsToggle,
+  hideOptionsTabs = false,
   children,
 }: WorkspaceRightSidebarProps) {
   const [tab, setTab] = useState<OptionTabId>("design");
@@ -158,32 +163,38 @@ export function WorkspaceRightSidebar({
         </a>
       </header>
 
-      <div className="pp-workspace-options-tabs-wrap">
-        <nav className="pp-workspace-options-tabs">
-          <ul className="pp-workspace-options-tabs-list">
-            {OPTION_TABS.map((item) => (
-              <li key={item.id} className="pp-workspace-options-tabs-item">
-                <button
-                  type="button"
-                  role="tab"
-                  className={
-                    tab === item.id
-                      ? "pp-workspace-option-tab pp-workspace-option-tab--selected"
-                      : "pp-workspace-option-tab"
-                  }
-                  aria-selected={tab === item.id}
-                  onClick={() => setTab(item.id)}
-                >
-                  <span className="pp-workspace-option-tab-text">{tr(item.labelKey)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </div>
+      {hideOptionsTabs ? null : (
+        <div className="pp-workspace-options-tabs-wrap">
+          <nav className="pp-workspace-options-tabs">
+            <ul className="pp-workspace-options-tabs-list">
+              {OPTION_TABS.map((item) => (
+                <li key={item.id} className="pp-workspace-options-tabs-item">
+                  <button
+                    type="button"
+                    role="tab"
+                    className={
+                      tab === item.id
+                        ? "pp-workspace-option-tab pp-workspace-option-tab--selected"
+                        : "pp-workspace-option-tab"
+                    }
+                    aria-selected={tab === item.id}
+                    onClick={() => setTab(item.id)}
+                  >
+                    <span className="pp-workspace-option-tab-text">{tr(item.labelKey)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </div>
+      )}
 
       <div className="pp-workspace-right-options">
-        {tab === "design" ? children : <p className="pp-workspace-empty">{tr("labels.empty")}</p>}
+        {tab === "design" || hideOptionsTabs ? (
+          children
+        ) : (
+          <p className="pp-workspace-empty">{tr("labels.empty")}</p>
+        )}
       </div>
     </aside>
   );

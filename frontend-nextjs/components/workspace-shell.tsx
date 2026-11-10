@@ -425,6 +425,7 @@ export function WorkspaceShell({
           commentsActive={commentsState.panelOpen}
           commentsCount={commentsState.threads.length}
           onCommentsToggle={toggleComments}
+          hideOptionsTabs={commentsState.panelOpen}
         >
           {commentsState.panelOpen ? (
             <WorkspaceCommentsPanel pageId={pageId} />
