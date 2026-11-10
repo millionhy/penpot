@@ -1278,10 +1278,17 @@
    318px container whose internal gutter narrows the rows to 284px), not on
    a wrapping scroller — moving the scrollbar here made the panel 10px
    narrower than the header. Keep this container a plain clip and let the
-   design options scroll like the CLJS original. */
+   design options scroll like the CLJS original.
+
+   The margin-bottom mirrors the CLJS .right-sidebar-content, sized
+   calc(100vh - 52px) against a 48px header (sidebar.scss): it leaves a 4px
+   strip of aside background under the content in BOTH the design and the
+   comments state. The options area is the last flex child after the header
+   and the tabs, so insetting it by 4px reproduces that gap exactly (D10). */
 .pp-workspace-right-options {
   flex: 1;
   min-height: 0;
+  margin-bottom: var(--sp-xs);
   overflow: hidden;
 }
 
