@@ -399,6 +399,21 @@ describe("applyShapeStyle", () => {
     ]);
   });
 
+  it("re-sends the record when a text commit rewrites content", () => {
+    const { app, calls } = makeFakeApp();
+
+    // A D4 typography edit carries the new root tree under :content; the
+    // wasm record re-uploads it (the D11 pipeline re-measures the glyphs).
+    expect(attrsWriteStyle({ content: { type: "root" } })).toBe(true);
+    expect(applyShapeStyle(app, rectShape(), { content: { type: "root" } })).toBe(
+      true,
+    );
+    expect(calls.map((call) => call.name)).toEqual([
+      "set-object",
+      "request-render",
+    ]);
+  });
+
   it("never rewrites the record for an editor-only attribute", () => {
     expect(attrsWriteStyle({ blocked: true })).toBe(false);
     expect(attrsWriteStyle({ "layout-item-z-index": 2 })).toBe(true);

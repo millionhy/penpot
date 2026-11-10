@@ -155,6 +155,11 @@ export function attrsWriteStyle(attrs: Readonly<Record<string, unknown>>): boole
     typeof attrs.opacity === "number" ||
     Array.isArray(attrs.fills) ||
     Array.isArray(attrs.strokes) ||
+    // A text typography edit rewrites :content (the whole root tree). The
+    // record carries it, so one set_object re-uploads the text (D4); the
+    // glyphs only re-measure once D11's forceUpdateTextLayout runs the wasm
+    // text re-layout over the new content.
+    attrs.content !== undefined ||
     // A shadow list or a nil (the removal) both rewrite the record;
     // the same holds for the single blur map.
     attrs.shadow !== undefined ||

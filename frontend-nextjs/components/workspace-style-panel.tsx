@@ -77,7 +77,10 @@ import {
 } from "@/components/workspace-layout-options";
 import type { WorkspaceCanvasHandle } from "@/components/workspace-wasm-canvas";
 import { WorkspaceMultiOptions } from "@/components/workspace-multi-options";
+import { WorkspaceTextOptions } from "@/components/workspace-text-options";
 import { getSubtreeShapes } from "@/lib/workspace-component";
+import { buildFontsCatalog } from "@/lib/workspace-fonts-catalog";
+import { getTextAttrs, setTextAttrs, type TextAttrs } from "@/lib/workspace-text";
 import { colorUpdates } from "@/lib/workspace-selected-colors";
 import {
   DraftField,
@@ -144,6 +147,12 @@ import {
   setSelection,
   subscribeWorkspace,
 } from "@/lib/workspace-store";
+
+// The catalog the D4 text picker offers: the built-in family only. The team's
+// get-font-variants rows and the google faces are folded in here by D11, the
+// pipeline that also loads their bytes for the wasm renderer
+// (2026-11-10-d4 / -d11 plans); D4 does not duplicate that fetch.
+const BUILTIN_TEXT_CATALOG = buildFontsCatalog([]);
 
 export interface WorkspaceStylePanelProps {
   // canEditFile(file) from the shell (R9): the panel never derives it.
@@ -269,6 +278,14 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
   const radii = radiusOf(shape);
   const showPaint = supportsFillStroke(shape.type);
   const showRadius = shape.type === "rect" || shape.type === "frame";
+  // The D4 text slice: a text shape carries its typography on the content
+  // tree, so the section reads getTextAttrs and every edit lands back through
+  // setTextAttrs in a single mod-obj { content } the canvas pushes to wasm
+  // (see shape-upload attrsWriteStyle); D11 re-measures the glyphs.
+  const showText = shape.type === "text";
+  const textAttrs = showText ? getTextAttrs(shape.content) : {};
+  const applyTextAttrs = (partial: TextAttrs): Promise<boolean> =>
+    send({ content: setTextAttrs(shape.content, partial) });
   // The measures block hides for the types the geometry helpers cannot
   // rewrite (text, svg-raw, blocked shapes). The x/y shown are relative to
   // the ancestor frame, matching menus/measures.cljs (D5).
@@ -587,6 +604,15 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
         <p className="pp-workspace-style-error" role="alert">
           {tr("errors.generic")}
         </p>
+      ) : null}
+
+      {showText ? (
+        <WorkspaceTextOptions
+          attrs={textAttrs}
+          catalog={BUILTIN_TEXT_CATALOG}
+          disabled={disabled}
+          onApply={applyTextAttrs}
+        />
       ) : null}
 
       {geometry === null ? null : (
