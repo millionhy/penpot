@@ -10,11 +10,20 @@ import {
   TEXT_DEFAULT_ATTRS,
   TEXT_DEFAULT_FILLS,
   TEXT_FONT_SIZE,
+  TEXT_FONT_SIZE_MAX,
+  TEXT_FONT_SIZE_MIN,
   TEXT_LINE_HEIGHT,
+  TEXT_MIXED,
+  TEXT_NODE_ATTRS,
+  TEXT_SPACING_MAX,
+  TEXT_SPACING_MIN,
   createTextContent,
+  getTextAttrs,
   measureTextRect,
+  setTextAttrs,
   textEditAttrs,
   textPlainText,
+  type TextAttrs,
 } from "@/lib/workspace-text";
 
 describe("TEXT_DEFAULT_ATTRS", () => {
@@ -158,5 +167,156 @@ describe("textEditAttrs", () => {
       ],
     });
     expect(textPlainText(attrs.content)).toBe("hi");
+  });
+});
+
+// Build a content tree from paragraphs, each with per-paragraph attrs and one
+// text node carrying per-node attrs, so a test can make two levels diverge.
+function styledParagraph(
+  text: string,
+  paragraphAttrs: Record<string, unknown> = {},
+  nodeAttrs: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    type: "paragraph",
+    ...paragraphAttrs,
+    children: [{ text, ...nodeAttrs }],
+  };
+}
+
+function styledRoot(
+  paragraphs: Array<Record<string, unknown>>,
+  rootAttrs: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    type: "root",
+    ...rootAttrs,
+    children: [{ type: "paragraph-set", children: paragraphs }],
+  };
+}
+
+function firstNode(content: unknown): Record<string, unknown> {
+  const set = (content as { children: Array<{ children: unknown[] }> }).children[0];
+  const paragraph = set.children[0] as { children: Array<Record<string, unknown>> };
+  return paragraph.children[0];
+}
+
+function firstParagraph(content: unknown): Record<string, unknown> {
+  const set = (content as { children: Array<{ children: unknown[] }> }).children[0];
+  return set.children[0] as Record<string, unknown>;
+}
+
+describe("getTextAttrs", () => {
+  it("reads the sourcesanspro defaults createTextContent writes", () => {
+    const attrs = getTextAttrs(createTextContent("hello"));
+    expect(attrs["font-id"]).toBe("sourcesanspro");
+    expect(attrs["font-size"]).toBe("14");
+    expect(attrs["line-height"]).toBe("1.2");
+    expect(attrs["text-align"]).toBe("left");
+    // createTextContent stores no fills, so the color row falls back here.
+    expect(attrs["fills"]).toBeUndefined();
+  });
+
+  it("reports the shared value across every paragraph and node", () => {
+    const content = styledRoot([
+      styledParagraph("a", { "font-size": "20" }, { "font-size": "20" }),
+      styledParagraph("b", { "font-size": "20" }, { "font-size": "20" }),
+    ]);
+    expect(getTextAttrs(content)["font-size"]).toBe("20");
+  });
+
+  it("returns the mixed sentinel when two nodes disagree on a key", () => {
+    const content = styledRoot([
+      styledParagraph("a", {}, { "font-size": "14" }),
+      styledParagraph("b", {}, { "font-size": "20" }),
+    ]);
+    expect(getTextAttrs(content)["font-size"]).toBe(TEXT_MIXED);
+  });
+
+  it("reads text-align off the paragraph, so a span default does not force mixed", () => {
+    const content = styledRoot([
+      styledParagraph("a", { "text-align": "center" }, { "text-align": "left" }),
+    ]);
+    expect(getTextAttrs(content)["text-align"]).toBe("center");
+  });
+
+  it("treats a numeric value and its string form as one value", () => {
+    const content = styledRoot([
+      styledParagraph("a", {}, { "font-size": 14 }),
+      styledParagraph("b", {}, { "font-size": "14" }),
+    ]);
+    expect(getTextAttrs(content)["font-size"]).toBe("14");
+  });
+
+  it("answers an empty object for a missing or malformed content", () => {
+    expect(getTextAttrs(null)).toEqual({});
+    expect(getTextAttrs("text")).toEqual({});
+    expect(getTextAttrs({})).toEqual({});
+  });
+});
+
+describe("setTextAttrs", () => {
+  it("fans the value out to every paragraph and text node", () => {
+    const next = setTextAttrs(createTextContent("a\nb"), {
+      "font-size": "20",
+      "text-align": "center",
+    });
+    expect(getTextAttrs(next)["font-size"]).toBe("20");
+    expect(getTextAttrs(next)["text-align"]).toBe("center");
+    expect(firstNode(next)["font-size"]).toBe("20");
+    expect(firstParagraph(next)["text-align"]).toBe("center");
+  });
+
+  it("is round-trip stable: get, set what you read, get again", () => {
+    const base = createTextContent("x");
+    const once = setTextAttrs(base, { "letter-spacing": "2", "line-height": "1.5" });
+    const read = getTextAttrs(once);
+    const twice = setTextAttrs(once, read);
+    expect(getTextAttrs(twice)).toEqual(read);
+  });
+
+  it("writes fills to the text nodes and not the paragraph", () => {
+    const fills = [{ "fill-color": "#ff0000", "fill-opacity": 1 }];
+    const next = setTextAttrs(createTextContent("f"), { fills });
+    expect(firstNode(next)["fills"]).toEqual(fills);
+    expect(firstParagraph(next)["fills"]).toBeUndefined();
+    expect(getTextAttrs(next)["fills"]).toEqual(fills);
+  });
+
+  it("drops keys outside the ported subset", () => {
+    const stray = { "vertical-align": "middle", growtype: "yes" } as unknown as TextAttrs;
+    const next = setTextAttrs(createTextContent("z"), stray);
+    expect(firstNode(next)["vertical-align"]).toBeUndefined();
+    expect(firstNode(next)["growtype"]).toBeUndefined();
+    // The root keeps its default; nothing in the subset was touched.
+    expect((next as Record<string, unknown>)["vertical-align"]).toBe("top");
+    expect(getTextAttrs(next)["font-size"]).toBe("14");
+  });
+
+  it("never commits the mixed sentinel back", () => {
+    const next = setTextAttrs(createTextContent("m"), { "font-size": TEXT_MIXED });
+    expect(firstNode(next)["font-size"]).toBe("14");
+  });
+
+  it("returns a non-object content untouched", () => {
+    expect(setTextAttrs(null, { "font-size": "20" })).toBe(null);
+    expect(setTextAttrs("text", { "font-size": "20" })).toBe("text");
+  });
+});
+
+describe("the D4 attr surface", () => {
+  it("exposes the eight target controls as the ported subset", () => {
+    expect(TEXT_NODE_ATTRS).toContain("font-id");
+    expect(TEXT_NODE_ATTRS).toContain("text-align");
+    expect(TEXT_NODE_ATTRS).toContain("fills");
+    expect(TEXT_NODE_ATTRS).not.toContain("text-decoration");
+    expect(TEXT_NODE_ATTRS).not.toContain("vertical-align");
+  });
+
+  it("carries the font-size and spacing bounds of text.cljc", () => {
+    expect(TEXT_FONT_SIZE_MIN).toBe(3);
+    expect(TEXT_FONT_SIZE_MAX).toBe(1000);
+    expect(TEXT_SPACING_MIN).toBe(-200);
+    expect(TEXT_SPACING_MAX).toBe(200);
   });
 });

@@ -24,6 +24,15 @@
 //   keeps the committed box.
 // - The editor edits one plain text value: no rich spans, no per-span
 //   styles and no paragraph selection.
+// - getTextAttrs/setTextAttrs (D4) read and write a typography attribute
+//   across the whole content tree. The CLJS routes text-align to the
+//   paragraphs and the font/spacing/transform/fills to the text nodes, and
+//   stores line-height on both (data/workspace/texts.cljs update-attrs); the
+//   writer here mirrors every scalar on both the paragraph and its nodes, the
+//   same shape createTextContent already builds, so the reader never reports
+//   a mixed value the writer could not produce. The reader takes each key
+//   from one authoritative level (text-align off the paragraph, the rest off
+//   the text nodes) and fills off the text nodes alone.
 
 // shapes/text.cljc default-text-attrs. The ids of the typography references
 // stay absent, like the nil defaults the CLJS drops on serialize.
@@ -173,4 +182,190 @@ export function textEditAttrs(text: string, x: number, y: number): Record<string
       { x: rect.x, y: y2 },
     ],
   };
+}
+
+// --- Typography attrs (D4) -------------------------------------------------
+//
+// The content tree is root -> paragraph-set -> paragraph -> text node. A
+// typography edit applies to the whole shape (every paragraph and every text
+// node), so these two helpers are the read/write seam the options component
+// commits through: getTextAttrs folds the tree into the shared value per key
+// (TEXT_MIXED when the spans disagree, the CLJS :multiple), and setTextAttrs
+// rebuilds the tree with the new value mirrored on both levels. Only the keys
+// of the ported subset survive the write, like the CLJS emit-update! that
+// merges over select-keys of txt/text-node-attrs (ui/.../menus/text.cljs).
+
+// Bounds ported from common/types/text.cljc (font-size-min/max, spacing-min/
+// max). The numeric fields clamp to them before they reach the store.
+export const TEXT_FONT_SIZE_MIN = 3;
+export const TEXT_FONT_SIZE_MAX = 1000;
+export const TEXT_SPACING_MIN = -200;
+export const TEXT_SPACING_MAX = 200;
+
+// The value getTextAttrs returns when the selection disagrees on a key. The
+// fields render it as the "--" placeholder and never commit it back.
+export const TEXT_MIXED = "__mixed__" as const;
+export type TextMixed = typeof TEXT_MIXED;
+
+// The D4 core slice: the subset of the CLJS txt/text-node-attrs plus the
+// paragraph-level text-align the eight target controls write. Stray keys
+// (typography refs, text-decoration, direction, the shape/root grow-type and
+// vertical-align) are out of this slice.
+export const TEXT_NODE_ATTRS = [
+  "font-id",
+  "font-family",
+  "font-variant-id",
+  "font-size",
+  "font-weight",
+  "font-style",
+  "line-height",
+  "letter-spacing",
+  "text-transform",
+  "text-align",
+  "fills",
+] as const;
+
+export type TextAttrKey = (typeof TEXT_NODE_ATTRS)[number];
+export type TextAttrValue = string | readonly Record<string, unknown>[] | TextMixed;
+export type TextAttrs = Partial<Record<TextAttrKey, TextAttrValue>>;
+
+type ContentNode = Record<string, unknown>;
+
+function isObject(value: unknown): value is ContentNode {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function childNodes(node: ContentNode): ContentNode[] {
+  const children = node["children"];
+  return Array.isArray(children) ? children.filter(isObject) : [];
+}
+
+// txt/is-text-node?: a map with no :type and a string :text.
+function isTextNode(node: ContentNode): boolean {
+  return node["type"] === undefined && typeof node["text"] === "string";
+}
+
+function nodeType(node: ContentNode): string | undefined {
+  return typeof node["type"] === "string" ? node["type"] : undefined;
+}
+
+// Walk the tree collecting every paragraph and every text node, the two
+// levels that carry the applied style (like the CLJS node-seq filtered by
+// is-paragraph-node? / is-text-node?).
+function collectStyled(
+  node: ContentNode,
+  paragraphs: ContentNode[],
+  textNodes: ContentNode[],
+): void {
+  if (isTextNode(node)) {
+    textNodes.push(node);
+    return;
+  }
+  if (nodeType(node) === "paragraph") paragraphs.push(node);
+  for (const child of childNodes(node)) collectStyled(child, paragraphs, textNodes);
+}
+
+// Compare two raw attr values: numbers and their string form match within a
+// float tolerance (the CLJS compares numeric attrs with close?), arrays
+// (fills) by their serialized shape.
+function attrEq(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  const na = typeof a === "number" ? a : Number(a);
+  const nb = typeof b === "number" ? b : Number(b);
+  if (Number.isFinite(na) && Number.isFinite(nb)) return Math.abs(na - nb) < 1e-6;
+  return false;
+}
+
+// The stored value normalized for the fields: numbers become strings (the
+// CLJS attrs carry font-size and line-height as strings), fills stay arrays.
+function toDisplayValue(value: unknown): TextAttrValue {
+  if (Array.isArray(value)) return value as readonly Record<string, unknown>[];
+  if (typeof value === "string") return value;
+  return String(value);
+}
+
+// The paragraph is authoritative for text-align, the text node for the rest;
+// reading one level per key avoids a false mixed when the two levels are not
+// mirrored (a legacy file that only styled one level).
+function readSourcesFor(
+  key: TextAttrKey,
+  paragraphs: ContentNode[],
+  textNodes: ContentNode[],
+): ContentNode[] {
+  if (key !== "text-align") return textNodes;
+  return paragraphs.length > 0 ? paragraphs : textNodes;
+}
+
+// Fold the content tree into the shared typography value per key. A key no
+// node carries is left absent (the field falls back to the default); a key
+// the nodes disagree on reads as TEXT_MIXED.
+export function getTextAttrs(content: unknown): TextAttrs {
+  if (!isObject(content)) return {};
+  const paragraphs: ContentNode[] = [];
+  const textNodes: ContentNode[] = [];
+  collectStyled(content, paragraphs, textNodes);
+
+  const result: TextAttrs = {};
+  for (const key of TEXT_NODE_ATTRS) {
+    const carriers = readSourcesFor(key, paragraphs, textNodes);
+    let seen = false;
+    let first: unknown;
+    let mixed = false;
+    for (const node of carriers) {
+      const value = node[key];
+      if (value === undefined) continue;
+      if (!seen) {
+        seen = true;
+        first = value;
+      } else if (!attrEq(first, value)) {
+        mixed = true;
+        break;
+      }
+    }
+    if (!seen) continue;
+    result[key] = mixed ? TEXT_MIXED : toDisplayValue(first);
+  }
+  return result;
+}
+
+// Rebuild the tree with attrs applied to every paragraph and text node.
+// Scalars mirror on both levels (createTextContent's shape); fills land on the
+// text nodes alone. Undefined and TEXT_MIXED values are skipped, and keys
+// outside the subset are dropped, so a commit never writes a stray attribute.
+export function setTextAttrs(content: unknown, attrs: TextAttrs): unknown {
+  if (!isObject(content)) return content;
+
+  const scalars: ContentNode = {};
+  let fillsValue: unknown;
+  let hasFills = false;
+  for (const key of TEXT_NODE_ATTRS) {
+    const value = attrs[key];
+    if (value === undefined || value === TEXT_MIXED) continue;
+    if (key === "fills") {
+      fillsValue = value;
+      hasFills = true;
+    } else {
+      scalars[key] = value;
+    }
+  }
+
+  const rewrite = (node: ContentNode): ContentNode => {
+    if (isTextNode(node)) {
+      const next: ContentNode = { ...node, ...scalars };
+      if (hasFills) next["fills"] = fillsValue;
+      return next;
+    }
+    const next: ContentNode = { ...node };
+    if (nodeType(node) === "paragraph") Object.assign(next, scalars);
+    const children = node["children"];
+    if (Array.isArray(children)) {
+      next["children"] = children.map((child) => (isObject(child) ? rewrite(child) : child));
+    }
+    return next;
+  };
+
+  return rewrite(content);
 }
