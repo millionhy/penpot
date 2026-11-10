@@ -95,8 +95,9 @@ import { tr } from "@/lib/i18n";
 import type { WorkspaceObjects, WorkspaceShape } from "@/lib/workspace";
 import {
   MIN_SIZE,
+  absoluteGeometryTarget,
+  displayGeometryOf,
   geometryEditable,
-  geometryOf,
   type GeometryTarget,
 } from "@/lib/workspace-geometry";
 import { measureLocks } from "@/lib/workspace-layout-attrs";
@@ -233,8 +234,13 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
     raw: string | undefined,
     target: GeometryTarget,
   ): void => {
+    // The x/y fields type a value relative to the ancestor frame (like the
+    // CLJS measures menu); the canvas lands the absolute painted origin, so
+    // the frame offset is added back here. A size or rotation target has no
+    // x/y and passes through untouched (D5).
+    const absolute = absoluteGeometryTarget(objects, shape, target);
     commitAction(fieldId, raw, () =>
-      run((handle) => handle.updateShapeGeometry(shape.id, target)),
+      run((handle) => handle.updateShapeGeometry(shape.id, absolute)),
     );
   };
 
@@ -264,8 +270,9 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
   const showPaint = supportsFillStroke(shape.type);
   const showRadius = shape.type === "rect" || shape.type === "frame";
   // The measures block hides for the types the geometry helpers cannot
-  // rewrite (text, svg-raw, blocked shapes).
-  const geometry = geometryEditable(shape) ? geometryOf(shape) : null;
+  // rewrite (text, svg-raw, blocked shapes). The x/y shown are relative to
+  // the ancestor frame, matching menus/measures.cljs (D5).
+  const geometry = geometryEditable(shape) ? displayGeometryOf(objects, shape) : null;
   const shadows = shadowsOf(shape);
   const blur = blurOf(shape);
   // The flex layout locks the derived measures, like menus/measures.cljs:

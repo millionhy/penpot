@@ -8,9 +8,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   MIN_SIZE,
+  absoluteGeometryTarget,
   buildGeometryChange,
+  displayGeometryOf,
   geometryEditable,
   geometryOf,
+  measuresOrigin,
   selrectOf,
 } from "@/lib/workspace-geometry";
 import { applyUpdateChanges } from "@/lib/workspace-undo";
@@ -234,5 +237,106 @@ describe("buildGeometryChange", () => {
     for (const operation of change?.operations ?? []) {
       expect(["id", "page-id", "type"]).not.toContain(operation.attr);
     }
+  });
+});
+
+// The frame-relative measures of D5: menus/measures.cljs shows x/y offset by
+// the ancestor frame (translate-to-frame) and update-position adds the frame
+// origin back. A rect at world (250,140) inside a frame at (200,100) reads as
+// (50,40) and a typed (50,40) commits back to world (250,140).
+const FRAME_ID = "22222222-2222-2222-2222-222222222222";
+const ZERO = "00000000-0000-0000-0000-000000000000";
+
+// A rect whose selrect and points sit at (ox, oy).
+function rectAt(id: string, ox: number, oy: number, extra: Record<string, unknown> = {}): WorkspaceShape {
+  return rectShape({
+    id,
+    x: ox,
+    y: oy,
+    selrect: { x: ox, y: oy, width: 100, height: 50, x1: ox, y1: oy, x2: ox + 100, y2: oy + 50 },
+    points: [
+      { x: ox, y: oy },
+      { x: ox + 100, y: oy },
+      { x: ox + 100, y: oy + 50 },
+      { x: ox, y: oy + 50 },
+    ],
+    ...extra,
+  });
+}
+
+function frameAt(ox: number, oy: number): WorkspaceShape {
+  return rectAt(FRAME_ID, ox, oy, { type: "frame", "frame-id": ZERO });
+}
+
+// The child frame-id resolves to the frame record in the page objects.
+function pageWith(frame: WorkspaceShape, child: WorkspaceShape): WorkspaceObjects {
+  return { [frame.id]: frame, [child.id]: child };
+}
+
+describe("measuresOrigin", () => {
+  it("reads the ancestor frame origin via :frame-id", () => {
+    const frame = frameAt(200, 100);
+    const child = rectAt("child", 250, 140, { "frame-id": FRAME_ID });
+    expect(measuresOrigin(pageWith(frame, child), child)).toEqual({ x: 200, y: 100 });
+  });
+
+  it("is the identity for a top-level shape on the root board", () => {
+    const root = rectAt(ZERO, 0, 0, { type: "frame" });
+    const child = rectAt("child", 250, 140, { "frame-id": ZERO });
+    expect(measuresOrigin({ [ZERO]: root, child }, child)).toEqual({ x: 0, y: 0 });
+  });
+
+  it("falls back to (0,0) when the frame record is missing", () => {
+    const child = rectAt("child", 250, 140, { "frame-id": FRAME_ID });
+    expect(measuresOrigin({ child }, child)).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe("displayGeometryOf / absoluteGeometryTarget (D5)", () => {
+  it("shows the painted origin relative to the frame", () => {
+    const frame = frameAt(200, 100);
+    const child = rectAt("child", 250, 140, { "frame-id": FRAME_ID });
+    const objects = pageWith(frame, child);
+    // The absolute geometry is unchanged in width/height/rotation.
+    expect(geometryOf(child)).toMatchObject({ x: 250, y: 140, width: 100, height: 50 });
+    expect(displayGeometryOf(objects, child)).toEqual({
+      x: 50,
+      y: 40,
+      width: 100,
+      height: 50,
+      rotation: 0,
+    });
+  });
+
+  it("adds the frame origin back to a typed x/y", () => {
+    const frame = frameAt(200, 100);
+    const child = rectAt("child", 250, 140, { "frame-id": FRAME_ID });
+    const objects = pageWith(frame, child);
+    expect(absoluteGeometryTarget(objects, child, { x: 50, y: 40 })).toEqual({
+      x: 250,
+      y: 140,
+    });
+  });
+
+  it("passes a size or rotation target through untouched", () => {
+    const frame = frameAt(200, 100);
+    const child = rectAt("child", 250, 140, { "frame-id": FRAME_ID });
+    const objects = pageWith(frame, child);
+    expect(absoluteGeometryTarget(objects, child, { width: 80 })).toEqual({ width: 80 });
+    expect(absoluteGeometryTarget(objects, child, { rotation: 45 })).toEqual({ rotation: 45 });
+  });
+
+  it("round-trips the displayed value back to the stored origin", () => {
+    const frame = frameAt(200, 100);
+    const child = rectAt("child", 250, 140, { "frame-id": FRAME_ID });
+    const objects = pageWith(frame, child);
+    const shown = displayGeometryOf(objects, child);
+    expect(shown).not.toBeNull();
+    const absolute = absoluteGeometryTarget(objects, child, { x: shown!.x, y: shown!.y });
+    // Typing the displayed value commits the exact current painted origin, so
+    // the panel must send nothing (geometryTransform sees no change).
+    expect(absolute.x).toBeCloseTo(geometryOf(child)!.x, 6);
+    expect(absolute.y).toBeCloseTo(geometryOf(child)!.y, 6);
+    expect(buildGeometryChange(child, absolute, PAGE_ID)).toBeNull();
   });
 });

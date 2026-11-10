@@ -26,9 +26,13 @@
 //   segment, not here.
 // - No proportion-lock toggle, frame presets, orientation switch or
 //   fit-content: those need the layout and text layers.
+// - The measures x/y are shown relative to the ancestor frame and a typed
+//   value is turned back into an absolute target before the commit, like
+//   translate-to-frame / update-position (D5). geometryOf itself stays
+//   absolute so the canvas gestures and the plugin API are unaffected.
 
 import type { UpdateFileModObjChange } from "@/lib/transit";
-import type { WorkspaceShape } from "@/lib/workspace";
+import type { WorkspaceObjects, WorkspaceShape } from "@/lib/workspace";
 import { buildStyleChange } from "@/lib/workspace-style";
 import {
   IDENTITY_MATRIX,
@@ -146,6 +150,62 @@ export function geometryOf(shape: WorkspaceShape): ShapeGeometry | null {
 // rewrite stays read-only).
 export function geometryEditable(shape: WorkspaceShape): boolean {
   return isTransformableShape(shape) && selrectOf(shape) !== null;
+}
+
+// The origin the measures menu offsets the shown x/y by: the position of the
+// nearest ancestor frame. files/get-parent-frame reads the shape's :frame-id,
+// and a top-level shape points at the root board (0,0), so the offset is the
+// identity for a shape that sits directly on the page (D5).
+const ORIGIN: Point = { x: 0, y: 0 };
+
+export function measuresOrigin(
+  objects: WorkspaceObjects,
+  shape: WorkspaceShape,
+): Point {
+  const frameId = shape["frame-id"];
+  const frame = typeof frameId === "string" ? objects[frameId] : undefined;
+  if (frame === undefined || frame === null) return ORIGIN;
+  // A frame's stored x/y is its selrect origin; fall back to the selrect when
+  // the record carries no plain x/y (translate-to-frame reads :x/:y).
+  const x = numberAt(frame, "x");
+  const y = numberAt(frame, "y");
+  if (x !== null && y !== null) return { x, y };
+  const selrect = selrectOf(frame);
+  return selrect === null ? ORIGIN : { x: selrect.x, y: selrect.y };
+}
+
+// The values the measures menu renders: the absolute painted origin relative
+// to the ancestor frame, like translate-to-frame in measures.cljs (D5). The
+// size and the rotation are unaffected; only the shown x/y shift.
+export function displayGeometryOf(
+  objects: WorkspaceObjects,
+  shape: WorkspaceShape,
+): ShapeGeometry | null {
+  const geometry = geometryOf(shape);
+  if (geometry === null) return null;
+  const origin = measuresOrigin(objects, shape);
+  return {
+    ...geometry,
+    x: roundTo(geometry.x - origin.x),
+    y: roundTo(geometry.y - origin.y),
+  };
+}
+
+// The absolute target a frame-relative x/y edit becomes: the measures fields
+// type a value relative to the ancestor frame, but geometryTransform lands the
+// absolute painted origin, so the offset is added back before the commit (D5).
+// A target without an x or a y (a size or rotation edit) passes through.
+export function absoluteGeometryTarget(
+  objects: WorkspaceObjects,
+  shape: WorkspaceShape,
+  target: GeometryTarget,
+): GeometryTarget {
+  if (target.x === undefined && target.y === undefined) return target;
+  const origin = measuresOrigin(objects, shape);
+  const next: GeometryTarget = { ...target };
+  if (target.x !== undefined) next.x = target.x + origin.x;
+  if (target.y !== undefined) next.y = target.y + origin.y;
+  return next;
 }
 
 // The two-decimal show of the CLJS inputs (fixed-decimal-value with the
