@@ -55,6 +55,14 @@ const nextConfig = {
         source: "/internal/:path*",
         destination: `${assetsOrigin}/internal/:path*`,
       },
+      {
+        // The builtin font files the wasm text pipeline fetches under /fonts/
+        // (D11): the frontend build ships resources/fonts/*.ttf to its static
+        // root, which the frontend nginx serves. Same origin as the assets, so
+        // point dev there; production nginx already serves the path directly.
+        source: "/fonts/:path*",
+        destination: `${assetsOrigin}/fonts/:path*`,
+      },
     ];
   },
   // The @penpot/* renderer dependencies are `link:` packages that live outside

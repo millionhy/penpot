@@ -263,6 +263,7 @@ import {
   uploadImage,
 } from "@/lib/workspace-image";
 import { hydrateImageReferences } from "@/lib/render-wasm/image-hydrate";
+import { hydrateTextFonts, type TextBearingShape } from "@/lib/render-wasm/font-hydrate";
 import { storeImageBytes } from "@/lib/render-wasm/image-store";
 import {
   TEXT_CLICK_HEIGHT,
@@ -1648,6 +1649,25 @@ function WorkspaceWasmCanvasImpl({
             if (references.length > 0) {
               void hydrateImageReferences(app, references);
             }
+            // A remote text edit changes a content tree the wasm store has not
+            // shaped yet; store any face the changed text shapes need and
+            // re-run their layout (D11). Only the touched shapes are scanned.
+            const touchedIds = new Set<string>();
+            for (const change of plan.changes) {
+              if (change.type === "mod-obj" || change.type === "add-obj") {
+                touchedIds.add(change.id);
+              } else if (change.type === "mov-objects") {
+                for (const movedId of change.shapes) touchedIds.add(movedId);
+              }
+            }
+            const changedTextShapes: TextBearingShape[] = [];
+            for (const touchedId of touchedIds) {
+              const shape = after[touchedId];
+              if (shape !== undefined && shape.type === "text") changedTextShapes.push(shape);
+            }
+            if (changedTextShapes.length > 0) {
+              void hydrateTextFonts(app, changedTextShapes);
+            }
           }
           // A remote delete prunes the selection; the hover ids and the
           // overlay tolerate the stale ones like a local delete.
@@ -1864,6 +1884,16 @@ function WorkspaceWasmCanvasImpl({
         const imageReferences = imageFillReferences(objects);
         if (imageReferences.length > 0) {
           void hydrateImageReferences(app, imageReferences, { isAlive: alive });
+        }
+
+        // The text faces the loaded page uses must reach the wasm font store
+        // before the renderer can shape the glyphs (D11). set_object carried
+        // the text but not the bytes, so this pass fetches and stores them, then
+        // re-runs the layout. It mirrors the image hydration: a failed fetch
+        // only warns and leaves that text blank; a not-ready renderer no-ops.
+        const textShapes = Object.values(objects).filter((shape) => shape.type === "text");
+        if (textShapes.length > 0) {
+          void hydrateTextFonts(app, textShapes, { isAlive: alive });
         }
 
         // The workspace chrome: rulers visible, a rounded viewport frame
@@ -3139,7 +3169,13 @@ function WorkspaceWasmCanvasImpl({
               uploadChangedShapes(app, before, next, [change]);
             } else {
               const nextShape = next[id];
-              if (nextShape !== undefined) uploadShapeGeometry(app, [nextShape]);
+              if (nextShape !== undefined) {
+                uploadShapeGeometry(app, [nextShape]);
+                // The committed content may use a face the store does not hold
+                // yet; fetch it and re-shape the text (D11). A no-op when the
+                // renderer is not live or the face is already uploaded.
+                void hydrateTextFonts(app, [nextShape]);
+              }
             }
           } catch (cause: unknown) {
             console.warn("[workspace] could not sync the text to wasm:", cause);
