@@ -10,6 +10,7 @@ import {
   getChildHeads,
   getChildrenIdsWithSelf,
   getInstanceRoot,
+  getSubtreeShapes,
   isInComponentCopy,
   isInstanceRoot,
   isSubinstanceHead,
@@ -135,6 +136,32 @@ describe("getChildrenIdsWithSelf", () => {
       b: shape("b", "group", { shapes: ["a"] }),
     };
     expect(getChildrenIdsWithSelf(cyclic, "a")).toEqual(["a", "b"]);
+  });
+});
+
+describe("getSubtreeShapes", () => {
+  it("maps the id walk to shapes, including the shape itself", () => {
+    const objects = fixture();
+    expect(getSubtreeShapes(objects, "g").map((item) => item.id)).toEqual([
+      "g",
+      "head",
+      "sub",
+      "leaf",
+    ]);
+    expect(getSubtreeShapes(objects, "leaf").map((item) => item.id)).toEqual([
+      "leaf",
+    ]);
+  });
+
+  it("skips a dangling child id", () => {
+    const objects: WorkspaceObjects = {
+      a: shape("a", "group", { shapes: ["b", "ghost"] }),
+      b: shape("b", "rect"),
+    };
+    expect(getSubtreeShapes(objects, "a").map((item) => item.id)).toEqual([
+      "a",
+      "b",
+    ]);
   });
 });
 

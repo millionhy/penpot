@@ -73,6 +73,22 @@ describe("selectedColors", () => {
     ]);
     expect(groups[0].opacity).toBe(1);
   });
+
+  it("aggregates the colors of a container subtree", () => {
+    const groups = selectedColors([
+      shape("board", { fills: [{ "fill-color": "#FFFFFF", "fill-opacity": 1 }] }),
+      shape("c1", { fills: [{ "fill-color": "#B1B2B5", "fill-opacity": 1 }] }),
+      shape("c2", { fills: [{ "fill-color": "#B1B2B5", "fill-opacity": 1 }] }),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].usages).toEqual([
+      { shapeId: "board", prop: "fill", index: 0 },
+    ]);
+    expect(groups[1].usages).toEqual([
+      { shapeId: "c1", prop: "fill", index: 0 },
+      { shapeId: "c2", prop: "fill", index: 0 },
+    ]);
+  });
 });
 
 describe("usageShapeIds", () => {
@@ -142,5 +158,21 @@ describe("colorUpdates", () => {
 
   it("sends nothing without usages", () => {
     expect(colorUpdates([a], [], { color: "#ABCDEF" })).toEqual([]);
+  });
+
+  it("recolors every usage across a subtree", () => {
+    const board = shape("board", {
+      fills: [{ "fill-color": "#B1B2B5", "fill-opacity": 1 }],
+    });
+    const c1 = shape("c1", { fills: [{ "fill-color": "#B1B2B5", "fill-opacity": 1 }] });
+    const c2 = shape("c2", { fills: [{ "fill-color": "#B1B2B5", "fill-opacity": 1 }] });
+    const subtree = [board, c1, c2];
+    const [group] = selectedColors(subtree);
+    const updates = colorUpdates(subtree, group.usages, { color: "#FF0000" });
+    expect(updates.map((item) => item.id).sort()).toEqual(["board", "c1", "c2"]);
+    for (const item of updates) {
+      const fills = item.attrs.fills as Record<string, unknown>[];
+      expect(fills[0]["fill-color"]).toBe("#FF0000");
+    }
   });
 });

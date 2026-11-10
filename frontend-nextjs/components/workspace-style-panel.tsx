@@ -77,6 +77,7 @@ import {
 } from "@/components/workspace-layout-options";
 import type { WorkspaceCanvasHandle } from "@/components/workspace-wasm-canvas";
 import { WorkspaceMultiOptions } from "@/components/workspace-multi-options";
+import { getSubtreeShapes } from "@/lib/workspace-component";
 import { colorUpdates } from "@/lib/workspace-selected-colors";
 import {
   DraftField,
@@ -199,6 +200,12 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
 
   const send = (attrs: Record<string, unknown>): Promise<boolean> =>
     run((handle) => handle.updateShapeAttrs(shape.id, attrs));
+
+  // The selected-colors scope: the shape plus every descendant, so a color
+  // a child alone carries surfaces when its container is selected, like the
+  // CLJS subtree walk (D8). selectedColors and colorUpdates already read a
+  // multi-shape list.
+  const colorScopeShapes = getSubtreeShapes(objects, shape.id);
 
   // The grid cell section edits the layout frame the child sits in: a cell
   // is part of the frame's layout-grid-cells map, not of the child.
@@ -1036,13 +1043,15 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
       ) : null}
 
       {/* The selected-colors menu, after the paints: every distinct color of
-          the shape with the rows that use it (F9.14). */}
+          the shape subtree with the rows that use it (F9.14, D8). */}
       {showPaint ? (
         <WorkspaceColorSelection
-          shapes={[shape]}
+          shapes={colorScopeShapes}
           disabled={disabled}
           onEdit={(usages, edit) =>
-            run((handle) => handle.updateShapesAttrs(colorUpdates([shape], usages, edit)))
+            run((handle) =>
+              handle.updateShapesAttrs(colorUpdates(colorScopeShapes, usages, edit)),
+            )
           }
           onSelectShapes={(ids) => setSelection(ids)}
         />

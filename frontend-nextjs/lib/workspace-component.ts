@@ -126,6 +126,23 @@ export function getChildrenIdsWithSelf(
   return result;
 }
 
+// cfh/get-children-ids-with-self mapped to shapes: the shape itself plus
+// every descendant, in the same depth-first order (cycle-safe). A missing
+// id is skipped, so the list is always well-formed shapes. The selected-
+// colors menu reads this whole subtree so a color carried only by a child
+// surfaces when its container is selected (D8).
+export function getSubtreeShapes(
+  objects: WorkspaceObjects,
+  id: string,
+): WorkspaceShape[] {
+  const result: WorkspaceShape[] = [];
+  for (const childId of getChildrenIdsWithSelf(objects, id)) {
+    const shape = shapeOf(objects, childId);
+    if (shape !== null) result.push(shape);
+  }
+  return result;
+}
+
 // cfh/components-nesting-loop?: whether moving `shapeId` below `parentId`
 // would put two heads of the same component in one ancestor chain. The
 // backend rejects such a move outright; the drop path filters it first so
