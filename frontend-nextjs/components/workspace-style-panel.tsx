@@ -26,7 +26,10 @@
 // The panel follows the CLJS section order of a frame selection: align, layer
 // (blend, opacity, eye, lock), measures (presets, proportion lock, radius,
 // clip), layout, grid cell, layout item, constraints, fill, stroke, selected
-// colors, shadow, blur, guides and exports.
+// colors, shadow, blur, guides and exports. For text shapes, the D4 text-menu
+// (排版) sits between constraints and fill, matching the slot in the CLJS
+// shapes/text.cljs (measures → layout-* → constraints → text-menu → fill →
+// stroke → shadow → blur → exports).
 //
 // Deviations from the CLJS original, documented (AD12):
 // - Gradients and image strokes are read-only rows that can be removed,
@@ -47,6 +50,16 @@
 //   eye/lock layer row and the mixed values as the "multiple" placeholder.
 // - The fill menu carries the frame-only "show in export" flag of fill.cljs;
 //   the multi selection has no equivalent row.
+// - Text shapes: the CLJS shapes/text.cljs renders a fill-menu whose values
+//   come from dwt/current-text-values over the editor-state (the current text
+//   selection's paragraph fills) and a stroke-menu over the shape's own
+//   :strokes. The new-end does not surface either section, gated by
+//   supportsFillStroke. The 排版 block already exposes the paragraph fill
+//   color via the same data path (fill-color / fill-opacity through
+//   setTextAttrs → content tree), so duplicating a shape-level fill row would
+//   edit nothing visible on the wasm renderer. Shape-level strokes on text
+//   are not drawn by the wasm path either; surfacing the row would offer a
+//   no-op control. Both gaps are documented in test.md (D4 panel slice).
 
 import { useState, useSyncExternalStore, type CSSProperties, type RefObject } from "react";
 
@@ -607,15 +620,6 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
         </p>
       ) : null}
 
-      {showText ? (
-        <WorkspaceTextOptions
-          attrs={textAttrs}
-          catalog={BUILTIN_TEXT_CATALOG}
-          disabled={disabled}
-          onApply={applyTextAttrs}
-        />
-      ) : null}
-
       {geometry === null ? null : (
         <section className="pp-workspace-style-section">
           {shape.type === "frame" ? (
@@ -888,6 +892,17 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
         disabled={disabled}
         send={send}
       />
+
+      {/* The CLJS shapes/text.cljs puts the text-menu between constraints
+          and fill; the panel follows that slot for text shapes. */}
+      {showText ? (
+        <WorkspaceTextOptions
+          attrs={textAttrs}
+          catalog={BUILTIN_TEXT_CATALOG}
+          disabled={disabled}
+          onApply={applyTextAttrs}
+        />
+      ) : null}
 
       {showPaint ? (
         <section className="pp-workspace-style-section">
