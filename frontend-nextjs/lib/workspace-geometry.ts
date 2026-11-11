@@ -18,9 +18,15 @@
 // Deviations from the CLJS original, documented (AD12):
 // - Only the single-selection path exists, like the rest of the panel: the
 //   mixed-value editing of a multi selection is a later slice.
-// - The segment is hidden for text and svg-raw (is-transformable-shape):
-//   their position-data is not recomputed here, and writing the raw geometry
-//   would make the canvas disagree with the model.
+// - The measures segment shows for the same set of types as the CLJS
+//   menus/measures.cljs `type->options` (rect/circle/frame/group/path/bool/
+//   image/text/svg-raw). Canvas drag/resize gestures still gate on
+//   isTransformableShape (see lib/workspace-transform.ts), so text stays out
+//   of the interactive handle path while remaining editable through the panel
+//   fields, matching CLJS behaviour: the panel writes selrect/points/transform
+//   and the wasm engine relayouts the text from the pushed record on
+//   set_object. Position-data is not recomputed here, which the wasm-only
+//   renderer on :3450 does not consult for paint.
 // - The flex rules (position disabled inside a non-absolute flex child,
 //   width/height disabled for auto/fill sizing) land with the layout
 //   segment, not here.
@@ -37,7 +43,7 @@ import { buildStyleChange } from "@/lib/workspace-style";
 import {
   IDENTITY_MATRIX,
   applyTransformToShape,
-  isTransformableShape,
+  hasMeasuresSection,
   multiplyMatrix,
   rotationMatrix,
   scaleMatrix,
@@ -145,11 +151,11 @@ export function geometryOf(shape: WorkspaceShape): ShapeGeometry | null {
   };
 }
 
-// Whether the panel may edit the geometry: the same gate the transform
-// handles use (a blocked shape or a type whose geometry this slice cannot
-// rewrite stays read-only).
+// Whether the panel may edit the geometry: the wider measures set (matching
+// the CLJS `type->options` dispatch, so text and svg-raw are included), plus
+// a shape that actually carries a selrect to rewrite.
 export function geometryEditable(shape: WorkspaceShape): boolean {
-  return isTransformableShape(shape) && selrectOf(shape) !== null;
+  return hasMeasuresSection(shape) && selrectOf(shape) !== null;
 }
 
 // The origin the measures menu offsets the shown x/y by: the position of the
@@ -245,7 +251,7 @@ export function geometryTransform(
 ): GeometryTransform | null {
   const current = geometryOf(shape);
   const selrect = selrectOf(shape);
-  if (current === null || selrect === null || !isTransformableShape(shape)) return null;
+  if (current === null || selrect === null || !hasMeasuresSection(shape)) return null;
 
   let matrix: Matrix6 = IDENTITY_MATRIX;
   let rotationDelta = 0;

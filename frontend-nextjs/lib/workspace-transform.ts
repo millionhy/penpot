@@ -310,6 +310,23 @@ export function isTransformableShape(shape: WorkspaceShape | null | undefined): 
   );
 }
 
+// The shape types the style panel's measures segment shows, matching the
+// `type->options` dispatch in menus/measures.cljs: :text and :svg-raw both
+// land on generic-options (:size :position :rotation), so their selrect is
+// editable from the panel. The canvas gestures keep using isTransformableShape
+// (L302) — this wider set only governs the panel visibility + the
+// panel-driven geometry commit path.
+const MEASURES_TYPES = new Set([...TRANSFORMABLE_TYPES, "text", "svg-raw"]);
+
+export function hasMeasuresSection(shape: WorkspaceShape | null | undefined): boolean {
+  return (
+    shape !== null &&
+    shape !== undefined &&
+    shape["blocked"] !== true &&
+    MEASURES_TYPES.has(shape.type)
+  );
+}
+
 // dsh/get-selrect over the JS model. A single selection keeps the shape
 // frame (selrect + center-wrapped transform); a multi-selection builds the
 // rotated-points union with a plain world frame (shapes->rect). Null when an

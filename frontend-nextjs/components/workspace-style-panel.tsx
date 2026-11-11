@@ -286,9 +286,10 @@ function ShapeOptions({ shape, parent, objects, canEdit, canvas }: ShapeOptionsP
   const textAttrs = showText ? getTextAttrs(shape.content) : {};
   const applyTextAttrs = (partial: TextAttrs): Promise<boolean> =>
     send({ content: setTextAttrs(shape.content, partial) });
-  // The measures block hides for the types the geometry helpers cannot
-  // rewrite (text, svg-raw, blocked shapes). The x/y shown are relative to
-  // the ancestor frame, matching menus/measures.cljs (D5).
+  // The measures block hides only for blocked shapes and shapes without a
+  // selrect; text and svg-raw show it, matching menus/measures.cljs
+  // `type->options` (both dispatch to generic-options). The x/y shown are
+  // relative to the ancestor frame (D5).
   const geometry = geometryEditable(shape) ? displayGeometryOf(objects, shape) : null;
   const shadows = shadowsOf(shape);
   const blur = blurOf(shape);

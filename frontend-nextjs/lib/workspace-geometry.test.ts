@@ -129,8 +129,12 @@ describe("geometryEditable", () => {
     expect(geometryEditable(rectShape())).toBe(true);
   });
 
-  it("rejects text, blocked shapes and shapes without a selrect", () => {
-    expect(geometryEditable(rectShape({ type: "text" }))).toBe(false);
+  it("accepts text and svg-raw (matching menus/measures.cljs generic-options)", () => {
+    expect(geometryEditable(rectShape({ type: "text" }))).toBe(true);
+    expect(geometryEditable(rectShape({ type: "svg-raw" }))).toBe(true);
+  });
+
+  it("rejects blocked shapes and shapes without a selrect", () => {
     expect(geometryEditable(rectShape({ blocked: true }))).toBe(false);
     expect(geometryEditable(rectShape({ selrect: undefined }))).toBe(false);
   });
@@ -225,9 +229,30 @@ describe("buildGeometryChange", () => {
     expect(buildGeometryChange(rectShape(), {}, PAGE_ID)).toBeNull();
   });
 
-  it("refuses a shape whose geometry this slice cannot rewrite", () => {
-    expect(buildGeometryChange(rectShape({ type: "text" }), { width: 20 }, PAGE_ID)).toBeNull();
+  it("refuses a blocked shape", () => {
     expect(buildGeometryChange(rectShape({ blocked: true }), { width: 20 }, PAGE_ID)).toBeNull();
+  });
+
+  // The measures panel shows W/H/X/Y/rotation for text and svg-raw, matching
+  // the CLJS `type->options` dispatch. The write must actually land: the panel
+  // sends the same mod-obj a rect edit sends (the wasm engine then relayouts
+  // the pushed text record). Hiding the segment was a rewrite-side regression
+  // the D11复核 surfaced.
+  it("rewrites the selrect of a text shape from the panel", () => {
+    const shape = rectShape({ type: "text" });
+    const change = buildGeometryChange(shape, { width: 200 }, PAGE_ID);
+    expect(change).not.toBeNull();
+    const next = applyPatch(shape, patchOf(change));
+    expect(next.selrect).toMatchObject({ width: 200, height: 50 });
+    expect(next["width"]).toBeCloseTo(200, 6);
+  });
+
+  it("rewrites the selrect of an svg-raw shape from the panel", () => {
+    const shape = rectShape({ type: "svg-raw" });
+    const change = buildGeometryChange(shape, { x: 10 }, PAGE_ID);
+    expect(change).not.toBeNull();
+    const next = applyPatch(shape, patchOf(change));
+    expect(next.selrect).toMatchObject({ x: 10 });
   });
 
   it("never carries the id or the page beyond the change envelope", () => {
