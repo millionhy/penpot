@@ -28,7 +28,15 @@
 // - No filters menu, search-and-replace, focus mode, drag and drop or
 //   visibility/lock controls; this slice browses and selects.
 // - The sitemap resize strip is a fixed spacer: the pane cannot be dragged.
-// - Assets and Tokens render an empty state instead of their toolboxes.
+// - Assets and Tokens render the D12 empty-state skeleton from
+//   components/workspace-assets-panel.tsx and
+//   components/workspace-tokens-panel.tsx (no data behind it yet; the
+//   parity file has zero components / colors / typographies / tokens, so a
+//   data-driven port stays blocked until a shared library exists).
+// - The aria-label on the panel section and the tablist follows the active
+//   tab (layers / assets / tokens) so assistive tech reads the switcher
+//   correctly. The Tokens tab label stays "Tokens" (untranslated) like the
+//   CLJS tabs list (sidebar.cljs comment).
 
 import {
   useMemo,
@@ -54,7 +62,9 @@ import {
   SearchIcon,
   TextIcon,
 } from "@/components/workspace-icons";
+import { WorkspaceAssetsPanel } from "@/components/workspace-assets-panel";
 import { WorkspacePagesPanel } from "@/components/workspace-pages-panel";
+import { WorkspaceTokensPanel } from "@/components/workspace-tokens-panel";
 import type { WorkspaceCanvasHandle } from "@/components/workspace-wasm-canvas";
 import { tr } from "@/lib/i18n";
 import { pageInfos } from "@/lib/workspace-pages";
@@ -195,10 +205,20 @@ export function WorkspaceLayersPanel({
     setQuery("");
   };
 
+  // The aria-label of the whole panel and the tablist follows the active
+  // tab (a11y parity with CLJS); it cannot stay pinned to "Layers" once
+  // Assets or Tokens own the viewport.
+  const activeTabAriaLabel =
+    tab === "layers"
+      ? tr("workspace.sidebar.layers")
+      : tab === "assets"
+        ? tr("workspace.toolbar.assets")
+        : "Tokens";
+
   return (
     <section
       className="pp-workspace-layers"
-      aria-label={tr("workspace.sidebar.layers")}
+      aria-label={activeTabAriaLabel}
     >
       <div className="pp-workspace-tabs-wrap">
         <nav className="pp-workspace-tabs">
@@ -214,7 +234,7 @@ export function WorkspaceLayersPanel({
           <ul
             className="pp-workspace-tabs-list"
             role="tablist"
-            aria-label={tr("workspace.sidebar.layers")}
+            aria-label={activeTabAriaLabel}
           >
             {tabs.map((entry) => (
               <li key={entry.id} className="pp-workspace-tabs-item">
@@ -392,10 +412,10 @@ export function WorkspaceLayersPanel({
               </div>
             </div>
           </>
+        ) : tab === "assets" ? (
+          <WorkspaceAssetsPanel />
         ) : (
-          <div className="pp-workspace-layers-empty">
-            <p className="pp-workspace-empty">{tr("labels.empty")}</p>
-          </div>
+          <WorkspaceTokensPanel />
         )}
       </div>
     </section>
