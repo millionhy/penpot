@@ -312,7 +312,11 @@ export default function DashboardFilesPage() {
         </div>
       </header>
 
-      <section className="pp-dashboard-container" ref={sectionRef} data-testid="files-section">
+      <section
+        className="pp-dashboard-container pp-dashboard-files"
+        ref={sectionRef}
+        data-testid="files-section"
+      >
         {emptyStateViewer ? (
           <div className="pp-empty-placeholder" data-testid="empty-placeholder">
             <h3 className="pp-empty-title">

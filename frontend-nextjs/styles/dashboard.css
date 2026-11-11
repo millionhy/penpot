@@ -1065,6 +1065,9 @@
   margin-inline-start: auto;
 }
 
+/* projects.scss .dashboard-projects adds no padding of its own: the project
+   rows sit on the container edge and .pp-dashboard-grid supplies the 16px
+   gutter shown between the row and its cards. */
 .pp-dashboard-projects {
   align-content: start;
   display: grid;
@@ -1072,7 +1075,9 @@
   grid-auto-rows: min-content;
   min-block-size: 0;
   overflow-y: auto;
-  padding: 0 var(--sp-l) var(--sp-xl) var(--sp-xl);
+  padding: 0;
+  scrollbar-color: rgb(170 181 186 / 0.3) transparent;
+  scrollbar-width: thin;
   user-select: none;
 }
 
@@ -1131,6 +1136,9 @@
   --thumbnail-height: 10.5rem;
 
   min-block-size: 0;
+  /* projects.scss .grid-container keeps 4px on each side; together with the
+     16px of .pp-dashboard-grid this puts a recent row's cards at x=316. */
+  padding-inline: var(--sp-xs);
 }
 
 .pp-info-wrapper {
@@ -1197,6 +1205,8 @@
   block-size: 100%;
   overflow: hidden auto;
   padding: 0 var(--sp-l) var(--sp-l);
+  scrollbar-color: rgb(170 181 186 / 0.3) transparent;
+  scrollbar-width: thin;
 }
 
 /* Rows are horizontal grids of fixed-width cards; the container writes
@@ -2519,11 +2529,16 @@
   border-top: var(--b-1) solid var(--color-background-quaternary);
   flex: 1 0 0;
   overflow: hidden auto;
-  padding-block-end: var(--sp-xxxl);
 }
 
 .pp-dashboard-search {
   margin-block-start: var(--sp-m);
+}
+
+/* files.scss .dashboard-container adds only a bottom pad on top of the shared
+   frame. */
+.pp-dashboard-container.pp-dashboard-files {
+  padding-block-end: var(--sp-xxxl);
 }
 
 /* deleted.scss keeps its section a plain block: the Recent/Deleted strip spans
@@ -2678,10 +2693,26 @@
   white-space: nowrap;
 }
 
-/* placeholder.scss .empty-placeholder-libraries */
-.pp-empty-placeholder-libraries {
+/* ds/product/empty_placeholder.scss .empty-placeholder + placeholder.scss
+   .empty-placeholder-libraries: a 964×160 card centred in the container, not
+   the full-width dashed strip of the generic placeholder. The two svg-decor
+   drawings are still missing (they need the ds component port). */
+.pp-empty-placeholder.pp-empty-placeholder-libraries {
+  block-size: var(--sz-160);
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  justify-content: center;
   margin: auto;
   margin-block-start: 5%;
+  max-inline-size: var(--sz-964);
+  padding: 0;
+  text-align: center;
+}
+
+.pp-empty-placeholder-libraries .pp-empty-title,
+.pp-empty-placeholder-libraries .pp-empty-subtitle,
+.pp-empty-placeholder-libraries .pp-placeholder-markdown {
+  max-inline-size: var(--sz-400);
 }
 
 /* placeholder.scss .placeholder-markdown */
@@ -3132,18 +3163,23 @@
 .pp-dashboard-container.pp-dashboard-team-members,
 .pp-dashboard-container.pp-dashboard-team-invitations {
   border-block-start: var(--b-1) solid var(--color-background-quaternary);
+  display: flex;
+  justify-content: center;
   overflow-y: auto;
-  padding: var(--sp-xl);
+  padding-block: var(--sp-xl) 0;
+  padding-inline: var(--sp-xl) 0;
   scrollbar-gutter: stable;
 }
 
 .pp-dashboard-container.pp-dashboard-team-settings {
   align-items: center;
   border-block-start: var(--b-1) solid var(--color-background-quaternary);
+  display: flex;
   flex-direction: column;
   justify-content: flex-start;
   overflow-y: auto;
-  padding: var(--sp-xl);
+  padding-block: var(--sp-xl) 0;
+  padding-inline: var(--sp-xl) 0;
 }
 
 .pp-dashboard-container.pp-dashboard-team-webhooks {
