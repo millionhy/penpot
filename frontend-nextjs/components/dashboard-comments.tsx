@@ -38,6 +38,28 @@ import {
 } from "@/lib/workspace-comments";
 import { timeAgo } from "@/lib/timeago";
 
+// comments-icon* (app.main.ui.dashboard.comments): a ds icon-button with the
+// i/comments sprite path. The shell has no icon sprite, so the path lives
+// here (frontend/resources/images/icons/comments.svg).
+function CommentsIcon() {
+  return (
+    <svg
+      className="pp-notifications-bell-icon"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M13.611 7.666a5.585 5.585 0 01-.6 2.534 5.67 5.67 0 01-5.066 3.134 5.586 5.586 0 01-2.534-.6L1.611 14l1.267-3.8a5.585 5.585 0 01-.6-2.534A5.67 5.67 0 017.945 2h.333a5.655 5.655 0 015.333 5.334v.332z" />
+    </svg>
+  );
+}
+
 export function DashboardComments() {
   const { teamId } = useDashboard();
   const router = useRouter();
@@ -90,7 +112,7 @@ export function DashboardComments() {
         data-testid="open-comments"
         onClick={() => setShow((current) => !current)}
       >
-        &#128276;
+        <CommentsIcon />
         {threads.length > 0 ? <span className="pp-notifications-unread" aria-hidden="true" /> : null}
       </button>
 

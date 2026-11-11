@@ -22,7 +22,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardProfileMenu } from "@/components/dashboard-profile-menu";
-import { DashboardComments } from "@/components/dashboard-comments";
 import { OrgTeamSwitch } from "@/components/org-team-switch";
 import { SubscriptionSection } from "@/components/subscription";
 import {
@@ -34,6 +33,47 @@ import {
 } from "@/lib/dashboard";
 import { useDashboard } from "@/lib/dashboard-context";
 import { tr } from "@/lib/i18n";
+
+// The sprite icons the CLJS sidebar pulls through deprecated-icon/icon-xref
+// (search, delete-text and pin). The shell has no icon sprite, so the paths
+// from frontend/resources/images/icons live here at the sizes the CLJS
+// %button-icon (16px, 1px stroke) and %button-icon-small (12px, 1.33px
+// stroke) ask for.
+function SidebarIcon({
+  path,
+  size,
+  strokeWidth,
+  className,
+}: {
+  path: string;
+  size: number;
+  strokeWidth: number;
+  className: string;
+}) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={path} />
+    </svg>
+  );
+}
+
+const SEARCH_PATH =
+  "M7.329 12.666c1.473.002 2.807-.594 3.773-1.559.966-.964 1.564-2.297 1.566-3.77.002-2.945-2.384-5.335-5.33-5.338-2.945-.002-5.335 2.384-5.337 5.329-.003 2.946 2.383 5.336 5.328 5.338Zm6.666 1.339-2.893-2.898";
+const CLEAR_SEARCH_PATH =
+  "m7.981 1.333c3.68 0 6.675 2.988 6.686 6.667.01 3.679-2.969 6.667-6.648 6.667-3.68 0-6.675-2.988-6.686-6.667-.01-3.679 2.969-6.667 6.648-6.667zm2.013 4.667-1.994 2-1.994 2m-.012-4 2.006 2 2.006 2";
+const PIN_PATH =
+  "M5.847 10.153L2.962 7.27a4.928 4.928 0 013.482-1.442h.845L10.654 1.5 14.5 5.346 10.173 8.71v.846a4.924 4.924 0 01-1.442 3.482l-2.884-2.886zm0 0L2 14";
 
 // sidebar-search*: a debounced (500ms) navigation to the search route on every
 // change, exactly like the goog debounce in the CLJS version.
@@ -84,7 +124,12 @@ function SidebarSearch() {
           aria-label="dashboard-clear-search"
           onClick={onClear}
         >
-          ×
+          <SidebarIcon
+            path={CLEAR_SEARCH_PATH}
+            size={16}
+            strokeWidth={1}
+            className="pp-search-icon"
+          />
         </button>
       ) : (
         <button
@@ -93,7 +138,12 @@ function SidebarSearch() {
           aria-label="dashboard-search"
           onClick={onClear}
         >
-          ⌕
+          <SidebarIcon
+            path={SEARCH_PATH}
+            size={16}
+            strokeWidth={1}
+            className="pp-search-icon"
+          />
         </button>
       )}
     </form>
@@ -135,7 +185,7 @@ function SidebarProject({ item, isSelected }: { item: Project; isSelected: boole
           void onUnpin();
         }}
       >
-        ⚲
+        <SidebarIcon path={PIN_PATH} size={12} strokeWidth={1.33} className="pp-pin-icon" />
       </button>
     </li>
   );
@@ -154,8 +204,6 @@ export function DashboardSidebar() {
     <nav className="pp-dashboard-sidebar" data-testid="dashboard-sidebar">
       <div className="pp-sidebar-content">
         <OrgTeamSwitch />
-
-        <DashboardComments />
 
         <SidebarSearch />
 
@@ -223,7 +271,7 @@ export function DashboardSidebar() {
             </ul>
           ) : (
             <div className="pp-sidebar-empty-placeholder">
-              <span aria-hidden="true">⚲</span>
+              <SidebarIcon path={PIN_PATH} size={12} strokeWidth={1.33} className="pp-pin-icon" />
               <span className="pp-empty-text">{tr("dashboard.no-projects-placeholder")}</span>
             </div>
           )}

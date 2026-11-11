@@ -18,8 +18,9 @@
 //   NEXT_PUBLIC_PENPOT_VERSION is set, since without an installed version
 //   there is nothing to compare against.
 // - nitrate/subscription blocks (profile-section*, F5.7b) render above this
-//   menu in components/subscription.tsx; comments-section is still out of the
-//   shell.
+//   menu in components/subscription.tsx. The comment bell and feed
+//   (comments-icon* + comments-section) sit in the second grid column of
+//   .pp-profile-section, where the CLJS renders them, not in the sidebar flow.
 // - The plugins-manager entry (F7.2, F7.3) opens PluginManagementDialog from
 //   here and passes the editor permission of the team (the CLJS reads it
 //   from the workspace permissions); the CLJS menus live in the workspace
@@ -30,6 +31,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { runCheckForUpdates } from "@/components/check-updates";
+import { DashboardComments } from "@/components/dashboard-comments";
 import { useModal } from "@/components/modal";
 import { PluginManagementDialog } from "@/components/plugin-management";
 import { logout } from "@/lib/auth";
@@ -161,6 +163,10 @@ export function DashboardProfileMenu() {
         <img className="pp-profile-img" src={photo ?? avatar ?? undefined} alt={fullname} />
         <span className="pp-profile-fullname">{fullname}</span>
       </button>
+
+      {/* comments-icon* + comments-section: both gated on team and profile in
+          the CLJS profile-section*. */}
+      {team !== null ? <DashboardComments /> : null}
 
       {open ? (
         <ul className="pp-profile-dropdown" role="menu" id="profile-menu">
