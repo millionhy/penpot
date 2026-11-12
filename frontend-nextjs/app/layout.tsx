@@ -9,7 +9,11 @@ import { ThemeManager } from "@/components/theme";
 import { LocaleGate } from "@/components/locale-gate";
 
 export const metadata: Metadata = {
-  title: "Penpot",
+  // frontend/resources/templates/index.mustache. The dashboard pages overwrite
+  // the title once their data resolves, but routes that never set one (the
+  // trash page, the auth entry points) keep this static default in the CLJS
+  // app, so the shell must carry the same string.
+  title: "Penpot | Full-stack design",
   description:
     "Penpot Next.js shell - Strangler Fig migration of the ClojureScript frontend.",
 };

@@ -695,6 +695,27 @@ export function EmptyGridPlaceholder({
 
 // --- Grids ------------------------------------------------------------------------
 
+// ds/product/empty_placeholder.cljs draws a raw-svg* on each side of the text,
+// using the empty-placeholder-2 drawings for the libraries card. Those two
+// assets live in the CLJS sprite pipeline (frontend/resources/images/assets),
+// which this app does not build, so their paths are inlined here.
+function EmptyPlaceholderDecor({ side }: { side: "left" | "right" }) {
+  const path =
+    side === "left"
+      ? "M86.688 0v4.474c0 .014 0 .028.011.042.011.182.067.36.163.526.133.287.38.534.705.703l36.291 17.31a2.283 2.283 0 0 0 1.63.107l44.775-14.048c.708-.224 1.165-.77 1.145-1.369 0-.013 0-.027.011-.04V0h-3.66v6.808l-41.111 12.899V0h-3.659v19.279L90.352 3.712V0Zm-66.03 87.841c-7.576.065-14.52.466-20.658 1.132v2.894c24.59-2.746 64.081-.907 101.757 9.266 37.044 10.002 73.186 29.4 91.471 58.867h4.092c-18.575-31.072-56.205-51.277-94.373-61.583C74.112 90.631 44.4 87.636 20.658 87.841Zm-1.111 15.021c-7.353.127-13.95.625-19.547 1.418v2.89c.045 0 .086.008.131 0 19.39-2.848 53.254-1.852 86.537 6.167 32.319 7.786 64.558 23.007 82.716 46.662h4.278c-18.564-25.339-52.375-41.326-85.92-49.408-21.164-5.099-42.434-7.427-60.364-7.729a227.09 227.09 0 0 0-7.831 0Zm5.491 15.38c-9.232-.114-17.719.376-25.038 1.405v2.904c19.195-2.814 48.169-1.593 75.982 4.545 26.627 5.877 53.283 17.473 68.644 32.904h4.587c-15.783-17.069-44.145-29.468-72.241-35.668-17.77-3.922-35.926-5.892-51.934-6.09Z"
+      : "M9.08 0C2.012 12.672.983 25.825 5.093 38.045c4.265 12.678 13.931 24.333 27.724 33.889.128.089.269.153.417.189 10.995 2.859 22.067 5.392 33.045 8.314-5.086-10.922-10.136-21.867-15.212-32.796a1.403 1.403 0 0 0-.422-.53c-7.463-5.674-11.825-10.986-14.118-15.765-2.293-4.778-2.567-9.022-1.801-12.859 1.533-7.674 7.482-13.704 10.696-17.048.365-.38.991-.926 1.567-1.439h-4.004c-3.307 3.419-9.178 9.495-10.853 17.88-.884 4.422-.515 9.465 2.04 14.79 2.408 5.019 6.769 10.295 13.707 15.787l-6.341 8.705c-8.156-6.393-16.228-14.334-19.834-23.516-3.739-9.518-3.002-20.353 7.505-33.266l.318-.38h-3.48c-9.843 12.892-10.718 24.756-6.785 34.768 3.928 10.001 12.33 18.139 20.631 24.649L33.13 68.7C20.307 59.548 11.474 48.618 7.587 37.063 3.586 25.167 4.689 12.6 12.112.131L12.191 0H9.08Zm94.364 0c-4.278 16.424-3.662 33.117 2.326 46.638 6.185 13.966 18.129 24.458 35.756 27.479 15.277 2.618 26.956 4.677 36.058 8.155 8.428 3.221 14.622 7.623 19.733 14.88v-4.708c-5.057-6.067-11.176-10.097-18.806-13.013-9.478-3.622-21.268-5.672-36.55-8.292-16.843-2.887-27.858-12.661-33.678-25.804-5.732-12.943-6.324-29.24-1.964-45.335h-2.875Zm15.209 0c-2.745 11.298-4.41 24.868-.314 36.654 4.287 12.334 15.047 22.353 36.51 24.968 18.108 2.206 33.068 6.653 42.468 14.295v-3.71c-10.095-7.397-24.798-11.465-42.156-13.58-20.795-2.534-30.284-11.724-34.215-23.034-3.843-11.056-2.197-24.439.583-35.593h-2.876Zm14.514 0c-3.663 11.422-5.077 22.072-1.933 30.553 3.302 8.904 11.679 14.913 26.464 16.309 18.436 1.741 31.649 7.113 39.619 11.696v-3.372c-8.386-4.596-21.482-9.638-39.376-11.327-14.205-1.341-21.256-6.696-24.123-14.428-2.812-7.583-1.505-17.956 2.29-29.431h-2.941ZM49.56 50.787l7.322 15.784-5.26 7.219-15.913-3.994L49.56 50.787Zm49.609 70.716a1.277 1.277 0 0 0-.593.21l-26.172 17.388c-.469.334-.691.947-.557 1.532V160h2.669v-17.526l29.553 12.914V160h2.667v-4.782l23.434-15.569V160h2.668v-22.571c.188-.695-.14-1.431-.763-1.713l-32.292-14.112a1.248 1.248 0 0 0-.614-.101Zm1.448 3.551 28.029 12.247-23.372 15.527-4.657-2.035v-25.739Zm-2.667.436v24.138l-21.918-9.577L97.95 125.49Z";
+  return (
+    <svg
+      className="pp-empty-decor"
+      viewBox="0 0 200 160"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d={path} fill="currentColor" />
+    </svg>
+  );
+}
+
 // The (= :libraries origin) branch of empty-grid-placeholder*: the starter
 // card, whose markdown body only editors see.
 export function LibrariesEmptyPlaceholder({ canEdit }: { canEdit: boolean }) {
@@ -703,14 +724,18 @@ export function LibrariesEmptyPlaceholder({ canEdit }: { canEdit: boolean }) {
       className="pp-empty-placeholder pp-empty-placeholder-libraries"
       data-testid="empty-placeholder"
     >
-      <h3 className="pp-empty-title">{tr("dashboard.empty-placeholder-libraries-title")}</h3>
-      {canEdit ? (
-        <Tr k="dashboard.empty-placeholder-libraries" tagName="span" className="pp-placeholder-markdown" />
-      ) : (
-        <p className="pp-empty-subtitle">
-          {tr("dashboard.empty-placeholder-libraries-subtitle-viewer-role")}
-        </p>
-      )}
+      <EmptyPlaceholderDecor side="left" />
+      <div className="pp-empty-text-wrapper">
+        <h3 className="pp-empty-title">{tr("dashboard.empty-placeholder-libraries-title")}</h3>
+        {canEdit ? (
+          <Tr k="dashboard.empty-placeholder-libraries" tagName="span" className="pp-placeholder-markdown" />
+        ) : (
+          <p className="pp-empty-subtitle">
+            {tr("dashboard.empty-placeholder-libraries-subtitle-viewer-role")}
+          </p>
+        )}
+      </div>
+      <EmptyPlaceholderDecor side="right" />
     </div>
   );
 }

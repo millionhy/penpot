@@ -2695,24 +2695,55 @@
 
 /* ds/product/empty_placeholder.scss .empty-placeholder + placeholder.scss
    .empty-placeholder-libraries: a 964×160 card centred in the container, not
-   the full-width dashed strip of the generic placeholder. The two svg-decor
-   drawings are still missing (they need the ds component port). */
+   the full-width dashed strip of the generic placeholder. The card is a
+   three-column grid (decor / text / decor), and the text column keeps a 400px
+   cap, exactly like the ds component. */
 .pp-empty-placeholder.pp-empty-placeholder-libraries {
   block-size: var(--sz-160);
   border: var(--b-1) solid var(--color-background-quaternary);
   border-radius: var(--br-8);
-  justify-content: center;
+  display: grid;
+  gap: 0;
+  grid-template-columns: auto 1fr auto;
   margin: auto;
   margin-block-start: 5%;
   max-inline-size: var(--sz-964);
   padding: 0;
-  text-align: center;
+  place-content: center;
+  text-align: start;
+}
+
+.pp-empty-placeholder-libraries .pp-empty-decor {
+  block-size: var(--sz-160);
+  color: var(--color-background-quaternary);
+  inline-size: var(--sz-200);
+}
+
+.pp-empty-placeholder-libraries .pp-empty-text-wrapper {
+  display: grid;
+  grid-auto-rows: auto;
+  max-inline-size: var(--sz-400);
+  place-self: center;
 }
 
 .pp-empty-placeholder-libraries .pp-empty-title,
 .pp-empty-placeholder-libraries .pp-empty-subtitle,
 .pp-empty-placeholder-libraries .pp-placeholder-markdown {
   max-inline-size: var(--sz-400);
+}
+
+/* The ds card uses title-medium and body-large, not the smaller type of the
+   generic dashboard placeholder. */
+.pp-empty-placeholder-libraries .pp-empty-title {
+  font-size: var(--fs-20);
+  line-height: var(--lh-normal);
+}
+
+.pp-empty-placeholder-libraries .pp-placeholder-markdown,
+.pp-empty-placeholder-libraries .pp-empty-subtitle {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-16);
+  line-height: var(--lh-normal);
 }
 
 /* placeholder.scss .placeholder-markdown */
@@ -2722,6 +2753,10 @@
 
 .pp-placeholder-markdown a {
   color: var(--color-accent-primary);
+  /* The CLJS placeholder-markdown rule only recolours the link; the global
+     anchor underline of this app would otherwise add a decoration the ds
+     card does not show. */
+  text-decoration: none;
 }
 
 /* --- progress widget (components/progress.scss) --- */
