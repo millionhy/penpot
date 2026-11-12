@@ -27,7 +27,10 @@
 /* --- sidebar (dashboard/sidebar.scss) --- */
 
 .pp-dashboard-sidebar {
-  background: var(--color-background-tertiary);
+  /* dashboard/sidebar.scss: --panel-background-color, which is
+     background-primary, not the tertiary panel used for the search field and
+     the profile section. */
+  background: var(--color-background-primary);
   block-size: 100%;
   border-inline-end: var(--b-1) solid var(--color-background-quaternary);
   display: flex;
@@ -516,10 +519,11 @@
   user-select: none;
 }
 
+/* sidebar.scss .sidebar-nav-item carries no margin or radius: the highlight
+   spans the whole sidebar row, from the border to the content edge. The colors
+   are --sidebar-element-*-{hover,selected} from design-tokens.scss. */
 .pp-sidebar-nav-item {
-  border-radius: var(--br-6);
   cursor: pointer;
-  margin-inline: var(--sp-s);
 }
 
 .pp-sidebar-nav-item:hover {
@@ -530,12 +534,17 @@
   background: var(--color-background-quaternary);
 }
 
+.pp-sidebar-nav-item:hover .pp-element-title,
+.pp-sidebar-nav-item.current .pp-element-title {
+  color: var(--color-accent-primary);
+}
+
 .pp-sidebar-link {
   color: var(--color-foreground-primary);
   display: block;
   font-size: var(--fs-14);
   inline-size: 100%;
-  padding: var(--sp-s) var(--sp-s) var(--sp-s) var(--sp-l);
+  padding: var(--sp-s) var(--sp-s) var(--sp-s) var(--sp-xxl);
   text-decoration: none;
 }
 
@@ -552,7 +561,8 @@
 
 .pp-sidebar-search {
   align-items: center;
-  background: var(--color-background-primary);
+  /* --search-bar-input-background-color: background-tertiary. */
+  background: var(--color-background-tertiary);
   border: var(--b-1) solid transparent;
   border-radius: var(--br-8);
   display: grid;
@@ -571,7 +581,9 @@
   inline-size: 100%;
   margin: 0;
   min-inline-size: 0;
-  padding: var(--sp-s) var(--sp-xxxl) var(--sp-s) var(--sp-m);
+  /* sidebar.scss .input-text: 6px block padding, 32px inline end for the
+     absolutely positioned search button. */
+  padding: var(--sz-6) var(--sp-xxxl) var(--sz-6) var(--sp-m);
 }
 
 .pp-sidebar-search .pp-input-text:focus,
@@ -618,7 +630,7 @@
   display: flex;
   gap: var(--sp-xs);
   justify-content: space-between;
-  padding: var(--sp-s) var(--sp-s) var(--sp-s) var(--sp-l);
+  padding: var(--sp-s) var(--sp-s) var(--sp-s) var(--sp-xxl);
 }
 
 .pp-project-element .pp-element-title {
@@ -1527,7 +1539,17 @@
   padding: var(--sp-xs) var(--sp-s);
 }
 
-.pp-layout-toggle-btn[aria-checked="true"] {
+.pp-layout-toggle-label {
+  display: flex;
+}
+
+/* The ds radio-buttons control hides its radio input and leaves the button as
+   the only tab stop, with aria-pressed carrying the selected state. */
+.pp-layout-toggle-input {
+  display: none;
+}
+
+.pp-layout-toggle-btn[aria-pressed="true"] {
   background: var(--color-background-quaternary);
   color: var(--color-foreground-primary);
 }

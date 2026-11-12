@@ -14,7 +14,10 @@
   background: var(--color-background-primary);
   block-size: 100vh;
   display: grid;
-  grid-template-columns: var(--sz-200) 1fr;
+  /* settings.scss: $sz-40 + 256px, which the sidebar spans (grid-column:
+     1 / span 2). The shell has no separate shortcut column, so it collapses
+     the two tracks into one 296px sidebar. */
+  grid-template-columns: 18.5rem 1fr;
   grid-template-rows: 1fr;
   inline-size: 100%;
   overflow: hidden;
@@ -75,6 +78,52 @@
   max-inline-size: var(--sz-712);
 }
 
+/* profile.scss .form-container is 500px wide (width 580, max-width 500). The
+   subscriptions page keeps the wider 712px frame. */
+.pp-dashboard-settings-narrow {
+  max-inline-size: var(--sz-500);
+}
+
+/* profile.scss .form-container also sets margin: 80px auto 120px and no gap;
+   its children space themselves with their own block margins. */
+.pp-dashboard-settings-narrow .pp-form-container {
+  gap: 0;
+  margin-block: 5rem 7.5rem;
+}
+
+/* profile.scss .fields-row (bottom 20px), .options (top 12px, end aligned)
+   and .links (top 12px). Scoped to the profile frame so the other settings
+   pages keep their own spacing until they are ported page by page. */
+.pp-dashboard-settings-narrow .pp-fields-row {
+  /* custom-input stacks the label 8px above the field. */
+  gap: var(--sp-s);
+  margin-block-end: var(--sp-xl);
+}
+
+.pp-dashboard-settings-narrow .pp-field-links {
+  justify-content: flex-end;
+  margin-block-start: var(--sp-m);
+}
+
+.pp-dashboard-settings-narrow .pp-links {
+  margin-block-start: var(--sp-m);
+}
+
+/* profile.scss: plain settings links are secondary and only underline on
+   hover; the delete-account link carries no red treatment either. */
+.pp-dashboard-settings-narrow .pp-link {
+  color: var(--color-foreground-secondary);
+  text-decoration: none;
+}
+
+.pp-dashboard-settings-narrow .pp-link:hover {
+  text-decoration: underline;
+}
+
+.pp-dashboard-settings-narrow .pp-link-danger {
+  color: var(--color-foreground-secondary);
+}
+
 .pp-form-container {
   display: flex;
   flex-direction: column;
@@ -83,16 +132,20 @@
 
 .pp-form-container h2 {
   color: var(--color-foreground-primary);
-  font-size: var(--fs-20);
-  font-weight: var(--fw-medium);
-  margin: 0;
+  font-size: var(--fs-24);
+  font-weight: var(--fw-regular);
+  /* profile.scss h2 inherits the 1.15 body line-height of the CLJS shell. */
+  line-height: 1.15;
+  margin: var(--sp-l) 0;
 }
 
 .pp-form-container h3 {
   color: var(--color-foreground-primary);
-  font-size: var(--fs-16);
-  font-weight: var(--fw-medium);
-  margin: var(--sp-l) 0 0;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  line-height: 1.15;
+  margin: var(--sp-s) 0;
+  text-transform: uppercase;
 }
 
 .pp-form-container h4 {
@@ -124,8 +177,11 @@
 /* --- sidebar (settings/sidebar.scss) --- */
 
 .pp-settings-sidebar {
-  background: var(--color-background-tertiary);
+  /* settings/sidebar.scss: --panel-background-color (background-primary) with
+     a one-pixel end border, not the tertiary panel the shell started with. */
+  background: var(--color-background-primary);
   block-size: 100%;
+  border-inline-end: var(--b-1) solid var(--color-background-quaternary);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -135,8 +191,11 @@
 .pp-sidebar-content {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-s);
-  padding: var(--sp-l) var(--sp-m);
+  gap: 0;
+  /* settings/sidebar.scss: the sidebar pads 16px on top and nothing on the
+     inline axis, so a selected settings row paints edge to edge. The back
+     link and the separator carry their own inline inset. */
+  padding: var(--sp-l) 0 0;
 }
 
 .pp-sidebar-section {
@@ -147,23 +206,38 @@
 .pp-sidebar-separator {
   border: 0;
   border-block-start: var(--b-1) solid var(--color-background-quaternary);
-  margin-block: var(--sp-s);
+  margin: var(--sp-m) var(--sp-l);
 }
 
 .pp-back-to-dashboard {
   align-items: center;
+  align-self: flex-start;
   background: none;
   border: 0;
   color: var(--color-foreground-secondary);
   cursor: pointer;
   display: flex;
   font-size: var(--fs-14);
-  gap: var(--sp-xs);
-  padding: var(--sp-s);
+  /* settings/sidebar.scss .arrow-icon reserves 16px and adds a 12px end
+     margin, so the label starts 44px from the sidebar edge. */
+  gap: var(--sp-m);
+  padding: var(--sp-m) var(--sp-l);
   text-decoration: none;
 }
 
+.pp-back-to-dashboard > [aria-hidden="true"] {
+  display: inline-flex;
+  inline-size: var(--sz-16);
+  justify-content: center;
+}
+
 .pp-back-to-dashboard:hover {
+  color: var(--color-foreground-primary);
+}
+
+/* settings/sidebar.scss .back-text stays primary while the button around it
+   is secondary; only the label paints the darker color. */
+.pp-back-text {
   color: var(--color-foreground-primary);
 }
 
@@ -175,26 +249,32 @@
   padding: 0;
 }
 
-.pp-settings-item a,
-.pp-settings-item span.pp-element-title {
+.pp-settings-item a {
   align-items: center;
   color: var(--color-foreground-secondary);
   cursor: pointer;
   display: flex;
   font-size: var(--fs-14);
   gap: var(--sp-xs);
-  padding: var(--sp-s);
+  padding: var(--sp-s) var(--sp-s) var(--sp-s) var(--sp-xxl);
   text-decoration: none;
 }
 
-.pp-settings-item a:hover {
-  color: var(--color-foreground-primary);
+/* settings/sidebar.scss .element-title only sets the ellipsis; the label takes
+   the link color, so the 24px inset belongs to the link alone. */
+.pp-settings-item .pp-element-title {
+  color: inherit;
 }
 
+.pp-settings-item a:hover {
+  color: var(--color-accent-primary);
+}
+
+/* settings/sidebar.scss .settings-item.current: the selected row paints the
+   --sidebar-element-* pair, with no radius, over the full sidebar width. */
 .pp-settings-item.current a {
-  background: var(--color-background-secondary);
-  border-radius: var(--br-6);
-  color: var(--color-foreground-primary);
+  background: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
 }
 
 /* Identity block standing in for profile-section* until the dashboard (F5). */
@@ -254,36 +334,50 @@
 
 /* --- profile page (settings/profile.scss) --- */
 
+/* profile.scss .profile-form: 368px wide inside the 500px container. */
+.pp-profile-form {
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+  max-inline-size: 23rem;
+}
+
 .pp-avatar-form {
-  margin-block-end: var(--sp-l);
+  /* profile.scss form.avatar-form: 148px square ($s-148) with 16px block
+     margins. */
+  block-size: 9.25rem;
+  inline-size: 9.25rem;
+  margin-block: var(--sp-l);
 }
 
 .pp-image-change-field {
-  block-size: var(--sz-88);
+  block-size: 9.25rem;
   display: inline-flex;
-  inline-size: var(--sz-88);
+  inline-size: 9.25rem;
   position: relative;
 }
 
 .pp-avatar-image {
   background: var(--color-background-secondary);
-  block-size: var(--sz-88);
+  block-size: 9.25rem;
   border-radius: var(--br-circle);
-  inline-size: var(--sz-88);
+  inline-size: 9.25rem;
   object-fit: cover;
 }
 
-.pp-update-overlay,
-.pp-delete-overlay {
+/* profile.scss .update-overlay covers the whole avatar in accent-tertiary and
+   fades to 0.8 on hover. The shell wraps the label in a button so the action
+   is keyboard reachable. */
+.pp-update-overlay {
   align-items: center;
-  background: var(--color-overlay-default);
-  block-size: var(--sz-88);
+  background: var(--color-accent-tertiary);
+  block-size: 9.25rem;
   border: 0;
   border-radius: var(--br-circle);
-  color: var(--color-static-white);
-  cursor: pointer;
+  color: var(--color-foreground-primary);
   display: flex;
-  inline-size: var(--sz-88);
+  font-size: var(--fs-24);
+  inline-size: 9.25rem;
   inset-block-start: 0;
   inset-inline-start: 0;
   justify-content: center;
@@ -292,11 +386,39 @@
   transition: opacity 0.15s ease;
 }
 
-.pp-image-change-field:hover .pp-update-overlay,
+/* profile.scss .delete-overlay is a 32px disc pinned to the top end corner,
+   not a second full-size layer. */
+.pp-delete-overlay {
+  align-items: center;
+  background: var(--color-background-primary);
+  block-size: var(--sz-32);
+  border: 0;
+  border-radius: var(--br-circle);
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  display: flex;
+  inline-size: var(--sz-32);
+  inset-block-start: var(--sp-xs);
+  inset-inline-end: var(--sp-xs);
+  justify-content: center;
+  opacity: 0;
+  position: absolute;
+  transition: opacity 0.15s ease;
+}
+
+.pp-image-change-field:hover .pp-update-overlay {
+  opacity: 0.8;
+}
+
 .pp-image-change-field:hover .pp-delete-overlay,
 .pp-update-overlay:focus-within,
 .pp-delete-overlay:focus-visible {
   opacity: 1;
+}
+
+.pp-delete-overlay:hover {
+  background: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
 }
 
 .pp-update-overlay button {
@@ -304,7 +426,7 @@
   border: 0;
   color: inherit;
   cursor: pointer;
-  font-size: var(--fs-12);
+  font-size: inherit;
 }
 
 .pp-file-input {
@@ -380,8 +502,13 @@
 .pp-btn-primary:disabled,
 .pp-btn-secondary:disabled,
 .pp-btn-danger:disabled {
+  background: var(--color-background-quaternary);
+  border-color: var(--color-background-quaternary);
+  /* %button-*-:disabled paints --color-foreground-disabled, secondary at 40%
+     alpha, instead of fading the whole control. */
+  color: color-mix(in srgb, var(--color-foreground-secondary) 40%, transparent);
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 1;
 }
 
 /* --- radio groups (notifications page) --- */

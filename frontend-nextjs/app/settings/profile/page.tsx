@@ -211,7 +211,10 @@ export default function SettingsProfilePage() {
   useDocumentTitle(tr("title.settings.profile"));
 
   return (
-    <section className="pp-dashboard-settings" aria-labelledby="profile-section-title">
+    <section
+      className="pp-dashboard-settings pp-dashboard-settings-narrow"
+      aria-labelledby="profile-section-title"
+    >
       <div className="pp-form-container">
         <h2 id="profile-section-title">{tr("labels.profile")}</h2>
         <ProfilePhotoForm runtime={runtime} />

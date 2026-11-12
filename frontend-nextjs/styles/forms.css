@@ -120,7 +120,9 @@
 .pp-submit {
   align-items: center;
   background-color: var(--color-accent-primary);
-  block-size: var(--sz-40);
+  /* %button-primary sets min-height: 32px; the shell pins the block size so
+     the padding cannot grow it. */
+  block-size: var(--sz-32);
   border: var(--b-1) solid var(--color-accent-primary);
   border-radius: var(--br-8);
   color: var(--color-background-secondary);
@@ -145,7 +147,8 @@
 .pp-submit:disabled {
   background-color: var(--color-background-quaternary);
   border-color: var(--color-background-quaternary);
-  color: var(--color-foreground-secondary);
+  /* --color-foreground-disabled: foreground-secondary at 40% alpha. */
+  color: color-mix(in srgb, var(--color-foreground-secondary) 40%, transparent);
   cursor: default;
 }
 
