@@ -56,7 +56,10 @@ export default function SettingsPasswordPage() {
   };
 
   return (
-    <section className="pp-dashboard-settings" aria-labelledby="password-section-title">
+    <section
+      className="pp-dashboard-settings pp-dashboard-settings-narrow pp-dashboard-settings-password"
+      aria-labelledby="password-section-title"
+    >
       <div className="pp-form-container">
         <h2 id="password-section-title">{tr("dashboard.password-change")}</h2>
 

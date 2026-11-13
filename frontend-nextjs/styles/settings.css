@@ -69,6 +69,12 @@
   scrollbar-width: thin;
 }
 
+/* dashboard.css sets overflow:hidden on .pp-dashboard-container and loads
+   after this file, so the settings shell needs its own class to scroll. */
+.pp-dashboard-container.pp-settings-container {
+  overflow: auto;
+}
+
 .pp-dashboard-settings {
   /* The CLJS settings pages centre themselves inside the block container
      (.dashboard-settings + .form-container margin auto), so the shell does it
@@ -78,7 +84,8 @@
   max-inline-size: var(--sz-712);
 }
 
-/* profile.scss .form-container is 500px wide (width 580, max-width 500). The
+/* profile.scss .form-container is 500px wide (width 580, max-width 500), and
+   options, notifications, password and feedback all @use it. The
    subscriptions page keeps the wider 712px frame. */
 .pp-dashboard-settings-narrow {
   max-inline-size: var(--sz-500);
@@ -98,6 +105,11 @@
   /* custom-input stacks the label 8px above the field. */
   gap: var(--sp-s);
   margin-block-end: var(--sp-xl);
+}
+
+/* The label-to-input gap lives inside the field itself, not between rows. */
+.pp-dashboard-settings-narrow .pp-field {
+  gap: var(--sp-s);
 }
 
 .pp-dashboard-settings-narrow .pp-field-links {
@@ -124,6 +136,106 @@
   color: var(--color-foreground-secondary);
 }
 
+/* notifications.scss: the radio groups stack without a gap, the submit button
+   grows to 36px, and the h3 is secondary while the h4 is an 11px cap in the
+   primary colour. The CLJS form is 400px wide with a -100px end margin that
+   pushes the 500px container past it; the shell keeps the 500px column
+   instead of copying that overflow. */
+.pp-notifications-form .pp-btn-primary {
+  block-size: 2.25rem;
+  margin-block-start: var(--sp-l);
+}
+
+/* The CLJS form is a flex column, so the submit margin adds to the last field
+   row margin instead of collapsing into it. */
+.pp-notifications-form,
+.pp-password-form {
+  display: flex;
+  flex-direction: column;
+}
+
+/* notifications.scss .radio-btns packs the radios with no margin of their own;
+   the ds radio row is 34px tall, which the shell reproduces with a min size. */
+.pp-dashboard-settings-notifications .pp-radio {
+  margin-block: 0;
+  min-block-size: 2.125rem;
+}
+
+.pp-dashboard-settings-notifications .pp-form-container h3 {
+  color: var(--color-foreground-secondary);
+}
+
+.pp-dashboard-settings-notifications .pp-form-container h4 {
+  color: var(--color-foreground-primary);
+  font-size: 0.6875rem;
+  font-weight: 300;
+  margin: var(--sp-m);
+  text-transform: uppercase;
+}
+
+.pp-dashboard-settings-notifications .pp-radio-group {
+  gap: 0;
+}
+
+/* password.scss uses the same 36px submit as notifications. */
+.pp-password-form .pp-btn-primary {
+  block-size: 2.25rem;
+  margin-block-start: var(--sp-l);
+}
+
+/* options.scss switches the shared flex frame to grid: the form keeps the
+   500px column, while the webgl block below it spans the content area with
+   its own 120px side margins. */
+.pp-dashboard-settings-options {
+  display: grid;
+  max-inline-size: none;
+}
+
+.pp-dashboard-settings-options .pp-form-container {
+  inline-size: var(--sz-500);
+  margin-block: 5rem 2rem;
+  margin-inline: auto;
+}
+
+/* feedback.scss spaces the fields 32px apart instead of the shared 20px. */
+.pp-dashboard-settings-feedback .pp-fields-row {
+  margin-block-end: 2rem;
+}
+
+/* feedback.scss: the social links are accent-tertiary with an 8px bottom
+   margin; the shared settings link colour does not apply here. */
+.pp-dashboard-settings-feedback .pp-link {
+  color: var(--color-accent-tertiary);
+  margin-block-end: var(--sp-s);
+}
+
+/* shortcuts.scss keeps a 590px column and starts its title 80px down. The title
+   uses the title-large line height (1.4) and, unlike the shared h2, carries no
+   margin of its own. */
+.pp-dashboard-settings-shortcuts {
+  max-inline-size: 36.875rem;
+  padding-block-end: var(--sp-xxxl);
+}
+
+.pp-dashboard-settings-shortcuts .pp-form-container {
+  gap: 0;
+  margin-block: 5rem 0;
+}
+
+.pp-dashboard-settings-shortcuts .pp-form-container h2 {
+  line-height: 1.4;
+  margin: 0;
+}
+
+.pp-dashboard-settings-shortcuts .pp-shortcuts-description {
+  font-size: var(--fs-12);
+  line-height: 1.333;
+}
+
+.pp-dashboard-settings-shortcuts .pp-shortcuts-tabs {
+  margin-block-start: var(--sp-l);
+}
+
 .pp-form-container {
   display: flex;
   flex-direction: column;
@@ -143,8 +255,12 @@
   color: var(--color-foreground-primary);
   font-size: var(--fs-12);
   font-weight: var(--fw-regular);
-  line-height: 1.15;
+  /* base.scss leaves h3 on the inherited body line height. */
+  line-height: var(--lh-normal);
   margin: var(--sp-s) 0;
+  /* base.scss keeps 0.5rem of block padding on every h3; the settings pages
+     only override the type, so the rule survives. */
+  padding-block: 0.5rem;
   text-transform: uppercase;
 }
 
@@ -541,8 +657,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-s);
-  margin-block-start: var(--sp-xxl);
-  padding-block-start: var(--sp-xl);
+  inline-size: var(--sz-500);
+  margin: var(--sp-xxxl) auto;
+  padding-block-start: var(--sp-xxxl);
 }
 
 .pp-webgl-header {
@@ -553,15 +670,16 @@
 
 .pp-webgl-header h2 {
   color: var(--color-foreground-primary);
-  font-size: var(--fs-20);
+  font-size: var(--fs-24);
   margin: 0;
 }
 
 .pp-badge {
-  background: var(--color-accent-primary-muted);
+  /* options.scss .beta: accent text and border, not a filled chip. */
+  border: var(--b-1) solid var(--color-accent-primary);
   border-radius: var(--br-4);
-  color: var(--color-foreground-primary);
-  padding: 0 var(--sp-xs);
+  color: var(--color-accent-primary);
+  padding: var(--sp-xxs) var(--sp-s);
   text-transform: uppercase;
 }
 

@@ -353,7 +353,10 @@ export default function SettingsShortcutsPage() {
   ];
 
   return (
-    <section className="pp-dashboard-settings" aria-labelledby="shortcuts-section-title">
+    <section
+      className="pp-dashboard-settings pp-dashboard-settings-shortcuts"
+      aria-labelledby="shortcuts-section-title"
+    >
       <div className="pp-form-container">
         <h2 id="shortcuts-section-title">{tr("label.shortcuts")}</h2>
         <p className="pp-shortcuts-description">{tr("shortcuts.reload-hint")}</p>

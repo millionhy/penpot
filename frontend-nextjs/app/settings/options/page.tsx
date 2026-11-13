@@ -77,6 +77,14 @@ function WebglSettings({ renderer }: { renderer: "svg" | "wasm" }) {
           </span>
         </label>
       </div>
+
+      {/* options.cljs closes the webgl block with a link to the feedback
+          page; the icon that follows it there has no shell equivalent. */}
+      <p className="pp-typ-body-medium">
+        <a className="pp-link" href="/settings/feedback">
+          {tr("dashboard.webgl-switch.feedback")}
+        </a>
+      </p>
     </section>
   );
 }
@@ -121,7 +129,10 @@ export default function SettingsOptionsPage() {
   };
 
   return (
-    <section className="pp-dashboard-settings" aria-labelledby="options-section-title">
+    <section
+      className="pp-dashboard-settings pp-dashboard-settings-narrow pp-dashboard-settings-options"
+      aria-labelledby="options-section-title"
+    >
       <div className="pp-form-container" data-testid="settings-form">
         <h2 className="pp-typ-title-large" id="options-section-title">
           {tr("labels.settings")}

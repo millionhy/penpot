@@ -216,6 +216,7 @@ export const zh_cn: Record<string, TranslationEntry> = {
   "dashboard.webgl-switch.description": "WebGL 渲染可以提升性能，但目前仍处于测试阶段，稳定性可能较低。画布、导出内容（SVG/PDF）和查看模式之间可能存在一些视觉差异。",
   "dashboard.webgl-switch.disabled": "已关闭",
   "dashboard.webgl-switch.enabled": "已开启",
+  "dashboard.webgl-switch.feedback": "提供反馈",
   "dashboard.webgl-switch.status": "状态",
   "dashboard.webgl-switch.title": "WebGL 渲染",
   "dashboard.webhooks.active": "已启用",

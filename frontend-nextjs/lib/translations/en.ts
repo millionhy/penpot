@@ -254,6 +254,7 @@ export const en: Record<string, TranslationEntry> = {
   "dashboard.webgl-switch.description": "WebGL rendering can improve performance, but it is in beta and may be less stable. Some visual differences may appear between the canvas, exports (SVG/PDF), and view mode.",
   "dashboard.webgl-switch.disabled": "Disabled",
   "dashboard.webgl-switch.enabled": "Enabled",
+  "dashboard.webgl-switch.feedback": "Give feedback",
   "dashboard.webgl-switch.status": "Status",
   "dashboard.webgl-switch.title": "WebGL rendering",
   "dashboard.webhooks.active": "Is active",

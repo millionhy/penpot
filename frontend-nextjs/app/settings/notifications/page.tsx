@@ -58,7 +58,10 @@ export default function SettingsNotificationsPage() {
   };
 
   return (
-    <section className="pp-dashboard-settings" aria-labelledby="notifications-section-title">
+    <section
+      className="pp-dashboard-settings pp-dashboard-settings-narrow pp-dashboard-settings-notifications"
+      aria-labelledby="notifications-section-title"
+    >
       <Form
         className="pp-notifications-form"
         form={form}

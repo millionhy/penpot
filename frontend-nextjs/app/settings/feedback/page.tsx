@@ -56,7 +56,10 @@ export default function SettingsFeedbackPage() {
   };
 
   return (
-    <section className="pp-dashboard-settings" aria-labelledby="feedback-section-title">
+    <section
+      className="pp-dashboard-settings pp-dashboard-settings-narrow pp-dashboard-settings-feedback"
+      aria-labelledby="feedback-section-title"
+    >
       <div className="pp-form-container">
         <Form
           className="pp-feedback-form"

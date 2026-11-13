@@ -32,7 +32,7 @@ export default function SettingsLayout({
                 <h1 data-testid="account-title">{tr("dashboard.your-account-title")}</h1>
               </div>
             </header>
-            <div className="pp-dashboard-container">{children}</div>
+            <div className="pp-dashboard-container pp-settings-container">{children}</div>
           </div>
         </section>
       </DashboardShortcutsProvider>

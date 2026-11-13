@@ -249,6 +249,7 @@ export const zh_hant: Record<string, TranslationEntry> = {
   "dashboard.webgl-switch.description": "WebGL 算繪可提升效能，但目前仍在測試階段，可能較不穩定。畫布、匯出檔案（SVG/PDF）與檢視模式的顯示效果可能略有差異。",
   "dashboard.webgl-switch.disabled": "已停用",
   "dashboard.webgl-switch.enabled": "已啟用",
+  "dashboard.webgl-switch.feedback": "提供意見回饋",
   "dashboard.webgl-switch.status": "狀態",
   "dashboard.webgl-switch.title": "WebGL 渲染",
   "dashboard.webhooks.active": "啟用",
