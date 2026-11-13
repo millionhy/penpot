@@ -15,20 +15,20 @@
 // them via trFieldRe. Do not spell the pattern out in prose here, the regex is
 // not comment-aware.
 //
-// Scope: the shell has no workspace/viewer shortcut registries yet (those
-// pages are not migrated), so the settings page renders the dashboard context
-// only, and the import validation checks the workspace/viewer contexts by
-// shape only. The data model carries all three contexts, so migrating the
-// registries later only fills values in.
+// Scope: all three contexts are migrated (lib/workspace-shortcuts,
+// lib/dashboard-shortcuts, lib/viewer-shortcuts), so the settings page renders
+// the full tree and the import validation checks every known key. The
+// workspace context arrives as two maps (the base set plus the path-editor
+// set), like the CLJS page merges them per subsection.
 //
 // Deviations from the CLJS original, documented:
-// - validate-imported-shortcuts rejects unknown keys only for the dashboard
-//   context (the base registry lives in the shell); workspace/viewer keys
-//   pass a shape-only check. Error messages are plain strings where the CLJS
-//   app prints malli-humanized output; the error paths match the original.
-// - compute-shortcuts-diff and extract-shortcut-keys fall back to a null
-//   default for workspace/viewer keys the shell cannot know, where the CLJS
-//   app reads the full registries (the tables render those as "-").
+// - validate-imported-shortcuts rejects unknown keys in every context. Error
+//   messages are plain strings where the CLJS app prints malli-humanized
+//   output; the error paths match the original.
+// - build-shortcuts-tree takes definition entries as a list or a map. The
+//   workspace section needs both the base and the path registry, and seven
+//   keys live in both (copy, cut, paste, duplicate, select-all, flip-horizontal,
+//   flip-vertical) under different subsections; a single map cannot hold them.
 // - filter-shortcuts-tree takes a ready row predicate instead of the
 //   (filter key node search-term) triple: the shell tree is a typed structure
 //   and the three tab filters live in tabRowFilter.
@@ -41,6 +41,8 @@ import {
   type CustomShortcuts,
   type ShortcutDefinitionShape,
 } from "@/lib/shortcuts";
+import { knownWorkspaceShortcutKeys } from "@/lib/workspace-shortcuts";
+import { viewerShortcuts } from "@/lib/viewer-shortcuts";
 
 // --- Search (app.util.strings/matches-search) ------------------------------
 
@@ -149,6 +151,20 @@ export interface ShortcutsTree {
   sections: ShortcutTreeSection[];
 }
 
+// One [shortcut key, definition] pair. The workspace section needs an ordered
+// list, not a map: the path registry repeats seven base keys under another
+// subsection (see the module header).
+export type ShortcutDefinitionEntries = ReadonlyArray<
+  readonly [string, ShortcutPageDefinition]
+>;
+
+// The order a definition list walks; a map keeps its insertion order.
+function definitionEntries(
+  definitions: Record<string, ShortcutPageDefinition> | ShortcutDefinitionEntries,
+): ShortcutDefinitionEntries {
+  return Array.isArray(definitions) ? definitions : Object.entries(definitions);
+}
+
 // The CLJS tree ids are vectors ([:dashboard :generic]); the shell uses
 // "dashboard/generic" strings in the same role: membership tests against the
 // open-sections list and react keys.
@@ -168,7 +184,7 @@ function byTranslation(a: { translation: string }, b: { translation: string }): 
 // and rows by their translated name (the CLJS sorted-map-of-translations
 // walk). Rows keep the effective command plus the registry original.
 export function buildShortcutsTree(
-  definitions: Record<string, ShortcutPageDefinition>,
+  definitions: Record<string, ShortcutPageDefinition> | ShortcutDefinitionEntries,
   translate: (key: string) => string,
   customs: CustomShortcuts,
   groupKey: string,
@@ -176,7 +192,7 @@ export function buildShortcutsTree(
   const groupMap: Record<string, string> = customs[groupKey] ?? {};
   const sections = new Map<string, Map<string, ShortcutTreeRow[]>>();
 
-  for (const [key, definition] of Object.entries(definitions)) {
+  for (const [key, definition] of definitionEntries(definitions)) {
     const sectionKey = definition.section?.[0] ?? "workspace";
     const labelKey = definition.labelKey ?? shortcutLabelKey(key);
     const row: ShortcutTreeRow = {
@@ -305,17 +321,17 @@ export const shortcutContexts = ["workspace", "dashboard", "viewer"] as const;
 
 export type ShortcutContext = (typeof shortcutContexts)[number];
 
-// Known shortcut keys per context; a null entry means the registry is not
-// migrated yet and the context passes a shape-only check.
+// Known shortcut keys per context; a null entry would mean the registry is
+// not migrated yet and the context passes a shape-only check.
 export type KnownShortcutKeys = Record<string, readonly string[] | null>;
 
 // known-shortcut-keys: the keys of the default registries, minus definitions
-// marked customizable:false. The dashboard entry is the base set
-// (= dsc/shortcuts).
+// marked customizable:false. The workspace entry spans the base and the path
+// registry; the dashboard entry is the base set (= dsc/shortcuts).
 export const knownShortcutKeys: KnownShortcutKeys = {
-  workspace: null,
+  workspace: knownWorkspaceShortcutKeys,
   dashboard: Object.keys(dashboardShortcutSet("base", false)),
-  viewer: null,
+  viewer: Object.keys(viewerShortcuts(false)),
 };
 
 // JSON values only: rejects arrays, dates, sets and functions, so a parsed
@@ -379,7 +395,7 @@ export interface ShortcutDiffEntry {
   customized: boolean;
 }
 
-// The registry defaults of a context; null when the registry is not migrated.
+// The registry defaults of a context; null when a context has no registry.
 export type ShortcutDefaults = Record<
   string,
   Record<string, ShortcutPageDefinition> | null | undefined

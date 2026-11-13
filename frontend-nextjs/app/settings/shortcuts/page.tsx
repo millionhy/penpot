@@ -5,11 +5,10 @@
 // restore-all trigger, the collapsible shortcut tree with the editable rows
 // of components/shortcut-row, and the import/export footer.
 //
-// Scope: only the dashboard context registry is migrated
-// (lib/dashboard-shortcuts), so the tree and the import diff cover the
-// dashboard context, and the import validation checks the workspace and
-// viewer contexts by shape only (see lib/shortcuts-page). Their registries
-// arrive with their pages (F9).
+// Scope: all three contexts are migrated (lib/workspace-shortcuts,
+// lib/dashboard-shortcuts, lib/viewer-shortcuts), so the tree carries the
+// workspace, dashboard and viewer sections, and the import validation knows
+// every key (see lib/shortcuts-page).
 //
 // Deviations from the CLJS original, documented:
 // - The tab strip is a local control (pp-shortcuts-tab); the shell has no ds
@@ -24,8 +23,11 @@
 // - The footer sits after the tree; the CLJS pins it to the viewport.
 // - The rows get no conflicts map, like the CLJS page, which never builds
 //   one (the conflict feedback happens while recording, inside the row).
-// - The default open section is "dashboard": the CLJS default ([:workspace])
-//   names a section the shell tree does not carry yet.
+// - The tree is the concatenation of three per-context builds. The CLJS
+//   builder takes the four maps at once and reads one custom-shortcuts group
+//   per row; here each build gets the group its rows belong to, and the
+//   workspace one gets an ordered entry list so the path-editor rows survive
+//   next to the base rows that share their keys.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ImportShortcutsDiffModal } from "@/components/import-shortcuts-diff-modal";
@@ -47,23 +49,25 @@ import {
   importShortcutsMerge,
   tabRowFilter,
   validateImportedShortcuts,
+  type ShortcutDefinitionEntries,
   type ShortcutsTab,
   type ShortcutsTree,
 } from "@/lib/shortcuts-page";
+import { viewerShortcuts } from "@/lib/viewer-shortcuts";
+import { pathShortcuts, workspaceShortcuts } from "@/lib/workspace-shortcuts";
 
 // str/blank? over the search term.
 function isBlankTerm(term: string): boolean {
   return term.trim() === "";
 }
 
-// The CLJS open-sections default is [[:workspace]]; the shell tree carries
-// the dashboard section only, so "dashboard" plays that role.
-const defaultOpenSections = ["dashboard"];
+// The CLJS open-sections default is [[:workspace]].
+const defaultOpenSections = ["workspace"];
 
 interface ShortcutsTabSectionProps {
   tab: ShortcutsTab;
   tree: ShortcutsTree;
-  contextShortcuts: ShortcutContextMap;
+  sectionShortcuts: Record<string, ShortcutContextMap>;
   macos: boolean;
   expandAllByDefault: boolean;
   emptyStr: string;
@@ -71,9 +75,9 @@ interface ShortcutsTabSectionProps {
   openSections: string[];
   onOpenSectionsChange: (ids: string[]) => void;
   onRestoreAll: () => void;
-  onSave: (key: string, command: string, conflictKey: string | null) => void;
-  onDisable: (key: string) => void;
-  onReset: (key: string, defaultCommand: string | string[] | null) => void;
+  onSave: (group: string, key: string, command: string, conflictKey: string | null) => void;
+  onDisable: (group: string, key: string) => void;
+  onReset: (group: string, key: string, defaultCommand: string | string[] | null) => void;
 }
 
 // shortcuts-tab-section*: one tab body with its local search term, the
@@ -81,7 +85,7 @@ interface ShortcutsTabSectionProps {
 function ShortcutsTabSection({
   tab,
   tree,
-  contextShortcuts,
+  sectionShortcuts,
   macos,
   expandAllByDefault,
   emptyStr,
@@ -208,12 +212,16 @@ function ShortcutsTabSection({
                                 <ShortcutRow
                                   key={row.id}
                                   row={row}
-                                  contextShortcuts={contextShortcuts}
+                                  contextShortcuts={sectionShortcuts[section.key] ?? {}}
                                   editable
                                   macos={macos}
-                                  onSave={onSave}
-                                  onDisable={onDisable}
-                                  onReset={onReset}
+                                  onSave={(key, command, conflictKey) =>
+                                    onSave(section.key, key, command, conflictKey)
+                                  }
+                                  onDisable={(key) => onDisable(section.key, key)}
+                                  onReset={(key, defaultCommand) =>
+                                    onReset(section.key, key, defaultCommand)
+                                  }
                                 />
                               ))}
                             </ul>
@@ -261,24 +269,68 @@ export default function SettingsShortcutsPage() {
   const [tab, setTab] = useState<ShortcutsTab>("all");
   const [openSectionsByTab, setOpenSectionsByTab] = useState<Record<string, string[]>>({});
 
-  // The base set (dsc/shortcuts) with the overrides applied: what the tree
-  // renders and what the restore table lists as defaults.
-  const defaults = useMemo(() => dashboardShortcutSet("base", macos), [macos]);
+  // The three registries (dsc/shortcuts; wsc/shortcuts + psc/shortcuts;
+  // vsc/shortcuts) with the overrides applied: what the tree renders and what
+  // the restore/import modals list as defaults.
+  const dashboardDefaults = useMemo(() => dashboardShortcutSet("base", macos), [macos]);
+  const workspaceDefaults = useMemo(() => workspaceShortcuts(macos), [macos]);
+  const pathDefaults = useMemo(() => pathShortcuts(macos), [macos]);
+  const viewerDefaults = useMemo(() => viewerShortcuts(macos), [macos]);
 
-  // Only the dashboard registry is migrated; the other two contexts stay
-  // absent, and the modals draw "-" for their unknown defaults.
-  const contextDefaults = useMemo(() => ({ dashboard: defaults }), [defaults]);
-
-  const tree = useMemo(
-    () =>
-      buildShortcutsTree(
-        applyCustomOverrides(defaults, customShortcuts, "dashboard"),
-        (key) => tr(key),
-        customShortcuts,
-        "dashboard",
-      ),
-    [defaults, customShortcuts],
+  // The conflict search of a workspace row spans both registries, and the
+  // modals read one map per context (the CLJS all-shortcuts-raw).
+  const workspaceMerged = useMemo(
+    () => ({ ...workspaceDefaults, ...pathDefaults }),
+    [workspaceDefaults, pathDefaults],
   );
+
+  const contextDefaults = useMemo(
+    () => ({
+      workspace: workspaceMerged,
+      dashboard: dashboardDefaults,
+      viewer: viewerDefaults,
+    }),
+    [workspaceMerged, dashboardDefaults, viewerDefaults],
+  );
+
+  const sectionShortcuts = useMemo<Record<string, ShortcutContextMap>>(
+    () => ({
+      workspace: workspaceMerged,
+      dashboard: dashboardDefaults,
+      viewer: viewerDefaults,
+    }),
+    [workspaceMerged, dashboardDefaults, viewerDefaults],
+  );
+
+  const tree = useMemo<ShortcutsTree>(() => {
+    // build-all-shortcuts-without-basics: the workspace section merges the
+    // base and the path map per subsection, so its entries are concatenated.
+    // Seven keys live in both maps under different subsections, and a Record
+    // would keep one of them.
+    const workspaceEntries: ShortcutDefinitionEntries = [
+      ...Object.entries(applyCustomOverrides(workspaceDefaults, customShortcuts, "workspace")),
+      ...Object.entries(applyCustomOverrides(pathDefaults, customShortcuts, "workspace")),
+    ];
+    const translate = (key: string) => tr(key);
+    return {
+      sections: [
+        ...buildShortcutsTree(workspaceEntries, translate, customShortcuts, "workspace")
+          .sections,
+        ...buildShortcutsTree(
+          applyCustomOverrides(dashboardDefaults, customShortcuts, "dashboard"),
+          translate,
+          customShortcuts,
+          "dashboard",
+        ).sections,
+        ...buildShortcutsTree(
+          applyCustomOverrides(viewerDefaults, customShortcuts, "viewer"),
+          translate,
+          customShortcuts,
+          "viewer",
+        ).sections,
+      ],
+    };
+  }, [workspaceDefaults, pathDefaults, dashboardDefaults, viewerDefaults, customShortcuts]);
 
   // (some #(seq (val %)) custom-shortcuts): any override, in any context.
   const hasCustomShortcuts = useMemo(
@@ -381,7 +433,7 @@ export default function SettingsShortcutsPage() {
           key={tab}
           tab={tab}
           tree={tree}
-          contextShortcuts={defaults}
+          sectionShortcuts={sectionShortcuts}
           macos={macos}
           expandAllByDefault={tab !== "all"}
           emptyStr={emptyStrForTab(tab)}
@@ -389,9 +441,13 @@ export default function SettingsShortcutsPage() {
           openSections={openSections}
           onOpenSectionsChange={updateOpenSections}
           onRestoreAll={onRestoreAll}
-          onSave={(key, command, conflictKey) => setCustomShortcut(key, command, conflictKey)}
-          onDisable={(key) => setCustomShortcut(key, "", null)}
-          onReset={(key, defaultCommand) => resetCustomShortcut(key, defaultCommand)}
+          onSave={(group, key, command, conflictKey) =>
+            setCustomShortcut(key, command, conflictKey, group)
+          }
+          onDisable={(group, key) => setCustomShortcut(key, "", null, group)}
+          onReset={(group, key, defaultCommand) =>
+            resetCustomShortcut(key, defaultCommand, group)
+          }
         />
 
         <footer className="pp-shortcuts-footer">

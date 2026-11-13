@@ -164,6 +164,9 @@ const trElementRe = /<Tr\b[^>]*\bk="([^"\\]+)"/g;
 // settingsNav in lib/settings.ts is the only such view today; a new one has to
 // extend this pattern or its labels render as raw keys.
 const trFieldRe = /\blabelKey:\s*"([^"\\]+)"/g;
+// lib/workspace-shortcuts keeps its 130-odd rows compact by passing the key as
+// the first argument of the local def() helper, not as a labelKey field.
+const trDefRe = /\bdef\(\s*"(shortcuts\.[^"\\]+)"/g;
 
 function* walk(dir) {
   for (const name of readdirSync(dir)) {
@@ -182,7 +185,7 @@ function collectUsedKeys() {
     if (!statSync(abs, { throwIfNoEntry: false })?.isDirectory()) continue;
     for (const file of walk(abs)) {
       const text = readFileSync(file, "utf8");
-      for (const pattern of [trCallRe, trElementRe, trFieldRe]) {
+      for (const pattern of [trCallRe, trElementRe, trFieldRe, trDefRe]) {
         for (const match of text.matchAll(pattern)) {
           const key = match[1];
           if (!used.has(key)) used.set(key, path.relative(shellRoot, file));

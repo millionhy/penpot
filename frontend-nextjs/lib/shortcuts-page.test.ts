@@ -21,8 +21,10 @@ import {
   validateImportedShortcuts,
   type ImportValidationError,
   type ImportValidationResult,
+  type ShortcutDefinitionEntries,
   type ShortcutPageDefinition,
 } from "@/lib/shortcuts-page";
+import { knownWorkspaceShortcutKeys, pathShortcuts, workspaceShortcuts } from "@/lib/workspace-shortcuts";
 
 // The suite mirrors frontend/test/frontend_tests/ui/settings_shortcuts_test.cljs
 // where the semantics are shared, and covers the shell-only pieces (tree
@@ -137,14 +139,17 @@ describe("validateImportedShortcuts", () => {
     expect(errors.some((error) => error.path === "dashboard/not-a-real-shortcut")).toBe(true);
   });
 
-  it("accepts unknown workspace/viewer keys (deviation: registries not migrated)", () => {
-    // The CLJS validator rejects these against the wsc/psc/vsc key sets. The
-    // shell has no such registries yet, so those contexts pass a shape-only
-    // check; tighten once the registries migrate.
-    expect(validateImportedShortcuts({ workspace: { "not-a-real-shortcut": "x" } })).toEqual({
-      valid: true,
-    });
-    expect(validateImportedShortcuts({ viewer: { "not-a-real-shortcut": "x" } })).toEqual({
+  it("rejects an unknown key in every context", () => {
+    for (const context of ["workspace", "dashboard", "viewer"]) {
+      const errors = invalidErrors(
+        validateImportedShortcuts({ [context]: { "not-a-real-shortcut": "x" } }),
+      );
+      expect(errors.some((error) => error.path === context + "/not-a-real-shortcut")).toBe(true);
+    }
+  });
+
+  it("accepts a key the path registry adds to the workspace context", () => {
+    expect(validateImportedShortcuts({ workspace: { "move-nodes": "m" } })).toEqual({
       valid: true,
     });
   });
@@ -438,6 +443,51 @@ describe("extractShortcutParts", () => {
   });
 });
 
+describe("workspace registry", () => {
+  it("splits the base set from the path-editor set", () => {
+    const workspace = workspaceShortcuts(false);
+    const path = pathShortcuts(false);
+    expect(Object.keys(workspace)).toHaveLength(120);
+    expect(Object.keys(path)).toHaveLength(19);
+    expect(path["move-nodes"].subsections).toEqual(["path-editor"]);
+    expect(Object.values(path).every((row) => row.subsections[0] === "path-editor")).toBe(true);
+  });
+
+  it("keeps the commands the CLJS helpers build", () => {
+    const workspace = workspaceShortcuts(false);
+    expect(workspace["undo"].command).toBe("ctrl+z");
+    expect(workspace["redo"].command).toEqual(["ctrl+shift+z", "ctrl+y"]);
+    expect(workspace["opacity-0"].command).toEqual(["0", "num0"]);
+    expect(workspace["toggle-layers"].command).toBe("alt+l");
+    expect(workspace["toggle-history"].command).toBe("ctrl+alt+h");
+  });
+
+  it("drops the basics subsection like the page builder", () => {
+    expect(workspaceShortcuts(false)["toggle-theme"].subsections).toEqual(["generic"]);
+    expect(workspaceShortcuts(false)["plugins"].subsections).toEqual(["generic"]);
+  });
+
+  it("leaves the runtime-only path overrides out of the tree", () => {
+    const path = pathShortcuts(false);
+    for (const key of ["escape", "start-editing", "undo", "increase-zoom", "move-unit-up"]) {
+      expect(path[key]).toBeUndefined();
+    }
+  });
+
+  it("marks the base paste row non-customizable", () => {
+    expect(workspaceShortcuts(false)["paste"].customizable).toBe(false);
+    expect(pathShortcuts(false)["paste"].customizable).toBe(true);
+  });
+
+  it("lists the customizable keys of both registries", () => {
+    const all = { ...workspaceShortcuts(false), ...pathShortcuts(false) };
+    const customizable = Object.entries(all)
+      .filter(([, definition]) => definition.customizable)
+      .map(([key]) => key);
+    expect([...knownWorkspaceShortcutKeys].sort()).toEqual(customizable.sort());
+  });
+});
+
 describe("buildShortcutsTree", () => {
   it("builds the dashboard subtree of the base registry", () => {
     const tree = buildShortcutsTree(base, translate, {}, "dashboard");
@@ -518,6 +568,55 @@ describe("buildShortcutsTree", () => {
     expect(section.subsections[1].rows.map((row) => row.key)).toEqual(["go-b"]);
   });
 
+  it("keeps a base row and a path row that share a shortcut key", () => {
+    const entries: ShortcutDefinitionEntries = [
+      ...Object.entries(workspaceShortcuts(false)),
+      ...Object.entries(pathShortcuts(false)),
+    ];
+    const tree = buildShortcutsTree(entries, translate, {}, "workspace");
+    const section = tree.sections[0];
+    expect(section.key).toBe("workspace");
+    expect(section.subsections.map((subsection) => subsection.key)).toEqual([
+      "alignment",
+      "edit",
+      "generic",
+      "main-menu",
+      "modify-layers",
+      "navigation-workspace",
+      "panels",
+      "path-editor",
+      "shape",
+      "text-editor",
+      "tools",
+      "zoom-workspace",
+    ]);
+    const rowsOf = (key: string) =>
+      section.subsections.find((subsection) => subsection.key === key)?.rows ?? [];
+    expect(rowsOf("edit").find((row) => row.key === "copy")?.id).toBe("workspace/edit/copy");
+    expect(rowsOf("path-editor").find((row) => row.key === "copy")?.id).toBe(
+      "workspace/path-editor/copy",
+    );
+    expect(rowsOf("path-editor")).toHaveLength(19);
+  });
+
+  it("marks both copies of a shared key as customized", () => {
+    const customs = { workspace: { copy: "alt+c" } };
+    const entries: ShortcutDefinitionEntries = [
+      ...Object.entries(applyCustomOverrides(workspaceShortcuts(false), customs, "workspace")),
+      ...Object.entries(applyCustomOverrides(pathShortcuts(false), customs, "workspace")),
+    ];
+    const tree = buildShortcutsTree(entries, translate, customs, "workspace");
+    const copies = tree.sections[0].subsections.flatMap((subsection) =>
+      subsection.rows.filter((row) => row.key === "copy"),
+    );
+    expect(copies).toHaveLength(2);
+    for (const row of copies) {
+      expect(row.customState).toBe("customized");
+      expect(row.command).toBe("alt+c");
+      expect(row.originalCommand).toBe("ctrl+c");
+    }
+  });
+
   it("takes the effective command and keeps the registry original", () => {
     const customs = { dashboard: { "toggle-theme": "alt+t" } };
     const tree = buildShortcutsTree(
@@ -594,10 +693,11 @@ describe("tabRowFilter", () => {
 });
 
 describe("knownShortcutKeys", () => {
-  it("knows the dashboard registry and defers the others", () => {
+  it("knows the three registries", () => {
     expect(knownShortcutKeys.dashboard).toEqual(["toggle-theme"]);
-    expect(knownShortcutKeys.workspace).toBeNull();
-    expect(knownShortcutKeys.viewer).toBeNull();
+    expect(knownShortcutKeys.workspace).toBe(knownWorkspaceShortcutKeys);
+    expect(knownShortcutKeys.viewer).toHaveLength(13);
+    expect(knownShortcutKeys.viewer).toContain("open-workspace");
   });
 });
 
