@@ -5,8 +5,9 @@
 // the team info block, the owner row and the member/project counters.
 //
 // Deviations from the CLJS original, documented:
-// - The organization block sits behind the :admin-console flag; the shell
-//   runs with the flag off, so it waits for F5.7.
+// - The organization block sits behind the :admin-console flag, like the CLJS
+//   (when nitrate? ...) section; components/team-organization-block.tsx ports
+//   it together with the add/change/remove flows.
 // - The CLJS fetch effect is []; the shell depends on teamId because App
 //   Router keeps a mounted page across search-param navigation.
 // - (dec (:projects stats)) would throw on the nil stats of a first render;
@@ -18,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MemberAvatar } from "@/components/member-avatar";
 import { useNotifications } from "@/components/notifications";
 import { TeamPlanBlock } from "@/components/subscription";
+import { TeamOrganizationBlock } from "@/components/team-organization-block";
 import { TeamHeader } from "@/components/team-header";
 import { useInviteMembers } from "@/components/team-invite";
 import { generateAvatar } from "@/lib/avatars";
@@ -148,6 +150,8 @@ export default function DashboardSettingsPage() {
             <div className="pp-block-label">{tr("dashboard.team-info")}</div>
             <div className="pp-block-text">{team.name}</div>
           </div>
+
+          {hasFlag("admin-console") ? <TeamOrganizationBlock team={team} /> : null}
 
           <div className="pp-settings-block">
             <div className="pp-block-label">{tr("dashboard.team-members")}</div>

@@ -3592,14 +3592,20 @@
   margin-block-start: var(--sp-l);
 }
 
+/* team.scss .block-label uses the headline-small typography (12/500/1.2,
+   uppercase); .block-text has no rule of its own, so it inherits the 16px
+   browser default of the CLJS body. */
 .pp-block-label {
   color: var(--color-foreground-secondary);
   font-size: var(--fs-12);
   font-weight: var(--fw-medium);
+  line-height: var(--lh-dense);
+  text-transform: uppercase;
 }
 
 .pp-block-text {
   color: var(--color-foreground-primary);
+  font-size: var(--fs-16);
   text-wrap: nowrap;
 }
 
@@ -3614,6 +3620,127 @@
    carry the text alone, so a single child spans the whole line. */
 .pp-block-content .pp-block-text:only-child {
   grid-column: 1 / -1;
+}
+
+/* team organization block (team.scss .organization-block-content /
+   .organization-options-btn* / .organization-menu-icon)
+
+   The owner menu reuses the shared DashboardMenu, so the CLJS
+   .organization-dropdown* rules have no shell counterpart. */
+
+.pp-organization-block-content {
+  align-items: center;
+  display: grid;
+  gap: var(--sp-m);
+  grid-template-columns: var(--sp-xxxl) 1fr var(--sp-xxxl);
+  inline-size: max-content;
+}
+
+.pp-organization-options-btn {
+  --stroke-color: var(--color-foreground-primary);
+
+  background: none;
+  border: none;
+  color: var(--stroke-color);
+  cursor: pointer;
+  justify-content: center;
+  padding: 0;
+}
+
+.pp-organization-options-btn:hover {
+  --stroke-color: var(--color-accent-primary);
+}
+
+.pp-organization-options-btn-open {
+  --stroke-color: var(--color-accent-primary);
+
+  background-color: var(--color-background-tertiary);
+  position: relative;
+}
+
+.pp-organization-menu-icon {
+  align-items: center;
+  block-size: var(--sz-16);
+  display: flex;
+  fill: none;
+  inline-size: var(--sz-16);
+  justify-content: center;
+  stroke: var(--stroke-color);
+  stroke-width: var(--b-1);
+}
+
+/* organization_avatar.scss .organization-avatar*; the xxxl size is
+   px2rem(30), which falls between the --sz-28 and --sz-32 tokens. The
+   initials keep the CLJS $gray-950 on the generated pastel avatar in both
+   themes, hence static black. */
+
+.pp-organization-avatar {
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.pp-organization-avatar-custom {
+  object-fit: cover;
+}
+
+.pp-organization-avatar-xxxl {
+  block-size: 1.875rem;
+  border-radius: var(--br-6);
+  inline-size: 1.875rem;
+}
+
+.pp-organization-avatar-bg {
+  block-size: 100%;
+  inline-size: 100%;
+  inset: 0;
+  object-fit: cover;
+  position: absolute;
+}
+
+.pp-organization-avatar-initials {
+  align-items: center;
+  color: var(--color-static-black);
+  display: flex;
+  font-family: var(--font-family-base);
+  font-size: var(--fs-16);
+  font-weight: 600;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+  text-transform: uppercase;
+}
+
+/* select organization modal (team.scss .modal-select-organization-*). The
+   modal container width comes from .pp-modal-container, so only the inner
+   rhythm is restated here. */
+
+.pp-select-organization-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+}
+
+.pp-select-organization-warning {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xxl);
+}
+
+.pp-select-organization-content {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
+}
+
+.pp-select-organization-info {
+  color: var(--color-foreground-secondary);
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs-14);
+  gap: var(--sp-m);
+  line-height: var(--lh-normal);
+  margin-block-end: var(--sp-xxl);
 }
 
 .pp-team-icon {
