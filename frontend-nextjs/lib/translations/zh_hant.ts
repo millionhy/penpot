@@ -737,6 +737,7 @@ export const zh_hant: Record<string, TranslationEntry> = {
   "shortcuts.group": "建立群組",
   "shortcuts.h-distribute": "水平平均分布",
   "shortcuts.hide-ui": "顯示 / 隱藏介面",
+  "shortcuts.import-export": "匯入 / 匯出",
   "shortcuts.increase-zoom": "放大",
   "shortcuts.insert-image": "插入圖片",
   "shortcuts.italic": "切換斜體",

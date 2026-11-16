@@ -745,6 +745,7 @@ export const en: Record<string, TranslationEntry> = {
   "shortcuts.group": "Group",
   "shortcuts.h-distribute": "Distribute horizontally",
   "shortcuts.hide-ui": "Show / Hide UI",
+  "shortcuts.import-export": "Import/Export",
   "shortcuts.increase-zoom": "Zoom in",
   "shortcuts.insert-image": "Insert image",
   "shortcuts.italic": "Toggle italic",

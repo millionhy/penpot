@@ -211,7 +211,7 @@
 
 /* shortcuts.scss keeps a 590px column and starts its title 80px down. The title
    uses the title-large line height (1.4) and, unlike the shared h2, carries no
-   margin of its own. */
+   margin of its own; the children below space themselves. */
 .pp-dashboard-settings-shortcuts {
   max-inline-size: 36.875rem;
   padding-block-end: var(--sp-xxxl);
@@ -227,13 +227,28 @@
   margin: 0;
 }
 
-.pp-dashboard-settings-shortcuts .pp-shortcuts-description {
-  font-size: var(--fs-12);
-  line-height: 1.333;
+/* The shortcuts page uses the ds button* secondary: 32px high, tertiary
+   background and secondary text that turns accent on hover. The shared
+   .pp-btn-secondary stands in for %button-secondary, which paints a border
+   instead. */
+.pp-dashboard-settings-shortcuts .pp-btn-secondary {
+  align-items: center;
+  background: var(--color-background-tertiary);
+  block-size: var(--sz-32);
+  border: var(--b-1) solid var(--color-background-tertiary);
+  color: var(--color-foreground-secondary);
+  column-gap: var(--sp-xs);
+  display: inline-flex;
+  padding: 0 var(--sp-m);
 }
 
-.pp-dashboard-settings-shortcuts .pp-shortcuts-tabs {
-  margin-block-start: var(--sp-l);
+.pp-dashboard-settings-shortcuts .pp-btn-secondary:hover {
+  color: var(--color-accent-primary);
+}
+
+.pp-dashboard-settings-shortcuts .pp-btn-secondary:active {
+  background: var(--color-background-quaternary);
+  border-color: var(--color-background-quaternary);
 }
 
 .pp-form-container {
@@ -590,6 +605,8 @@
   align-self: flex-start;
   border-radius: var(--br-8);
   cursor: pointer;
+  /* A bare button keeps the UA font; the CLJS reset hands it the body one. */
+  font-family: inherit;
   font-size: var(--fs-12);
   font-weight: var(--fw-medium);
   line-height: var(--lh-dense);
@@ -995,83 +1012,193 @@
 /* --- shortcuts page and views (settings/shortcuts.scss plus
    ui/shortcuts.scss, F5.6) --- */
 
+/* settings/shortcuts.scss .shortcuts-description: body-small, 8px block
+   padding, 16px below and 4px between the info icon and the text. */
 .pp-shortcuts-description {
+  align-items: center;
   color: var(--color-foreground-secondary);
-  font-size: var(--fs-14);
-  margin: 0;
+  display: flex;
+  font-size: var(--fs-12);
+  gap: var(--sp-xs);
+  line-height: var(--lh-compact);
+  margin: 0 0 var(--sp-l);
+  padding: var(--sp-s) 0;
 }
 
+/* ds/layout/tab_switcher.scss: a 2px-padded secondary tray of 32px tabs with
+   an 8px radius; the selected tab takes the quaternary background and the
+   accent text. Typography is headline-small: 12px, 500, uppercase. */
 .pp-shortcuts-tabs {
-  border-bottom: var(--b-1) solid var(--color-background-quaternary);
-  display: flex;
-  gap: var(--sp-l);
+  background: var(--color-background-secondary);
+  border-radius: var(--br-8);
+  display: grid;
+  gap: var(--sp-xxs);
+  padding: var(--sp-xxs);
+}
+
+.pp-shortcuts-tab-list {
+  display: grid;
+  gap: var(--sp-xxs);
+  /* Auto columns stretched by the 100%-wide items, like the ds tab-list:
+     every tab takes its text width plus an even share of the spare room. */
+  grid-auto-flow: column;
+  inline-size: 100%;
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .pp-shortcuts-tab {
-  background: none;
-  border: var(--b-1) solid transparent;
+  appearance: none;
+  background: var(--color-background-secondary);
+  block-size: var(--sz-32);
+  border: 0;
+  border-radius: var(--br-8);
   color: var(--color-foreground-secondary);
   cursor: pointer;
-  font-size: var(--fs-14);
-  padding: var(--sp-s);
+  font-family: inherit;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  inline-size: 100%;
+  line-height: var(--lh-dense);
+  outline: var(--b-1) solid transparent;
+  overflow: hidden;
+  padding: 0 var(--sp-m);
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.pp-shortcuts-tab.selected {
-  border-bottom: var(--b-1) solid var(--color-foreground-primary);
+.pp-shortcuts-tab:focus-visible {
+  outline-color: var(--color-accent-primary);
+}
+
+.pp-shortcuts-tab:hover {
   color: var(--color-foreground-primary);
 }
 
-.pp-shortcuts-section {
-  margin-block-end: var(--sp-l);
+.pp-shortcuts-tab.selected {
+  background: var(--color-background-quaternary);
+  color: var(--color-accent-primary);
 }
 
+/* .shortcuts-section: the CLJS margin reads --sp-lg, a token the spacing scale
+   never defines, so the tab body carries no bottom margin. */
+.pp-shortcuts-section {
+  margin-block-end: 0;
+}
+
+/* components/search_bar.scss: a 32px field on the tertiary input background,
+   1px border, 8px radius, a 12px search glyph in a 16px box and the
+   restore-all button 4px to its inline end. */
 .pp-shortcuts-search-section {
   align-items: center;
   display: flex;
   gap: var(--sp-xs);
+  justify-content: center;
   padding-block-start: var(--sp-s);
 }
 
-.pp-shortcuts-search-input {
-  background: transparent;
-  border: var(--b-1) solid var(--color-background-quaternary);
+.pp-shortcuts-search-box {
+  block-size: var(--sz-32);
   border-radius: var(--br-8);
-  block-size: var(--sz-40);
-  color: var(--color-foreground-primary);
-  flex: 1;
-  font-size: var(--fs-14);
+  display: flex;
+  flex: 1 1 auto;
   min-inline-size: 0;
-  padding: var(--sp-xs) var(--sp-m);
 }
 
-.pp-shortcuts-search-input::placeholder {
+.pp-shortcuts-search-input-wrapper {
+  align-items: center;
+  background: var(--color-background-tertiary);
+  block-size: var(--sz-32);
+  border: var(--b-1) solid var(--color-background-tertiary);
+  border-radius: var(--br-8);
+  display: flex;
+  inline-size: 100%;
+}
+
+.pp-shortcuts-search-input-wrapper:hover {
+  background: var(--color-background-quaternary);
+  border-color: var(--color-background-quaternary);
+}
+
+.pp-shortcuts-search-input-wrapper:focus-within {
+  background: var(--color-background-primary);
+  border-color: var(--color-accent-primary);
+}
+
+/* The ds icon* "s" size: a 12px glyph centred in a 16px box. */
+.pp-shortcuts-icon-box {
+  align-items: center;
+  display: flex;
+  flex: 0 0 var(--sz-16);
+  justify-content: center;
+}
+
+.pp-shortcuts-search-input-wrapper > .pp-shortcuts-icon-box {
+  margin-inline-start: var(--sp-s);
+}
+
+.pp-shortcuts-search-input {
+  background: none;
+  block-size: 100%;
+  border: 0;
+  /* --input-foreground-color, which stays secondary on focus. */
   color: var(--color-foreground-secondary);
+  flex: 1 1 auto;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  margin-inline: var(--sp-xs) var(--sp-s);
+  min-inline-size: 0;
+  /* The UA padding the CLJS input keeps. */
+  padding: var(--b-1) var(--sp-xxs);
 }
 
 .pp-shortcuts-search-input:focus,
 .pp-shortcuts-search-input:focus-visible {
-  border-color: var(--color-accent-primary);
   outline: none;
 }
 
 .pp-shortcuts-search-clear {
+  align-items: center;
   background: none;
+  block-size: 100%;
   border: 0;
-  color: var(--color-foreground-secondary);
+  color: var(--color-icon-default);
   cursor: pointer;
-  font-size: var(--fs-14);
+  display: flex;
+  flex: 0 0 var(--sz-32);
+  justify-content: center;
+  padding: 0;
 }
 
+.pp-shortcuts-search-clear:hover {
+  color: var(--color-foreground-primary);
+}
+
+.pp-shortcuts-restore-button {
+  inline-size: fit-content;
+  max-inline-size: 18.75rem;
+  min-inline-size: 8.125rem;
+}
+
+/* .shortcuts-list: body-small on the secondary colour, 12px padding and a
+   250px floor. */
 .pp-shortcuts-list {
   color: var(--color-foreground-secondary);
   display: flex;
   flex-direction: column;
   font-size: var(--fs-12);
-  padding-block: var(--sp-m);
+  line-height: var(--lh-compact);
+  min-block-size: 15.625rem;
+  overflow-y: auto;
+  padding: var(--sp-m);
 }
 
 .pp-shortcut-section {
-  margin-block-end: var(--sp-l);
+  /* ui/shortcuts.scss .section carries no margin; the title padding does the
+     spacing. */
+  margin-block-end: 0;
 }
 
 .pp-shortcut-section-header,
@@ -1080,6 +1207,17 @@
   padding: 0;
 }
 
+/* The CLJS h3/h4 carry no margin or padding, but the page-frame rules for them
+   are one class heavier, so the list scopes these resets twice. */
+.pp-shortcuts-list .pp-shortcut-section-header,
+.pp-shortcuts-list .pp-shortcut-subsection-header {
+  margin: 0;
+  padding: 0;
+}
+
+/* headline-small: 12px, medium, 1.2 and uppercase for the sections; the
+   subsections keep the type but drop the caps. The names take the font's own
+   line height, as the CLJS spans do (17.16px at 12px). */
 .pp-shortcut-section-title,
 .pp-shortcut-subsection-title {
   align-items: center;
@@ -1088,11 +1226,19 @@
   color: var(--color-foreground-secondary);
   cursor: pointer;
   display: flex;
-  font-size: var(--fs-14);
+  font-family: inherit;
+  font-size: var(--fs-12);
   font-weight: var(--fw-medium);
   gap: var(--sp-xs);
   inline-size: 100%;
+  line-height: var(--lh-dense);
   padding: var(--sp-s) 0;
+  text-transform: uppercase;
+}
+
+.pp-shortcut-section-name,
+.pp-shortcut-subsection-name {
+  line-height: normal;
 }
 
 .pp-shortcut-section-title:hover,
@@ -1102,8 +1248,8 @@
 
 .pp-shortcut-subsection-title {
   block-size: var(--sz-32);
-  font-weight: var(--fw-regular);
   padding-inline-start: var(--sp-m);
+  text-transform: none;
 }
 
 .pp-shortcut-subsection-menu,
@@ -1123,20 +1269,26 @@
 
 .pp-shortcuts-empty-state {
   align-items: center;
+  block-size: 15.625rem;
   color: var(--color-foreground-secondary);
   display: flex;
-  font-size: var(--fs-14);
+  font-size: var(--fs-12);
   justify-content: center;
-  padding-block: var(--sp-xxxl);
+  line-height: var(--lh-compact);
 }
 
+/* .shortcuts-page-footer: pinned to the viewport bottom over the app
+   background, 590px wide with 12px/8px block padding. */
 .pp-shortcuts-footer {
   align-items: center;
+  background: var(--color-background-primary);
   display: flex;
   gap: var(--sp-s);
+  inset-block-end: 0;
   justify-content: space-between;
-  margin-block-start: var(--sp-l);
+  min-inline-size: 36.875rem;
   padding-block: var(--sp-m) var(--sp-s);
+  position: fixed;
 }
 
 .pp-shortcuts-info {
@@ -1145,12 +1297,21 @@
   display: flex;
   font-size: var(--fs-12);
   gap: var(--sp-m);
+  line-height: var(--lh-compact);
 }
 
 .pp-shortcuts-info-wrapper {
   align-items: center;
   display: flex;
   gap: var(--sp-xxs);
+}
+
+.pp-shortcuts-dot-wrapper {
+  align-items: center;
+  block-size: var(--sz-16);
+  display: flex;
+  inline-size: var(--sz-16);
+  justify-content: center;
 }
 
 .pp-shortcuts-customized-dot {
@@ -1160,8 +1321,9 @@
   inline-size: 0.25rem;
 }
 
-.pp-shortcuts-detach-icon {
+.pp-shortcuts-not-assigned-icon {
   color: var(--color-foreground-secondary);
+  margin-inline-end: var(--sp-xs);
 }
 
 .pp-shortcuts-text {
@@ -1184,7 +1346,8 @@
   justify-content: space-between;
   margin-block-end: var(--sp-s);
   min-block-size: var(--sz-32);
-  padding: var(--sp-xs);
+  /* px2rem(6) on the CLJS row. */
+  padding: 0.375rem;
 }
 
 .pp-shortcut-row-editable:hover {
@@ -1208,10 +1371,11 @@
   border: 0;
   cursor: pointer;
   display: flex;
+  font-family: inherit;
   inline-size: 100%;
   justify-content: space-between;
-  min-block-size: var(--sz-32);
-  padding: var(--sp-xs);
+  /* The CLJS button carries 1px 6px and no floor of its own. */
+  padding: var(--b-1) 0.375rem;
 }
 
 .pp-shortcut-button:disabled {
@@ -1263,13 +1427,13 @@
 .pp-shortcut-key {
   align-items: center;
   background-color: var(--color-background-primary);
-  border-radius: 0.25rem;
+  block-size: 1.25rem;
+  border-radius: var(--br-6);
   color: var(--color-foreground-primary);
   display: flex;
   font-size: var(--fs-12);
   justify-content: center;
-  min-block-size: 1.25rem;
-  padding: 0.125rem var(--sp-xs);
+  padding: 0.125rem 0.375rem;
   text-transform: capitalize;
 }
 

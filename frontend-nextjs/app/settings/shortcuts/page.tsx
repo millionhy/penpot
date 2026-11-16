@@ -11,16 +11,19 @@
 // every key (see lib/shortcuts-page).
 //
 // Deviations from the CLJS original, documented:
-// - The tab strip is a local control (pp-shortcuts-tab); the shell has no ds
-//   tab-switcher yet.
-// - Import and export are two footer buttons; the CLJS groups them in a
-//   dropdown-menu.
+// - The tab strip and the search bar are local controls
+//   (pp-shortcuts-tab, pp-shortcuts-search-*); the shell has no ds
+//   tab-switcher or search-bar, so they copy the ds geometry instead of the
+//   components.
+// - The import/export dropdown reuses the dashboard menu (DashboardMenu),
+//   which opens 4px from its trigger where the CLJS menu uses 6px.
 // - The expand-all effect runs on tree or term changes only; the CLJS effect
 //   keeps open-sections in its deps, so collapsing a section on the
 //   personalized/disabled tabs springs it back open.
 // - Collapsed bodies unmount where the CLJS toggles the hidden attribute;
 //   the visible result is the same.
-// - The footer sits after the tree; the CLJS pins it to the viewport.
+// - The footer is fixed to the viewport like the CLJS one, but the page keeps
+//   its own bottom padding instead of reserving room for it.
 // - The rows get no conflicts map, like the CLJS page, which never builds
 //   one (the conflict feedback happens while recording, inside the row).
 // - The tree is the concatenation of three per-context builds. The CLJS
@@ -30,10 +33,26 @@
 //   next to the base rows that share their keys.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  DashboardMenu,
+  menuAnchorFromElement,
+  type MenuAnchor,
+  type MenuEntry,
+} from "@/components/dashboard-menu";
 import { ImportShortcutsDiffModal } from "@/components/import-shortcuts-diff-modal";
 import { useModal } from "@/components/modal";
 import { useNotifications } from "@/components/notifications";
 import { RestoreShortcutsModal } from "@/components/restore-shortcuts-modal";
+import {
+  ArrowDownIcon,
+  ArrowRightIcon,
+  BrokenLinkIcon,
+  DeleteTextIcon,
+  ImportExportIcon,
+  InfoIcon,
+  ReloadIcon,
+  SearchIcon,
+} from "@/components/settings-icons";
 import { ShortcutRow, type ShortcutContextMap } from "@/components/shortcut-row";
 import { dashboardShortcutSet } from "@/lib/dashboard-shortcuts";
 import { useDashboardShortcuts } from "@/lib/dashboard-shortcuts-context";
@@ -140,27 +159,41 @@ function ShortcutsTabSection({
   return (
     <div className="pp-shortcuts-section">
       <div className="pp-shortcuts-search-section">
-        <input
-          className="pp-shortcuts-search-input"
-          type="text"
-          value={filterTerm}
-          placeholder={tr("shortcuts.title")}
-          aria-label={tr("shortcuts.title")}
-          autoFocus
-          onChange={(event) => onSearchTermChange(event.target.value)}
-        />
-        {filterTerm !== "" ? (
+        <div className="pp-shortcuts-search-box">
+          <div className="pp-shortcuts-search-input-wrapper">
+            <span className="pp-shortcuts-icon-box">
+              <SearchIcon small />
+            </span>
+            <input
+              className="pp-shortcuts-search-input"
+              type="text"
+              value={filterTerm}
+              placeholder={tr("shortcuts.title")}
+              aria-label={tr("shortcuts.title")}
+              autoFocus
+              onChange={(event) => onSearchTermChange(event.target.value)}
+            />
+            {filterTerm !== "" ? (
+              <button
+                type="button"
+                className="pp-shortcuts-search-clear"
+                aria-label="shortcuts-clear-search"
+                onClick={() => onSearchTermChange("")}
+              >
+                <span className="pp-shortcuts-icon-box">
+                  <DeleteTextIcon small />
+                </span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {hasCustomShortcuts ? (
           <button
             type="button"
-            className="pp-shortcuts-search-clear"
-            aria-label="shortcuts-clear-search"
-            onClick={() => onSearchTermChange("")}
+            className="pp-btn-secondary pp-shortcuts-restore-button"
+            onClick={onRestoreAll}
           >
-            {"\u00D7"}
-          </button>
-        ) : null}
-        {hasCustomShortcuts ? (
-          <button type="button" className="pp-btn-secondary" onClick={onRestoreAll}>
+            <ReloadIcon />
             {tr("dashboard.restore-all-deleted-button")}
           </button>
         ) : null}
@@ -180,7 +213,9 @@ function ShortcutsTabSection({
                     aria-controls={section.id + "-menu"}
                     onClick={() => onToggleSection(section.id)}
                   >
-                    <span aria-hidden="true">{sectionVisible ? "\u25BE" : "\u25B8"}</span>
+                    <span className="pp-shortcuts-icon-box">
+                      {sectionVisible ? <ArrowDownIcon small /> : <ArrowRightIcon small />}
+                    </span>
                     <span className="pp-shortcut-section-name">{section.translation}</span>
                   </button>
                 </h3>
@@ -198,8 +233,12 @@ function ShortcutsTabSection({
                               aria-controls={subsection.id + "-menu"}
                               onClick={() => onToggleSection(subsection.id)}
                             >
-                              <span aria-hidden="true">
-                                {subsectionVisible ? "\u25BE" : "\u25B8"}
+                              <span className="pp-shortcuts-icon-box">
+                                {subsectionVisible ? (
+                                  <ArrowDownIcon small />
+                                ) : (
+                                  <ArrowRightIcon small />
+                                )}
                               </span>
                               <span className="pp-shortcut-subsection-name">
                                 {subsection.translation}
@@ -268,6 +307,7 @@ export default function SettingsShortcutsPage() {
 
   const [tab, setTab] = useState<ShortcutsTab>("all");
   const [openSectionsByTab, setOpenSectionsByTab] = useState<Record<string, string[]>>({});
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
 
   // The three registries (dsc/shortcuts; wsc/shortcuts + psc/shortcuts;
   // vsc/shortcuts) with the overrides applied: what the tree renders and what
@@ -404,6 +444,30 @@ export default function SettingsShortcutsPage() {
     { id: "disabled", label: tr("shortcuts.disabled"), testId: "disabled" },
   ];
 
+  // dropdown-menu*: the footer groups import and export behind one trigger,
+  // and the CLJS only lists the export entry when there is something to
+  // export.
+  const menuEntries: MenuEntry[] = [
+    {
+      type: "item",
+      id: "import",
+      label: tr("labels.import"),
+      onSelect: () => {
+        void onImportFile();
+      },
+    },
+    ...(hasCustomShortcuts
+      ? [
+          {
+            type: "item" as const,
+            id: "export",
+            label: tr("labels.export"),
+            onSelect: onExport,
+          },
+        ]
+      : []),
+  ];
+
   return (
     <section
       className="pp-dashboard-settings pp-dashboard-settings-shortcuts"
@@ -411,23 +475,31 @@ export default function SettingsShortcutsPage() {
     >
       <div className="pp-form-container">
         <h2 id="shortcuts-section-title">{tr("label.shortcuts")}</h2>
-        <p className="pp-shortcuts-description">{tr("shortcuts.reload-hint")}</p>
+        <p className="pp-shortcuts-description">
+          <InfoIcon />
+          {tr("shortcuts.reload-hint")}
+        </p>
 
-        <div className="pp-shortcuts-tabs" role="tablist" aria-label={tr("shortcuts.page")}>
-          {tabs.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === item.id}
-              data-testid={item.testId}
-              className={tab === item.id ? "pp-shortcuts-tab selected" : "pp-shortcuts-tab"}
-              onClick={() => setTab(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <nav className="pp-shortcuts-tabs">
+          <ul className="pp-shortcuts-tab-list" role="tablist" aria-label={tr("shortcuts.page")}>
+            {tabs.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === item.id}
+                  title={item.label}
+                  tabIndex={tab === item.id ? undefined : -1}
+                  data-testid={item.testId}
+                  className={tab === item.id ? "pp-shortcuts-tab selected" : "pp-shortcuts-tab"}
+                  onClick={() => setTab(item.id)}
+                >
+                  {item.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
 
         <ShortcutsTabSection
           key={tab}
@@ -453,13 +525,13 @@ export default function SettingsShortcutsPage() {
         <footer className="pp-shortcuts-footer">
           <div className="pp-shortcuts-info">
             <div className="pp-shortcuts-info-wrapper">
-              <span className="pp-shortcuts-customized-dot" aria-hidden="true" />
+              <span className="pp-shortcuts-dot-wrapper" aria-hidden="true">
+                <span className="pp-shortcuts-customized-dot" />
+              </span>
               <p className="pp-shortcuts-text">{tr("shortcuts.personalized")}</p>
             </div>
             <div className="pp-shortcuts-info-wrapper">
-              <span className="pp-shortcuts-detach-icon" aria-hidden="true">
-                {"\u26D3"}
-              </span>
+              <BrokenLinkIcon className="pp-shortcuts-not-assigned-icon" />
               <p className="pp-shortcuts-text">{tr("shortcuts.disabled")}</p>
             </div>
           </div>
@@ -468,16 +540,20 @@ export default function SettingsShortcutsPage() {
             <button
               type="button"
               className="pp-btn-secondary"
-              onClick={() => {
-                void onImportFile();
-              }}
+              onClick={(event) =>
+                setMenuAnchor(menuAnchorFromElement(event.currentTarget, "bottom-end"))
+              }
             >
-              {tr("labels.import")}
+              <ImportExportIcon />
+              {tr("shortcuts.import-export")}
             </button>
-            {hasCustomShortcuts ? (
-              <button type="button" className="pp-btn-secondary" onClick={onExport}>
-                {tr("labels.export")}
-              </button>
+            {menuAnchor !== null ? (
+              <DashboardMenu
+                anchor={menuAnchor}
+                entries={menuEntries}
+                ariaLabel={tr("shortcuts.import-export")}
+                onClose={() => setMenuAnchor(null)}
+              />
             ) : null}
           </div>
         </footer>
