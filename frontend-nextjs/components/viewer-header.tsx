@@ -4,8 +4,7 @@
 // section buttons and the options zone (the flows / interactions / comments
 // menus, the zoom widget, edit link, fullscreen, share and the login link).
 // The progress widget stays out: the viewer never exports, and the CLJS
-// progress-widget renders nothing outside an export run. Inspect is a
-// recorded F6.6 debt (D23); its menu and panel are not here yet.
+// progress-widget renders nothing outside an export run.
 //
 // The dropdown is ported from app.main.ui.components.dropdown. The CLJS
 // relies on stop-propagation to keep the open dropdown from closing on a
@@ -20,6 +19,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from "rea
 import {
   AddIcon,
   ArrowIcon,
+  CodeIcon,
   CommentsIcon,
   CurveIcon,
   ExpandIcon,
@@ -30,7 +30,11 @@ import {
 } from "@/components/viewer-icons";
 import { tr } from "@/lib/i18n";
 import { isMacos, macShift, splitSc } from "@/lib/shortcuts";
-import { canShowCommentsButton, type ViewerSection } from "@/lib/viewer-sections";
+import {
+  canShowCommentsButton,
+  canShowInspectButton,
+  type ViewerSection,
+} from "@/lib/viewer-sections";
 import type { CommentsFilter } from "@/lib/workspace-store";
 import {
   formatPercent,
@@ -662,6 +666,22 @@ export function ViewerHeader({
             onClick={() => onGoToSection("comments")}
           >
             <CommentsIcon />
+          </button>
+        ) : null}
+        {/* go-to-inspect: a team member, or a share-link visitor who may
+            inspect. Without a session the section gate sends the visitor to
+            the login route. */}
+        {canShowInspectButton(permissions) ? (
+          <button
+            type="button"
+            className={
+              section === "inspect" ? "pp-mode-zone-btn pp-selected" : "pp-mode-zone-btn"
+            }
+            data-value="inspect"
+            title={tr("viewer.header.inspect-section", "G I")}
+            onClick={() => onGoToSection("inspect")}
+          >
+            <CodeIcon />
           </button>
         ) : null}
       </div>

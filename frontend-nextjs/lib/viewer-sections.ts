@@ -13,9 +13,8 @@
 //   button through in-team, while viewer-content* still requires can-edit to
 //   render the section. That combination falls back to interactions, like the
 //   original.
-// - The shell renders interactions and comments; inspect stays a recorded
-//   debt (D23), so resolveViewerSection accepts it only when the permissions
-//   would, and page.tsx renders interactions for it until the panel lands.
+// - The shell renders all three sections: interactions, comments and
+//   inspect (D23).
 
 export const VIEWER_SECTIONS = ["interactions", "comments", "inspect"] as const;
 
@@ -74,16 +73,6 @@ export function resolveViewerSection(
 ): ViewerSection {
   if (isViewerSection(value) && canAccessSection(value, permissions)) return value;
   return "interactions";
-}
-
-// The section the shell can draw today: inspect passes the permission gate
-// but its panel is not ported yet (D23), so the page renders interactions.
-export function renderableViewerSection(
-  value: string | null,
-  permissions: ViewerPermissions,
-): ViewerSection {
-  const section = resolveViewerSection(value, permissions);
-  return section === "inspect" ? "interactions" : section;
 }
 
 // header navigate / go-to-inspect: interactions is always reachable; every

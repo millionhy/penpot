@@ -1617,3 +1617,562 @@
 .pp-viewer-go-next--comment-sidebar {
   right: 17.5rem; /* $s-280 without a token */
 }
+
+/* --- inspect (D23): viewer/inspect.scss, inspect/left_sidebar.scss,
+   inspect/right_sidebar.scss, inspect/attributes.scss and the
+   attributes/{geometry,fill}.scss rows. The section stops wrapping and
+   clipping while the panel is open.
+
+   Deviations: the left bar is 16rem (the CLJS $s-256 has no token), the
+   right bar drops the 1px top border of .sidebar-container (its
+   --search-bar-input-border-color has no pair here) and keeps the panel
+   background, every attribute row is 32px (the CLJS geometry rows are
+   36px), and the two switchers are native selects, as elsewhere in the
+   shell. */
+
+.pp-viewer-section--inspect {
+  align-items: stretch;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.pp-inspect {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+/* Left bar: 256px, the frame and its subtree. */
+
+.pp-inspect-layers {
+  background-color: var(--color-background-primary); /* --panel-background-color */
+  flex: 0 0 auto;
+  height: 100%;
+  width: 16rem; /* $s-256 without a token */
+}
+
+.pp-inspect-layers-inside {
+  display: grid;
+  grid-template-columns: 100%;
+  grid-template-rows: 100%;
+  height: calc(100% - var(--b-2));
+  overflow-y: auto;
+  padding-top: var(--sp-s);
+}
+
+.pp-inspect-element-list {
+  display: flex;
+  flex-direction: column;
+  height: fit-content;
+}
+
+.pp-inspect-layer-row {
+  align-items: center;
+  background-color: var(--color-background-primary);
+  border: var(--b-2) solid transparent;
+  cursor: pointer;
+  display: flex;
+  height: var(--sz-36);
+  min-width: 0;
+}
+
+.pp-inspect-layer-row:hover {
+  background-color: var(--color-background-secondary);
+}
+
+.pp-inspect-layer-row--selected,
+.pp-inspect-layer-row[aria-selected="true"] {
+  background-color: var(--color-background-quaternary);
+}
+
+.pp-inspect-layer-row:focus-visible {
+  outline: var(--b-2) solid var(--color-accent-primary);
+  outline-offset: calc(-1 * var(--b-2));
+}
+
+.pp-inspect-layer-indent {
+  flex-shrink: 0;
+  height: var(--sz-16);
+  min-width: calc(var(--pp-inspect-depth, 0) * var(--sz-24));
+}
+
+.pp-inspect-layer-body {
+  align-items: center;
+  display: grid;
+  gap: var(--sp-xs);
+  grid-template-columns: auto minmax(0, 1fr);
+  height: var(--sz-32);
+  min-width: 0;
+  width: calc(100% - var(--pp-inspect-depth, 0) * var(--sz-24));
+}
+
+.pp-inspect-layer-content {
+  align-items: center;
+  display: flex;
+  height: 100%;
+}
+
+.pp-inspect-layer-toggle {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  height: var(--sz-32);
+  justify-content: center;
+  padding: 0;
+  width: var(--sz-24);
+}
+
+.pp-inspect-layer-toggle--leaf {
+  cursor: default;
+}
+
+.pp-inspect-layer-toggle .pp-workspace-icon {
+  height: var(--sz-12);
+  stroke-width: 1.33;
+  width: var(--sz-12);
+}
+
+.pp-inspect-layer-toggle--expanded .pp-workspace-icon {
+  transform: rotate(90deg);
+}
+
+.pp-inspect-layer-icon {
+  align-items: center;
+  color: var(--color-foreground-secondary);
+  display: flex;
+  flex-shrink: 0;
+  height: var(--sz-32);
+  justify-content: center;
+  width: var(--sz-24);
+}
+
+.pp-inspect-layer-icon svg {
+  fill: none;
+  height: var(--sz-16);
+  stroke: currentColor;
+  width: var(--sz-16);
+}
+
+.pp-inspect-layer-name {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  line-height: 16.8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-inspect-layer-row:hover .pp-inspect-layer-icon,
+.pp-inspect-layer-row:hover .pp-inspect-layer-toggle,
+.pp-inspect-layer-row:hover .pp-inspect-layer-name,
+.pp-inspect-layer-row--selected .pp-inspect-layer-icon,
+.pp-inspect-layer-row--selected .pp-inspect-layer-toggle,
+.pp-inspect-layer-row--selected .pp-inspect-layer-name,
+.pp-inspect-layer-row[aria-selected="true"] .pp-inspect-layer-icon,
+.pp-inspect-layer-row[aria-selected="true"] .pp-inspect-layer-toggle,
+.pp-inspect-layer-row[aria-selected="true"] .pp-inspect-layer-name {
+  color: var(--color-accent-primary);
+}
+
+/* Centre pane: the frame canvas and the selection overlay. */
+
+.pp-inspect-svg-wrapper {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: 100%;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.pp-inspect-svg-container {
+  align-items: center;
+  display: grid;
+  height: 100%;
+  justify-content: safe center;
+  margin: 0 auto;
+  overflow: auto;
+  width: 100%;
+}
+
+.pp-inspect-overlay {
+  display: block;
+}
+
+.pp-inspect-overlay text {
+  font-family: var(--font-family-base);
+}
+
+/* Right bar: the shape info, the tab switcher and the sections. */
+
+.pp-inspect-sidebar {
+  background-color: var(--color-background-primary); /* --panel-background-color */
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  width: 19.875rem; /* $right-sidebar-width (318px) */
+}
+
+.pp-inspect-tool-windows {
+  display: grid;
+  gap: var(--sp-s);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.pp-inspect-shape-info {
+  align-items: center;
+  display: grid;
+  gap: var(--sp-s);
+  grid-template-columns: auto minmax(0, 1fr);
+  height: var(--sz-32);
+  padding-inline-start: var(--sp-m);
+}
+
+.pp-inspect-shape-info--subtitle {
+  align-items: flex-start;
+  height: fit-content;
+}
+
+.pp-inspect-shape-icon {
+  align-items: center;
+  color: var(--color-foreground-primary);
+  display: flex;
+  height: var(--sz-32);
+  justify-content: center;
+}
+
+.pp-inspect-shape-icon svg {
+  fill: none;
+  height: var(--sz-16);
+  stroke: currentColor;
+  width: var(--sz-16);
+}
+
+.pp-inspect-shape-info > div:last-child {
+  min-width: 0;
+}
+
+.pp-inspect-layer-title {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-regular);
+  height: var(--sz-32);
+  line-height: var(--lh-compact);
+  overflow: hidden;
+  padding: var(--sp-s) 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-inspect-layer-title--subtitle {
+  height: fit-content;
+  padding-block-end: 0;
+}
+
+.pp-inspect-layer-subtitle {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  line-height: var(--lh-compact);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-inspect-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pp-inspect-tab-switcher {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-m);
+  justify-content: space-between;
+  padding: var(--sp-s) var(--sp-m);
+}
+
+.pp-inspect-tab-switcher-label {
+  color: var(--color-foreground-primary);
+  flex: 0 1 40%;
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
+}
+
+.pp-inspect-tab-switcher-controls {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: var(--sp-s);
+  justify-content: flex-end;
+}
+
+.pp-inspect-select {
+  background-color: transparent;
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  color: var(--color-foreground-primary);
+  font-family: inherit;
+  font-size: var(--fs-12);
+  height: var(--sz-28);
+  padding: 0 var(--sp-xs);
+}
+
+.pp-inspect-select--color {
+  flex: 0 0 65px; /* the CLJS $s-65 floor */
+}
+
+.pp-inspect-tab-switcher-controls .pp-inspect-select:not(.pp-inspect-select--color) {
+  flex: 0 0 110px; /* the CLJS $s-110 floor */
+}
+
+.pp-inspect-select:disabled {
+  color: var(--color-foreground-secondary);
+  cursor: default;
+}
+
+.pp-inspect-tab {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pp-inspect-attributes {
+  background-color: var(--color-background-secondary); /* --low-emphasis-background */
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-l);
+  height: 100%;
+  overflow: hidden auto;
+  padding: var(--sp-s) var(--sp-m) 0;
+  scrollbar-gutter: stable;
+}
+
+.pp-inspect-block {
+  border-block-end: var(--b-2) solid var(--color-background-primary); /* --box-border-color */
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+}
+
+.pp-inspect-title {
+  align-items: center;
+  color: var(--color-foreground-primary);
+  display: flex;
+  height: var(--sz-32);
+  justify-content: space-between;
+  min-height: var(--sz-32);
+}
+
+.pp-inspect-title-text {
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-dense);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pp-inspect-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-inspect-row {
+  align-items: center;
+  display: grid;
+  gap: var(--sp-xs);
+  grid-template-columns: 1fr 3fr;
+  height: var(--sz-32);
+}
+
+.pp-inspect-row-label {
+  color: var(--color-foreground-secondary);
+  display: -webkit-box;
+  font-size: var(--fs-12);
+  line-height: var(--lh-compact);
+  margin: auto 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  width: 5.75rem; /* $s-92 without a token */
+}
+
+.pp-inspect-row-value {
+  align-items: center;
+  color: var(--color-foreground-primary);
+  display: flex;
+  font-size: var(--fs-12);
+  line-height: var(--lh-compact);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pp-inspect-row--subtitle,
+.pp-inspect-row--text {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pp-inspect-row--subtitle .pp-inspect-row-value {
+  color: var(--color-foreground-secondary);
+}
+
+.pp-inspect-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* copy-button*: the value is the button, its 12px icon appears on hover. */
+
+.pp-inspect-copy {
+  align-items: center;
+  background: none;
+  border: var(--b-1) solid transparent;
+  border-radius: var(--br-8);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: inherit;
+  gap: var(--sp-xs);
+  height: var(--sz-32);
+  justify-content: space-between;
+  line-height: inherit;
+  margin: 0;
+  min-width: 0;
+  padding: 0 var(--sp-xs);
+  text-align: left;
+  width: 100%;
+}
+
+.pp-inspect-copy:hover:not(:disabled) {
+  background-color: var(--color-background-tertiary);
+}
+
+.pp-inspect-copy:disabled {
+  cursor: default;
+}
+
+.pp-inspect-copy-content {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-inspect-copy-icon {
+  align-items: center;
+  color: var(--color-foreground-secondary);
+  display: none;
+  flex: 0 0 auto;
+  height: var(--sz-32);
+  justify-content: center;
+  width: var(--sz-28);
+}
+
+.pp-inspect-copy-icon svg {
+  fill: none;
+  height: var(--sz-12);
+  stroke: currentColor;
+  stroke-width: 1.33px;
+  width: var(--sz-12);
+}
+
+.pp-inspect-copy:hover:not(:disabled) .pp-inspect-copy-icon,
+.pp-inspect-copy:focus-visible .pp-inspect-copy-icon {
+  display: flex;
+}
+
+.pp-inspect-swatch {
+  border-radius: 50%;
+  box-shadow: 0 0 0 var(--b-1) var(--color-background-quaternary);
+  flex: 0 0 auto;
+  height: var(--sz-16);
+  margin-inline-end: var(--sp-s);
+  width: var(--sz-16);
+}
+
+.pp-inspect-value {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+  min-width: 0;
+}
+
+.pp-inspect-value-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-inspect-value-hint {
+  color: var(--color-foreground-secondary);
+  flex: 0 0 auto;
+}
+
+.pp-inspect-title-copy {
+  flex: 0 0 auto;
+  height: var(--sz-28);
+  padding: 0;
+  width: var(--sz-28);
+}
+
+.pp-inspect-title-copy .pp-inspect-copy-content {
+  display: none;
+}
+
+.pp-inspect-title:hover .pp-inspect-title-copy .pp-inspect-copy-icon,
+.pp-inspect-title-copy:focus-visible .pp-inspect-copy-icon {
+  display: flex;
+}
+
+/* Empty sidebar: two hints and the help link. */
+
+.pp-inspect-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xxxl);
+  margin: var(--sp-xxxl) auto;
+  width: var(--sz-200);
+}
+
+.pp-inspect-empty-row {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-12);
+  line-height: var(--lh-normal);
+  text-align: center;
+}
+
+.pp-inspect-empty-button {
+  align-self: center;
+  background-color: var(--color-accent-primary);
+  border-radius: var(--br-8);
+  color: var(--color-static-white);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-medium);
+  padding: var(--sp-s) var(--sp-l);
+  text-decoration: none;
+}
+
+.pp-inspect-empty-button:hover {
+  background-color: var(--color-accent-tertiary);
+}

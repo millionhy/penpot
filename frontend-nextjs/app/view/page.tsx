@@ -52,8 +52,8 @@
 //   finishes, and a toggle close inverts the animation. A navigation whose
 //   origin frame cannot resolve drops the pending entry instead of
 //   dereferencing a missing viewport like the CLJS would.
-// - Two registered shortcuts stay unbound (select-all, open-inspect) so
-//   their native browser keys keep working; see lib/viewer-shortcuts.
+// - All 13 viewer shortcuts bind: select-all drives the inspect selection
+//   through the panel handle and open-inspect (G I) reaches the section.
 // - toggle-theme persists through update-profile without the analytics
 //   origin marker, like the dashboard provider.
 // - The comments section (D22) ports comments-layer and comments-sidebar*:
@@ -66,8 +66,9 @@
 // - ?share= opens the dialog once per visit for a team admin (the CLJS effect
 //   re-runs on every permissions / share change); closing it leaves the
 //   parameter in the URL, like the original.
-// - Inspect stays a recorded debt (D23): a request for it renders the
-//   interactions section and the URL is normalized to match.
+// - The inspect section (D23) renders components/viewer-inspect: the layer
+//   tree, the frame canvas with its selection overlay and the computed panel.
+//   Its own header comment records the panel-level deviations.
 
 import {
   useCallback,
@@ -86,12 +87,17 @@ import { PenpotLoader } from "@/components/penpot-loader";
 import { QueryParams } from "@/components/query-params";
 import { ViewerCommentsLayer } from "@/components/viewer-comments-layer";
 import { ViewerHeader, type SitemapPage } from "@/components/viewer-header";
+import {
+  ViewerInspect,
+  type ViewerInspectHandle,
+} from "@/components/viewer-inspect";
 import { ViewerOverlay } from "@/components/viewer-overlay";
 import { ViewerPagination } from "@/components/viewer-pagination";
 import { ViewerShareModal } from "@/components/viewer-share-modal";
 import { ViewerThumbnails } from "@/components/viewer-thumbnails";
 import { ViewerWasmViewport, type ViewerWasmBounds } from "@/components/viewer-wasm-viewport";
 import { WorkspaceCommentsPanel } from "@/components/workspace-comments-panel";
+import { config } from "@/lib/config";
 import { dashboardHref, workspaceHref } from "@/lib/dashboard";
 import { nextTheme } from "@/lib/dashboard-shortcuts-runtime";
 import { useDocumentTitle } from "@/lib/dom";
@@ -120,8 +126,8 @@ import {
 } from "@/lib/viewer-interactions";
 import { closeOverlay, openOverlay } from "@/lib/viewer-overlays";
 import {
-  renderableViewerSection,
   requiresLogin,
+  resolveViewerSection,
   type ViewerSection,
 } from "@/lib/viewer-sections";
 import { type ShareLink } from "@/lib/viewer-share-links";
@@ -268,9 +274,11 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
 
   // The containers the animations move (viewer-wrapper refs) and the open
   // overlay list as the action handlers see it (the CLJS handlers read the
-  // store at event time).
+  // store at event time). The inspect handle runs select-all (dv/select-all)
+  // against the panel's own selection state.
   const currentViewportRef = useRef<HTMLDivElement | null>(null);
   const origViewportRef = useRef<HTMLDivElement | null>(null);
+  const inspectRef = useRef<ViewerInspectHandle | null>(null);
   const overlaysRef = useRef<OverlaySpec[]>(overlays);
   useEffect(() => {
     overlaysRef.current = overlays;
@@ -387,9 +395,8 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   const inTeam = permissions["in-team"] === true;
   const isLogged = permissions["is-logged"] === true;
   const isAdmin = permissions["is-admin"] === true;
-  // The section after the permission gate; inspect renders interactions
-  // until its panel lands (D23, renderableViewerSection).
-  const section: ViewerSection = renderableViewerSection(query.section, permissions);
+  // The section after the permission gate.
+  const section: ViewerSection = resolveViewerSection(query.section, permissions);
 
   // The comments slice (threads, filters, panel flags) lives in the workspace
   // store, so the header menu, the pins and the sidebar share one state.
@@ -524,9 +531,8 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     setNormalizedFileId(fileId);
   }, [data, fileId, query, frames, page, router, normalizedFileId]);
 
-  // viewer-content*: a section that is not allowed (the shell renders only
-  // interactions and comments) falls back to interactions, and the URL is
-  // normalized to the rendered section.
+  // viewer-content*: a section that is not allowed falls back to
+  // interactions, and the URL is normalized to the rendered section.
   useEffect(() => {
     if (data === null) return;
     if (query.section === null || query.section === section) return;
@@ -704,6 +710,16 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   const handleGoToComments = useCallback(() => {
     handleGoToSection("comments");
   }, [handleGoToSection]);
+
+  // G I: the inspect section, behind the same login gate.
+  const handleGoToInspect = useCallback(() => {
+    handleGoToSection("inspect");
+  }, [handleGoToSection]);
+
+  // dv/select-all: the inspect panel expands its selection to the whole frame.
+  const handleSelectAll = useCallback(() => {
+    inspectRef.current?.selectAll();
+  }, []);
 
   // The flows menu pick: dv/go-to-frame (:starting-frame flow), which
   // clears the open overlays and resolves the index with the (or index 0)
@@ -1114,8 +1130,10 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
       prevFrame: handlePrev,
       nextFrame: handleNext,
       toggleTheme: handleToggleTheme,
+      selectAll: handleSelectAll,
       goToInteractions: handleGoToInteractions,
       goToComments: handleGoToComments,
+      goToInspect: handleGoToInspect,
       goToWorkspace: handleGoToWorkspace,
     }),
     [
@@ -1127,8 +1145,10 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
       handlePrev,
       handleNext,
       handleToggleTheme,
+      handleSelectAll,
       handleGoToInteractions,
       handleGoToComments,
+      handleGoToInspect,
       handleGoToWorkspace,
     ],
   );
@@ -1195,6 +1215,27 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
       <section className="pp-empty-state">
         {query.index !== null ? <span>{tr("viewer.frame-not-found")}</span> : null}
       </section>
+    );
+  } else if (section === "inspect") {
+    // viewer-content* :inspect: the panel carries its own pagination and the
+    // three-column layout (left tree, frame canvas, computed sidebar).
+    content = (
+      <ViewerInspect
+        ref={inspectRef}
+        components={data.file.data.components ?? {}}
+        fileId={fileId}
+        frame={frame}
+        index={displayIndex}
+        numFrames={frames.length}
+        objects={page.objects}
+        onFirst={handleFirst}
+        onNext={handleNext}
+        onPrev={handlePrev}
+        pageId={page.id}
+        publicUri={config.publicUri}
+        shareId={shareId}
+        zoom={zoom}
+      />
     );
   } else {
     content = (
@@ -1316,7 +1357,12 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
         <section
           id="viewer-section"
           data-viewer-section="true"
-          className="pp-viewer-section"
+          data-section={section}
+          className={
+            section === "inspect"
+              ? "pp-viewer-section pp-viewer-section--inspect"
+              : "pp-viewer-section"
+          }
           onClick={onClickScreen}
         >
           {content}

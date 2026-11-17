@@ -28,29 +28,25 @@ import {
 } from "@/lib/shortcuts";
 import {
   runViewerShortcut,
-  unmigratedViewerShortcuts,
   viewerShortcuts,
   type ViewerShortcutActions,
   type ViewerShortcutKey,
 } from "@/lib/viewer-shortcuts";
 
 // The registry as matcher bindings, with the :viewer group overrides applied
-// (the CLJS mounts the set under that group key). The unmigrated shortcuts
-// are filtered out so their default commands keep their native browser
-// behaviour. A command cleared to "" stays in the binding:
-// canonicalCommands("") yields no combos, so the matcher never fires it.
+// (the CLJS mounts the set under that group key). A command cleared to ""
+// stays in the binding: canonicalCommands("") yields no combos, so the
+// matcher never fires it.
 export function buildViewerBindings(
   macos: boolean,
   customs: CustomShortcuts | null | undefined,
   actions: ViewerShortcutActions,
 ): ShortcutBinding[] {
   const definitions = applyCustomOverrides(viewerShortcuts(macos), customs, "viewer");
-  return Object.entries(definitions)
-    .filter(([key]) => !(unmigratedViewerShortcuts as readonly string[]).includes(key))
-    .map(([key, definition]) => ({
-      command: definition.command,
-      run: () => runViewerShortcut(key as ViewerShortcutKey, actions),
-    }));
+  return Object.entries(definitions).map(([key, definition]) => ({
+    command: definition.command,
+    run: () => runViewerShortcut(key as ViewerShortcutKey, actions),
+  }));
 }
 
 // The event target in the shape the matcher's stop guard reads (mousetrap

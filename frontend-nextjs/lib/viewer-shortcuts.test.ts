@@ -3,7 +3,6 @@ import { tr } from "@/lib/i18n";
 import { createShortcutMatcher, type CustomShortcuts } from "@/lib/shortcuts";
 import {
   runViewerShortcut,
-  unmigratedViewerShortcuts,
   viewerShortcuts,
   type ViewerShortcutActions,
   type ViewerShortcutKey,
@@ -117,12 +116,6 @@ describe("viewerShortcuts", () => {
   });
 });
 
-describe("unmigratedViewerShortcuts", () => {
-  it("lists the two shortcuts without a shell consumer", () => {
-    expect(unmigratedViewerShortcuts).toEqual(["select-all", "open-inspect"]);
-  });
-});
-
 function fakeActions() {
   return {
     increaseZoom: vi.fn(),
@@ -133,14 +126,16 @@ function fakeActions() {
     prevFrame: vi.fn(),
     nextFrame: vi.fn(),
     toggleTheme: vi.fn(),
+    selectAll: vi.fn(),
     goToInteractions: vi.fn(),
     goToComments: vi.fn(),
+    goToInspect: vi.fn(),
     goToWorkspace: vi.fn(),
   } satisfies ViewerShortcutActions;
 }
 
 describe("runViewerShortcut", () => {
-  it("dispatches every migrated key to its action", () => {
+  it("dispatches every key to its action", () => {
     const actions = fakeActions();
     runViewerShortcut("increase-zoom", actions);
     runViewerShortcut("decrease-zoom", actions);
@@ -150,8 +145,10 @@ describe("runViewerShortcut", () => {
     runViewerShortcut("prev-frame", actions);
     runViewerShortcut("next-frame", actions);
     runViewerShortcut("toggle-theme", actions);
+    runViewerShortcut("select-all", actions);
     runViewerShortcut("open-interactions", actions);
     runViewerShortcut("open-comments", actions);
+    runViewerShortcut("open-inspect", actions);
     runViewerShortcut("open-workspace", actions);
     expect(actions.increaseZoom).toHaveBeenCalledTimes(1);
     expect(actions.decreaseZoom).toHaveBeenCalledTimes(1);
@@ -161,33 +158,28 @@ describe("runViewerShortcut", () => {
     expect(actions.prevFrame).toHaveBeenCalledTimes(1);
     expect(actions.nextFrame).toHaveBeenCalledTimes(1);
     expect(actions.toggleTheme).toHaveBeenCalledTimes(1);
+    expect(actions.selectAll).toHaveBeenCalledTimes(1);
     expect(actions.goToInteractions).toHaveBeenCalledTimes(1);
     expect(actions.goToComments).toHaveBeenCalledTimes(1);
+    expect(actions.goToInspect).toHaveBeenCalledTimes(1);
     expect(actions.goToWorkspace).toHaveBeenCalledTimes(1);
-  });
-
-  it("runs the unmigrated keys as no-ops", () => {
-    const actions = fakeActions();
-    runViewerShortcut("select-all", actions);
-    runViewerShortcut("open-inspect", actions);
-    for (const action of Object.values(actions)) {
-      expect(action).not.toHaveBeenCalled();
-    }
   });
 });
 
 describe("buildViewerBindings", () => {
-  it("binds the eleven migrated shortcuts in map order", () => {
+  it("binds all thirteen shortcuts in map order", () => {
     const bindings = buildViewerBindings(false, null, fakeActions());
     expect(bindings.map((binding) => binding.command)).toEqual([
       "+",
       "alt+m",
       "-",
+      "ctrl+a",
       "shift+0",
       "f",
       ["shift+f", "alt+enter"],
       ["left", "up", "shift+enter", "pageup", "shift+space"],
       ["right", "down", "enter", "pagedown", "space"],
+      "g i",
       "g c",
       "g v",
       "g w",
@@ -204,6 +196,8 @@ describe("buildViewerBindings", () => {
     expect(actions.toggleTheme).toHaveBeenCalledTimes(1);
     run("-");
     expect(actions.decreaseZoom).toHaveBeenCalledTimes(1);
+    run("ctrl+a");
+    expect(actions.selectAll).toHaveBeenCalledTimes(1);
     run("shift+0");
     expect(actions.resetZoom).toHaveBeenCalledTimes(1);
     run("f");
@@ -212,6 +206,8 @@ describe("buildViewerBindings", () => {
     expect(actions.goToInteractions).toHaveBeenCalledTimes(1);
     run("g c");
     expect(actions.goToComments).toHaveBeenCalledTimes(1);
+    run("g i");
+    expect(actions.goToInspect).toHaveBeenCalledTimes(1);
     run("g w");
     expect(actions.goToWorkspace).toHaveBeenCalledTimes(1);
     bindings.find((b) => Array.isArray(b.command) && b.command.includes("alt+enter"))!.run();

@@ -14,9 +14,8 @@
 //   shell cannot, because the module also evaluates during SSR.
 //
 // Deviations from the CLJS original, documented:
-// - The registry lists all 13 shortcuts, but two of them are not
-//   implemented in the shell yet and bind nothing; see
-//   unmigratedViewerShortcuts.
+// - All 13 shortcuts bind: select-all feeds the inspect selection and
+//   open-inspect (G I) targets the inspect section, both ported in D23.
 // - The toggle-theme event carries the ::ev/origin "viewer:shortcuts"
 //   analytics marker; the shell has no analytics channel yet.
 
@@ -146,20 +145,10 @@ export function viewerShortcuts(macos: boolean): ViewerShortcuts {
   };
 }
 
-// The shortcuts whose consumer the shell does not port yet. They stay in the
-// registry (the settings tree lists them, like the CLJS one) but bind
-// nothing, so their default commands keep their native browser behaviour:
-// select-all feeds the interactions selection (no consumer in the shell) and
-// open-inspect targets the inspect section, which the shell does not render
-// yet (D23).
-export const unmigratedViewerShortcuts: readonly ViewerShortcutKey[] = [
-  "select-all",
-  "open-inspect",
-];
-
 // What the page provides to run an action: the zoom family, the frame
-// stepping, the fullscreen and theme toggles and the three navigation events
-// (go-to-section :interactions / :comments, go-to-workspace).
+// stepping, the fullscreen and theme toggles, the inspect selection and the
+// four navigation events (go-to-section :interactions / :comments /
+// :inspect, go-to-workspace).
 export interface ViewerShortcutActions {
   increaseZoom: () => void;
   decreaseZoom: () => void;
@@ -169,14 +158,14 @@ export interface ViewerShortcutActions {
   prevFrame: () => void;
   nextFrame: () => void;
   toggleTheme: () => void;
+  selectAll: () => void;
   goToInteractions: () => void;
   goToComments: () => void;
+  goToInspect: () => void;
   goToWorkspace: () => void;
 }
 
-// The dv/* events and page-owned handlers behind each key. The unmigrated
-// keys never reach the bindings, but the switch covers them as no-ops so it
-// stays total over the key union.
+// The dv/* events and page-owned handlers behind each key.
 export function runViewerShortcut(key: ViewerShortcutKey, actions: ViewerShortcutActions): void {
   switch (key) {
     case "increase-zoom":
@@ -203,6 +192,12 @@ export function runViewerShortcut(key: ViewerShortcutKey, actions: ViewerShortcu
     case "toggle-theme":
       actions.toggleTheme();
       break;
+    case "select-all":
+      actions.selectAll();
+      break;
+    case "open-inspect":
+      actions.goToInspect();
+      break;
     case "open-interactions":
       actions.goToInteractions();
       break;
@@ -211,9 +206,6 @@ export function runViewerShortcut(key: ViewerShortcutKey, actions: ViewerShortcu
       break;
     case "open-workspace":
       actions.goToWorkspace();
-      break;
-    case "select-all":
-    case "open-inspect":
       break;
   }
 }

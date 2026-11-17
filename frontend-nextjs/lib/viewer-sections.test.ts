@@ -5,7 +5,6 @@ import {
   canShowCommentsButton,
   canShowInspectButton,
   isViewerSection,
-  renderableViewerSection,
   requiresLogin,
   resolveViewerSection,
 } from "@/lib/viewer-sections";
@@ -107,22 +106,15 @@ describe("resolveViewerSection", () => {
     );
   });
 
+  it("keeps an allowed inspect section", () => {
+    expect(resolveViewerSection("inspect", { ...SHARE_LINK, "who-inspect": "all" })).toBe(
+      "inspect",
+    );
+  });
+
   it("falls back when the section is not allowed", () => {
     expect(resolveViewerSection("comments", SHARE_LINK)).toBe("interactions");
-  });
-});
-
-describe("renderableViewerSection", () => {
-  it("renders interactions for an allowed inspect until the panel lands", () => {
-    expect(
-      renderableViewerSection("inspect", { ...SHARE_LINK, "who-inspect": "all" }),
-    ).toBe("interactions");
-  });
-
-  it("keeps an allowed comments section", () => {
-    expect(
-      renderableViewerSection("comments", { ...MEMBERSHIP, "can-edit": true }),
-    ).toBe("comments");
+    expect(resolveViewerSection("inspect", SHARE_LINK)).toBe("interactions");
   });
 });
 

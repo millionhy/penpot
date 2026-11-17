@@ -121,6 +121,51 @@ export function ClipboardIcon() {
   );
 }
 
+// component.svg: a component main instance, the inspect layer tree (D23).
+export function ComponentIcon() {
+  return (
+    <Icon>
+      <path d="M6.912 1.2a1.54 1.54 0 0 1 2.176 0L14.8 6.912c.6.601.6 1.575 0 2.176L9.088 14.8c-.601.6-1.575.6-2.176 0L1.2 9.088a1.54 1.54 0 0 1 0-2.176L6.912 1.2Zm.755 4.716L5.916 7.667a.47.47 0 0 0 0 .666l1.751 1.751a.47.47 0 0 0 .666 0l1.751-1.751a.47.47 0 0 0 0-.666L8.333 5.916a.47.47 0 0 0-.666 0Z" />
+    </Icon>
+  );
+}
+
+// component-copy.svg: a component instance, the inspect layer tree (D23).
+export function ComponentCopyIcon() {
+  return (
+    <Icon>
+      <path d="M7.162 1.2a1.54 1.54 0 0 1 2.176 0l5.709 5.712a1.538 1.538 0 0 1 0 2.176L9.338 14.8c-.601.6-1.575.6-2.176 0l-5.71-5.712a1.54 1.54 0 0 1 0-2.176L7.162 1.2Z" />
+    </Icon>
+  );
+}
+
+// variant.svg: a variant, the inspect layer tree and subtitle (D23).
+export function VariantIcon() {
+  return (
+    <Icon>
+      <path d="M8.75 1.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm-1.5 13.5a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0ZM8.75 8a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0ZM5.375 4.625a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm0 6.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm5.25 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm0-6.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0ZM1.25 8.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm13.5-1.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
+    </Icon>
+  );
+}
+
+// masked.svg: a masked group, the inspect layer tree (D23).
+export function MaskedIcon() {
+  return (
+    <Icon>
+      <path d="m9.333 10-3.333 3.333-3.333-3.333m10.666-7.333h-4.666c-1.473 0-2.667 1.194-2.667 2.666v8" />
+    </Icon>
+  );
+}
+
+// layers.svg: the multiple-selection icon of the inspect sidebar (D23).
+export function LayersIcon() {
+  return (
+    <Icon>
+      <path d="M1.333 11.333 8 14.667l6.667-3.334M1.333 8 8 11.333 14.667 8M8 1.333 1.333 4.667 8 8l6.667-3.333L8 1.333z" />
+    </Icon>
+  );
+}
+
 // status-tick.svg: the checked mark of the share dialog checkboxes.
 export function StatusTickIcon() {
   return (
