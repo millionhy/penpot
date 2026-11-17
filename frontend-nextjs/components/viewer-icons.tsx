@@ -94,6 +94,42 @@ export function PlayIcon() {
   );
 }
 
+// comments.svg: the comments section button of the header (F6.6).
+export function CommentsIcon() {
+  return (
+    <Icon>
+      <path d="M13.611 7.666a5.585 5.585 0 01-.6 2.534 5.67 5.67 0 01-5.066 3.134 5.586 5.586 0 01-2.534-.6L1.611 14l1.267-3.8a5.585 5.585 0 01-.6-2.534A5.67 5.67 0 017.945 2h.333a5.655 5.655 0 015.333 5.334v.332z" />
+    </Icon>
+  );
+}
+
+// code.svg: the inspect section button (D23, kept beside its neighbours).
+export function CodeIcon() {
+  return (
+    <Icon>
+      <path d="M10.666 12l4-4-4-4M5.333 4l-4 4 4 4" />
+    </Icon>
+  );
+}
+
+// clipboard.svg: the copy button of the share dialog (F6.6).
+export function ClipboardIcon() {
+  return (
+    <Icon>
+      <path d="M3.333 10h-.666a1.334 1.334 0 01-1.334-1.333v-6c0-.737.597-1.334 1.334-1.334h6c.736 0 1.333.597 1.333 1.334v.666M6 8a2 2 0 012-2h4.667c1.103 0 2 .896 2 2v4.667c0 1.103-.897 2-2 2H8c-1.104 0-2-.897-2-2V8z" />
+    </Icon>
+  );
+}
+
+// status-tick.svg: the checked mark of the share dialog checkboxes.
+export function StatusTickIcon() {
+  return (
+    <Icon>
+      <path d="M13.333 4L6 11.333 2.667 8" />
+    </Icon>
+  );
+}
+
 // penpot-logo-icon.svg: the sitemap home link. Not 16px - the stylesheet
 // sizes it (28px) and paints the fill through the class the caller passes.
 export function PenpotLogoIcon(props: SVGProps<SVGSVGElement>) {

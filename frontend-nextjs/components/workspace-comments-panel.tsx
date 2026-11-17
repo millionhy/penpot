@@ -140,9 +140,12 @@ function ReplyEditor({
 export interface WorkspaceCommentsPanelProps {
   // The open page: threads of other pages stay out of the list.
   pageId: string;
+  // The viewer lists the threads of the shown frame alone (comments-sidebar*
+  // filters by frame position); the workspace leaves it unset.
+  frameId?: string | null;
 }
 
-export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) {
+export function WorkspaceCommentsPanel({ pageId, frameId }: WorkspaceCommentsPanelProps) {
   const state = useSyncExternalStore(
     subscribeWorkspace,
     getWorkspaceState,
@@ -164,7 +167,11 @@ export function WorkspaceCommentsPanel({ pageId }: WorkspaceCommentsPanelProps) 
     textareaRef,
   );
 
-  const pageThreads = comments.threads.filter((thread) => thread["page-id"] === pageId);
+  const pageThreads = comments.threads.filter(
+    (thread) =>
+      thread["page-id"] === pageId &&
+      (frameId === undefined || frameId === null || thread["frame-id"] === frameId),
+  );
   const visible = visibleThreads(pageThreads, {
     showResolved: comments.showResolved,
     onlyForProfile: comments.filter === "yours" ? profileId : null,

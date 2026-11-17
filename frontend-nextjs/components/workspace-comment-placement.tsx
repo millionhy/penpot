@@ -7,7 +7,7 @@
 // client point into the world vbox (clientPointToWorld, the inverse of the
 // svg viewBox) and a floating composer at that point edits the draft before
 // the thread is created there (anchored with frameIdForPosition, like the
-// CLJS create-draft + add-comment flow).
+// CLJS create-draft + add-comment flow; a caller-provided frameId wins).
 
 import { useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 
@@ -34,7 +34,14 @@ import {
 const COMPOSER_WIDTH = 300;
 const COMPOSER_HEIGHT = 250;
 
-export function WorkspaceCommentPlacement() {
+export interface WorkspaceCommentPlacementProps {
+  // The frame the draft anchors to; the viewer passes the shown frame (the
+  // CLJS create-draft), the workspace leaves it unset to anchor to the frame
+  // under the picked point.
+  frameId?: string | null;
+}
+
+export function WorkspaceCommentPlacement({ frameId }: WorkspaceCommentPlacementProps = {}) {
   const state = useSyncExternalStore(
     subscribeWorkspace,
     getWorkspaceState,
@@ -74,7 +81,7 @@ export function WorkspaceCommentPlacement() {
     if (!validCommentContent(draft)) return;
     setDraft("");
     mention.close();
-    void createThreadAtPlacement(draft);
+    void createThreadAtPlacement(draft, frameId);
   };
 
   return (

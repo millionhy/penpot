@@ -533,9 +533,19 @@ export function insertMentionToken(
 
 // --- Commands --------------------------------------------------------------
 
+// The optional share-id of the viewer: a link visitor without team
+// membership passes it so the backend permission checks resolve the link
+// instead of the profile. The workspace never sets it.
+function shareParam(shareId: string | null | undefined): { "share-id"?: string } {
+  return shareId === null || shareId === undefined ? {} : { "share-id": shareId };
+}
+
 // get-comment-threads for one file (GET: the command name starts with "get-").
-export function fetchCommentThreads(fileId: string): Promise<CommentThread[]> {
-  const params = { "file-id": fileId } as RpcParams["get-comment-threads"];
+export function fetchCommentThreads(
+  fileId: string,
+  shareId?: string | null,
+): Promise<CommentThread[]> {
+  const params = { "file-id": fileId, ...shareParam(shareId) } as RpcParams["get-comment-threads"];
   return cmd<CommentThread[]>("get-comment-threads", params);
 }
 
@@ -549,14 +559,21 @@ export function fetchUnreadCommentThreads(teamId: string): Promise<CommentThread
 }
 
 // get-comment-thread: the fully resolved single row (owner fields joined).
-export function fetchCommentThread(fileId: string, id: string): Promise<CommentThread> {
-  const params = { "file-id": fileId, id } as RpcParams["get-comment-thread"];
+export function fetchCommentThread(
+  fileId: string,
+  id: string,
+  shareId?: string | null,
+): Promise<CommentThread> {
+  const params = { "file-id": fileId, id, ...shareParam(shareId) } as RpcParams["get-comment-thread"];
   return cmd<CommentThread>("get-comment-thread", params);
 }
 
 // get-comments for one thread.
-export function fetchComments(threadId: string): Promise<Comment[]> {
-  const params = { "thread-id": threadId } as RpcParams["get-comments"];
+export function fetchComments(
+  threadId: string,
+  shareId?: string | null,
+): Promise<Comment[]> {
+  const params = { "thread-id": threadId, ...shareParam(shareId) } as RpcParams["get-comments"];
   return cmd<Comment[]>("get-comments", params);
 }
 
@@ -568,6 +585,8 @@ export interface CreateThreadInput {
   // The frame the position resolves to; the caller derives it with
   // frameIdForPosition when it creates a thread from a canvas click.
   frameId: string;
+  // The viewer share-link, when the thread is created through one.
+  shareId?: string | null;
 }
 
 // create-thread-on-workspace: create-comment-thread then get-comment-thread, so
@@ -580,39 +599,58 @@ export async function createCommentThread(input: CreateThreadInput): Promise<Com
     position: encodeRecordValue("point", input.position),
     content: input.content,
     mentions: extractMentions(input.content),
+    ...shareParam(input.shareId),
   });
-  return fetchCommentThread(input.fileId, created.id ?? "");
+  return fetchCommentThread(input.fileId, created.id ?? "", input.shareId);
 }
 
 // create-comment: an answer inside an existing thread.
-export function addComment(threadId: string, content: string): Promise<Comment> {
+export function addComment(
+  threadId: string,
+  content: string,
+  shareId?: string | null,
+): Promise<Comment> {
   const params = {
     "thread-id": threadId,
     content,
     mentions: extractMentions(content),
+    ...shareParam(shareId),
   } as RpcParams["create-comment"];
   return cmd<Comment>("create-comment", params);
 }
 
 // update-comment: edit the content of an existing comment.
-export function editComment(id: string, content: string): Promise<Comment> {
+export function editComment(
+  id: string,
+  content: string,
+  shareId?: string | null,
+): Promise<Comment> {
   const params = {
     id,
     content,
     mentions: extractMentions(content),
+    ...shareParam(shareId),
   } as RpcParams["update-comment"];
   return cmd<Comment>("update-comment", params);
 }
 
 // update-comment-thread: resolve or reopen a thread.
-export function setThreadResolved(id: string, isResolved: boolean): Promise<unknown> {
-  const params = { id, "is-resolved": isResolved } as RpcParams["update-comment-thread"];
+export function setThreadResolved(
+  id: string,
+  isResolved: boolean,
+  shareId?: string | null,
+): Promise<unknown> {
+  const params = {
+    id,
+    "is-resolved": isResolved,
+    ...shareParam(shareId),
+  } as RpcParams["update-comment-thread"];
   return cmd("update-comment-thread", params);
 }
 
 // update-comment-thread-status: mark one thread read for the current profile.
-export function markThreadRead(id: string): Promise<unknown> {
-  const params = { id } as RpcParams["update-comment-thread-status"];
+export function markThreadRead(id: string, shareId?: string | null): Promise<unknown> {
+  const params = { id, ...shareParam(shareId) } as RpcParams["update-comment-thread-status"];
   return cmd("update-comment-thread-status", params);
 }
 
@@ -627,21 +665,23 @@ export function updateThreadPosition(
   id: string,
   position: CommentPosition,
   frameId: string,
+  shareId?: string | null,
 ): Promise<unknown> {
   return cmd("update-comment-thread-position", {
     id,
     position: encodeRecordValue("point", position),
     "frame-id": frameId,
+    ...shareParam(shareId),
   });
 }
 
 // delete-comment-thread and delete-comment.
-export function deleteThread(id: string): Promise<unknown> {
-  const params = { id } as RpcParams["delete-comment-thread"];
+export function deleteThread(id: string, shareId?: string | null): Promise<unknown> {
+  const params = { id, ...shareParam(shareId) } as RpcParams["delete-comment-thread"];
   return cmd("delete-comment-thread", params);
 }
 
-export function deleteComment(id: string): Promise<unknown> {
-  const params = { id } as RpcParams["delete-comment"];
+export function deleteComment(id: string, shareId?: string | null): Promise<unknown> {
+  const params = { id, ...shareParam(shareId) } as RpcParams["delete-comment"];
   return cmd("delete-comment", params);
 }

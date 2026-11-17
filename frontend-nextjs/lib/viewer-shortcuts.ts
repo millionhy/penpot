@@ -14,7 +14,7 @@
 //   shell cannot, because the module also evaluates during SSR.
 //
 // Deviations from the CLJS original, documented:
-// - The registry lists all 13 shortcuts, but three of them are not
+// - The registry lists all 13 shortcuts, but two of them are not
 //   implemented in the shell yet and bind nothing; see
 //   unmigratedViewerShortcuts.
 // - The toggle-theme event carries the ::ev/origin "viewer:shortcuts"
@@ -149,18 +149,17 @@ export function viewerShortcuts(macos: boolean): ViewerShortcuts {
 // The shortcuts whose consumer the shell does not port yet. They stay in the
 // registry (the settings tree lists them, like the CLJS one) but bind
 // nothing, so their default commands keep their native browser behaviour:
-// select-all feeds the interactions selection (no consumer in the shell),
-// open-inspect and open-comments target sections the shell does not render
-// (page.tsx falls every section back to interactions).
+// select-all feeds the interactions selection (no consumer in the shell) and
+// open-inspect targets the inspect section, which the shell does not render
+// yet (D23).
 export const unmigratedViewerShortcuts: readonly ViewerShortcutKey[] = [
   "select-all",
   "open-inspect",
-  "open-comments",
 ];
 
 // What the page provides to run an action: the zoom family, the frame
-// stepping, the fullscreen and theme toggles and the two navigation events
-// (go-to-section :interactions, go-to-workspace).
+// stepping, the fullscreen and theme toggles and the three navigation events
+// (go-to-section :interactions / :comments, go-to-workspace).
 export interface ViewerShortcutActions {
   increaseZoom: () => void;
   decreaseZoom: () => void;
@@ -171,6 +170,7 @@ export interface ViewerShortcutActions {
   nextFrame: () => void;
   toggleTheme: () => void;
   goToInteractions: () => void;
+  goToComments: () => void;
   goToWorkspace: () => void;
 }
 
@@ -206,12 +206,14 @@ export function runViewerShortcut(key: ViewerShortcutKey, actions: ViewerShortcu
     case "open-interactions":
       actions.goToInteractions();
       break;
+    case "open-comments":
+      actions.goToComments();
+      break;
     case "open-workspace":
       actions.goToWorkspace();
       break;
     case "select-all":
     case "open-inspect":
-    case "open-comments":
       break;
   }
 }

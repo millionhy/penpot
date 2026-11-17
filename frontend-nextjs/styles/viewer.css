@@ -1250,3 +1250,370 @@
 .pp-viewer-message {
   height: 100vh;
 }
+
+/* --- share button and login link (viewer/header.scss) --- */
+
+.pp-share-btn {
+  /* %button-primary */
+  background-color: var(--color-accent-primary);
+  border: var(--b-1) solid var(--color-accent-primary);
+  border-radius: var(--br-8);
+  color: var(--color-background-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  height: var(--sz-32);
+  line-height: var(--lh-dense);
+  margin-left: var(--sp-xs);
+  min-width: 4.5rem; /* $s-72 without a token */
+  text-transform: uppercase;
+}
+
+.pp-go-log-btn {
+  /* %button-tertiary + body-small-typography */
+  background: none;
+  border: 0;
+  border-radius: var(--br-8);
+  color: var(--color-foreground-secondary); /* --button-tertiary-foreground-color-rest */
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  height: var(--sz-32);
+  padding: 0 var(--sp-s);
+}
+
+.pp-go-log-btn:hover {
+  color: var(--color-foreground-primary); /* --button-tertiary-foreground-color-focus */
+}
+
+/* The comments menu separator (viewer/comments.scss .separator): the row
+   bleeds over the dropdown padding, so it spans the whole menu. */
+.pp-dropdown-separator {
+  border-top: var(--b-1) solid var(--color-background-quaternary);
+  height: var(--sp-xs);
+  left: calc(-1 * var(--sp-xs));
+  margin-top: var(--sp-s);
+  position: relative;
+  width: calc(100% + var(--sp-s));
+}
+
+/* --- share dialog (viewer/share_link.scss) ---
+
+   The CLJS docks the dialog under the header (absolute top 52 / right 12 /
+   left calc(100vw - 512px)); the shell keeps the same box with position:
+   fixed, so the header surface never drags it along. --- */
+
+.pp-share-modal {
+  left: calc(100vw - var(--sz-512));
+  position: fixed;
+  right: var(--sp-m);
+  top: 3.25rem; /* $s-52 without a token */
+  z-index: var(--z-index-set); /* $z-index-modal */
+}
+
+.pp-share-dialog {
+  /* %modal-container-base with min-height unset; the CLJS pads the container
+     32px, so the hint sits 34px (border included) off the dialog edge. */
+  background: var(--color-background-primary); /* --modal-background-color */
+  border: var(--b-2) solid var(--color-background-quaternary); /* --modal-border-color */
+  border-radius: var(--br-8);
+  box-shadow: var(--el-shadow-dark);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xxl);
+  padding: var(--sp-xxxl);
+  position: relative;
+}
+
+.pp-share-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* %modal-close-btn-base docks the button in the dialog corner, so the header
+   keeps the title height instead of growing to the 32px button. */
+.pp-share-header .pp-modal-close {
+  height: var(--sz-32);
+  position: absolute;
+  right: var(--sz-6);
+  top: var(--sp-s); /* $s-8 */
+  width: var(--sz-28);
+}
+
+/* The CLJS share title carries uppercase-title-typography (11px), not the
+   18px .pp-modal-title of the settings dialogs; scoped here so the shared
+   title class keeps its size elsewhere. */
+.pp-share-header .pp-modal-title {
+  font-size: 0.6875rem; /* $fs-11 has no token */
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.pp-share-content {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs-12); /* body-small-typography */
+  gap: var(--sp-xxl);
+}
+
+.pp-share-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+}
+
+.pp-share-input-wrapper {
+  align-items: center;
+  background-color: var(--color-background-tertiary); /* --input-background-color */
+  border-radius: var(--br-8);
+  display: flex;
+  height: var(--sz-32);
+  width: 100%;
+}
+
+.pp-share-input {
+  background: none;
+  border: 0;
+  color: var(--color-foreground-primary); /* --input-foreground-color-active */
+  flex-grow: 1;
+  font: inherit;
+  margin: 0;
+  min-width: 0;
+  padding-left: var(--sp-s);
+}
+
+.pp-share-input:focus {
+  outline: none;
+}
+
+.pp-share-copy {
+  align-items: center;
+  display: flex;
+  height: var(--sz-32);
+  justify-content: center;
+  padding: 0;
+  width: var(--sz-28);
+}
+
+.pp-share-copy svg {
+  fill: none;
+  height: var(--sz-16);
+  stroke: var(--color-foreground-primary); /* --icon-foreground-hover */
+  stroke-width: 1px;
+  width: var(--sz-16);
+}
+
+.pp-share-hint-wrapper {
+  /* the CLJS flex-row: centered items, 4px gap */
+  align-items: center;
+  display: flex;
+  gap: var(--sp-xs);
+}
+
+.pp-share-hint {
+  color: var(--color-foreground-secondary); /* --modal-text-foreground-color */
+  flex-grow: 1;
+}
+
+.pp-share-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+  width: 100%;
+}
+
+.pp-share-confirm-description {
+  color: var(--color-foreground-secondary); /* --modal-text-foreground-color */
+  margin-bottom: var(--sp-s);
+}
+
+.pp-share-confirm-actions {
+  display: flex;
+  gap: var(--sp-s);
+  justify-content: flex-end;
+}
+
+.pp-share-permissions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+}
+
+.pp-share-manage {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--color-foreground-secondary); /* --menu-foreground-color-rest */
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  height: var(--sz-32);
+  padding: 0;
+  text-transform: uppercase;
+}
+
+.pp-share-manage-icon {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  margin-right: var(--sz-6);
+}
+
+.pp-share-manage-icon svg {
+  fill: none;
+  height: var(--sz-16);
+  stroke: var(--color-foreground-secondary); /* --icon-foreground */
+  stroke-width: 1px;
+  width: var(--sz-16);
+}
+
+.pp-share-manage-icon--open {
+  transform: rotate(90deg);
+}
+
+.pp-share-pages,
+.pp-share-access {
+  display: flex;
+  width: 100%;
+}
+
+.pp-share-subtitle {
+  align-items: center;
+  color: var(--color-foreground-secondary); /* --modal-text-foreground-color */
+  display: flex;
+  height: var(--sz-32);
+  justify-content: flex-start;
+  width: 8.5rem; /* $s-136 without a token */
+}
+
+.pp-share-items {
+  color: var(--color-foreground-primary); /* --input-foreground-color-active */
+  flex-grow: 1;
+}
+
+.pp-share-select-all {
+  align-items: center;
+  border-bottom: var(--b-1) solid var(--color-background-quaternary); /* --input-border-color-disabled */
+  display: flex;
+  height: var(--sz-32);
+  justify-content: space-between;
+}
+
+.pp-share-page-list {
+  list-style: none;
+  margin: 0;
+  max-height: 13.5rem; /* $s-216 without a token */
+  overflow: hidden auto;
+  padding: 0;
+  scrollbar-gutter: stable;
+}
+
+.pp-share-page {
+  border-bottom: var(--b-1) solid var(--color-background-quaternary);
+}
+
+.pp-share-page:last-child {
+  border-bottom: none;
+}
+
+.pp-share-checkbox {
+  align-items: center;
+  color: var(--color-foreground-primary); /* --input-foreground-color-active */
+  cursor: pointer;
+  display: flex;
+  gap: var(--sp-s);
+  height: var(--sz-32);
+  padding: 0;
+}
+
+.pp-share-check {
+  align-items: center;
+  border: var(--b-1) solid var(--color-background-quaternary); /* --input-checkbox-* */
+  border-radius: var(--br-6);
+  display: flex;
+  flex: none;
+  height: var(--sz-16);
+  justify-content: center;
+  width: var(--sz-16);
+}
+
+.pp-share-check svg {
+  fill: none;
+  height: var(--sz-12);
+  stroke: var(--color-static-white); /* --input-checkbox-foreground-color-active */
+  stroke-width: 1.33px;
+  width: var(--sz-12);
+}
+
+.pp-share-check--checked,
+.pp-share-checkbox--checked .pp-share-check {
+  background-color: var(--color-accent-primary); /* --input-checkbox-background-color-active */
+  border-color: var(--color-accent-primary);
+}
+
+.pp-share-page-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-share-current-tag,
+.pp-share-count {
+  color: var(--color-foreground-secondary); /* --input-foreground-color */
+  font-size: var(--fs-12); /* body-small-typography */
+}
+
+.pp-share-select {
+  background-color: var(--color-background-tertiary); /* --input-background-color */
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  color: var(--color-foreground-primary);
+  font: inherit;
+  height: var(--sz-32);
+  width: 100%;
+}
+
+/* The visually hidden inputs of the page rows: the styled box above carries
+   the look and the tick. */
+.pp-share-visually-hidden {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* --- comments (viewer/comments.scss comments-layer / comments-sidebar) --- */
+
+.pp-viewer-comments-layer {
+  inset: 0;
+  position: absolute;
+  z-index: 1; /* $z-index-1 */
+}
+
+/* The CLJS .comments-sidebar is absolute with no positioned ancestor, so it
+   lands on the viewport; the shell states that intent with position: fixed.
+   Top 48 over the CLJS 44 ($s-44) keeps it clear of the header. */
+.pp-viewer-comments-sidebar {
+  background-color: var(--color-background-primary); /* --panel-background-color */
+  height: calc(100vh - var(--sz-48));
+  overflow-y: auto;
+  position: fixed;
+  right: 0;
+  top: var(--sz-48);
+  width: 19.875rem; /* $right-sidebar-width (318px) */
+  z-index: 10; /* $z-index-10 */
+}
+
+.pp-viewer-go-next--comment-sidebar {
+  right: 17.5rem; /* $s-280 without a token */
+}

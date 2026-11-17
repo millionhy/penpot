@@ -1,10 +1,11 @@
 "use client";
 
-// Header of app.main.ui.viewer (F6.2): the sitemap nav zone, the section
-// button and the options zone (the flows / interactions menus, the zoom
-// widget, edit link, fullscreen). Not migrated yet: the progress widget,
-// the share button and the login link, the comments/inspect mode buttons
-// and their menus (F6.6).
+// Header of app.main.ui.viewer (F6.2, F6.6): the sitemap nav zone, the
+// section buttons and the options zone (the flows / interactions / comments
+// menus, the zoom widget, edit link, fullscreen, share and the login link).
+// The progress widget stays out: the viewer never exports, and the CLJS
+// progress-widget renders nothing outside an export run. Inspect is a
+// recorded F6.6 debt (D23); its menu and panel are not here yet.
 //
 // The dropdown is ported from app.main.ui.components.dropdown. The CLJS
 // relies on stop-propagation to keep the open dropdown from closing on a
@@ -19,6 +20,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from "rea
 import {
   AddIcon,
   ArrowIcon,
+  CommentsIcon,
   CurveIcon,
   ExpandIcon,
   PenpotLogoIcon,
@@ -28,6 +30,8 @@ import {
 } from "@/components/viewer-icons";
 import { tr } from "@/lib/i18n";
 import { isMacos, macShift, splitSc } from "@/lib/shortcuts";
+import { canShowCommentsButton, type ViewerSection } from "@/lib/viewer-sections";
+import type { CommentsFilter } from "@/lib/workspace-store";
 import {
   formatPercent,
   getFrameFlow,
@@ -339,6 +343,119 @@ function InteractionsMenu({ mode, onSelectMode }: InteractionsMenuProps) {
   );
 }
 
+// The three comment filters of the CLJS comments menu, in order.
+const COMMENTS_FILTER_ITEMS: { value: CommentsFilter; labelKey: string }[] = [
+  { value: "all", labelKey: "labels.show-all-comments" },
+  { value: "yours", labelKey: "labels.show-your-comments" },
+  { value: "mentions", labelKey: "labels.show-mentions" },
+];
+
+interface CommentsMenuProps {
+  filter: CommentsFilter;
+  showResolved: boolean;
+  panelOpen: boolean;
+  onSelectFilter: (filter: CommentsFilter) => void;
+  onToggleResolved: () => void;
+  onTogglePanel: () => void;
+}
+
+// comments-menu: the filter entries, the hide-resolved toggle and the
+// comments-list toggle. A pick keeps the dropdown open (the CLJS update-*
+// handlers only emit); the stop-propagation below keeps the trigger from
+// toggling it closed again.
+function CommentsMenu({
+  filter,
+  showResolved,
+  panelOpen,
+  onSelectFilter,
+  onToggleResolved,
+  onTogglePanel,
+}: CommentsMenuProps) {
+  const [open, setOpen] = useState(false);
+  const widgetRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div
+      ref={widgetRef}
+      className="pp-view-options"
+      data-testid="viewer-comments-dropdown"
+      onClick={() => setOpen((value) => !value)}
+    >
+      <span className="pp-dropdown-title">{tr("labels.comments")}</span>
+      <span className="pp-menu-icon-dropdown">
+        <ArrowIcon />
+      </span>
+      <Dropdown show={open} onClose={() => setOpen(false)} container={widgetRef}>
+        <ul className="pp-options-dropdown">
+          {COMMENTS_FILTER_ITEMS.map((item) => {
+            const selected = filter === item.value;
+            return (
+              <li
+                key={item.value}
+                data-value={item.value}
+                className={
+                  selected ? "pp-dropdown-element pp-menu-selected" : "pp-dropdown-element"
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectFilter(item.value);
+                }}
+              >
+                <span className="pp-label">{tr(item.labelKey)}</span>
+                {selected ? (
+                  <span className="pp-icon-check">
+                    <TickIcon />
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
+
+          <li className="pp-dropdown-separator" />
+
+          <li
+            className={
+              !showResolved ? "pp-dropdown-element pp-menu-selected" : "pp-dropdown-element"
+            }
+            data-value={showResolved ? "all" : "pending"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleResolved();
+            }}
+          >
+            <span className="pp-label">{tr("labels.hide-resolved-comments")}</span>
+            {!showResolved ? (
+              <span className="pp-icon-check">
+                <TickIcon />
+              </span>
+            ) : null}
+          </li>
+
+          <li className="pp-dropdown-separator" />
+
+          <li
+            className={
+              panelOpen ? "pp-dropdown-element pp-menu-selected" : "pp-dropdown-element"
+            }
+            data-value={String(panelOpen)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onTogglePanel();
+            }}
+          >
+            <span className="pp-label">{tr("labels.show-comments-list")}</span>
+            {panelOpen ? (
+              <span className="pp-icon-check">
+                <TickIcon />
+              </span>
+            ) : null}
+          </li>
+        </ul>
+      </Dropdown>
+    </div>
+  );
+}
+
 export interface SitemapPage {
   id: string;
   name: string;
@@ -426,16 +543,27 @@ export interface ViewerHeaderProps {
   frameName?: string;
   flows: ViewerFlow[];
   frameId: string | null;
+  section: ViewerSection;
+  permissions: Record<string, unknown>;
+  isLogged: boolean;
   interactionsMode: InteractionsMode;
   zoom: number;
   fullscreen: boolean;
   inTeam: boolean;
+  commentsFilter: CommentsFilter;
+  commentsShowResolved: boolean;
+  commentsPanelOpen: boolean;
   onGoToDashboard: () => void;
   onGoToWorkspace: () => void;
-  onGoToInteractions: () => void;
+  onGoToSection: (section: ViewerSection) => void;
   onGoToPage: (pageId: string) => void;
   onSelectFlow: (flow: ViewerFlow) => void;
   onSelectInteractionsMode: (mode: InteractionsMode) => void;
+  onSelectCommentsFilter: (filter: CommentsFilter) => void;
+  onToggleCommentsResolved: () => void;
+  onToggleCommentsPanel: () => void;
+  onOpenShare: () => void;
+  onLogin: () => void;
   onToggleThumbnails: () => void;
   onCloseThumbnails: () => void;
   onIncreaseZoom: () => void;
@@ -455,16 +583,27 @@ export function ViewerHeader({
   frameName,
   flows,
   frameId,
+  section,
+  permissions,
+  isLogged,
   interactionsMode,
   zoom,
   fullscreen,
   inTeam,
+  commentsFilter,
+  commentsShowResolved,
+  commentsPanelOpen,
   onGoToDashboard,
   onGoToWorkspace,
-  onGoToInteractions,
+  onGoToSection,
   onGoToPage,
   onSelectFlow,
   onSelectInteractionsMode,
+  onSelectCommentsFilter,
+  onToggleCommentsResolved,
+  onToggleCommentsPanel,
+  onOpenShare,
+  onLogin,
   onToggleThumbnails,
   onCloseThumbnails,
   onIncreaseZoom,
@@ -501,23 +640,51 @@ export function ViewerHeader({
         />
       </div>
       <div className="pp-mode-zone">
-        {/* The only section the shell renders is interactions, so the button
-            is always selected and navigating it is a no-op once there. */}
         <button
           type="button"
-          className="pp-mode-zone-btn pp-selected"
+          className={
+            section === "interactions" ? "pp-mode-zone-btn pp-selected" : "pp-mode-zone-btn"
+          }
           data-value="interactions"
           title={tr("viewer.header.interactions-section", "G V")}
-          onClick={onGoToInteractions}
+          onClick={() => onGoToSection("interactions")}
         >
           <PlayIcon />
         </button>
+        {canShowCommentsButton(permissions) ? (
+          <button
+            type="button"
+            className={
+              section === "comments" ? "pp-mode-zone-btn pp-selected" : "pp-mode-zone-btn"
+            }
+            data-value="comments"
+            title={tr("viewer.header.comments-section", "G C")}
+            onClick={() => onGoToSection("comments")}
+          >
+            <CommentsIcon />
+          </button>
+        ) : null}
       </div>
       <div className="pp-options-zone">
-        {flows.length > 0 ? (
-          <FlowsMenu flows={flows} frameId={frameId} onSelectFlow={onSelectFlow} />
-        ) : null}
-        <InteractionsMenu mode={interactionsMode} onSelectMode={onSelectInteractionsMode} />
+        {section === "interactions" ? (
+          <>
+            {flows.length > 0 ? (
+              <FlowsMenu flows={flows} frameId={frameId} onSelectFlow={onSelectFlow} />
+            ) : null}
+            <InteractionsMenu mode={interactionsMode} onSelectMode={onSelectInteractionsMode} />
+          </>
+        ) : section === "comments" ? (
+          <CommentsMenu
+            filter={commentsFilter}
+            showResolved={commentsShowResolved}
+            panelOpen={commentsPanelOpen}
+            onSelectFilter={onSelectCommentsFilter}
+            onToggleResolved={onToggleCommentsResolved}
+            onTogglePanel={onToggleCommentsPanel}
+          />
+        ) : (
+          <div className="pp-view-options" />
+        )}
         <ZoomWidget
           zoom={zoom}
           onIncrease={onIncreaseZoom}
@@ -540,6 +707,16 @@ export function ViewerHeader({
         >
           <ExpandIcon />
         </button>
+        {inTeam ? (
+          <button type="button" className="pp-share-btn" onClick={onOpenShare}>
+            {tr("labels.share")}
+          </button>
+        ) : null}
+        {!isLogged ? (
+          <button type="button" className="pp-go-log-btn" onClick={onLogin}>
+            {tr("labels.log-or-sign")}
+          </button>
+        ) : null}
       </div>
     </header>
   );

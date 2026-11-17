@@ -36,6 +36,7 @@ import {
   groupBubbles,
   screenDeltaToWorld,
   sortThreads,
+  threadsMentioning,
   visibleThreads,
   type CommentPosition,
 } from "@/lib/workspace-comments";
@@ -49,6 +50,7 @@ import {
   getWorkspaceState,
   subscribeWorkspace,
 } from "@/lib/workspace-store";
+import { useSession } from "@/lib/session";
 
 // The bubble radius in screen pixels (the CLJS draws a 32px avatar; the
 // numbered circle keeps the same footprint).
@@ -66,22 +68,46 @@ const GROUP_CARD_HEIGHT = 220;
 export interface WorkspaceCommentBubblesProps {
   // Only the threads of the open page draw a pin.
   pageId: string;
+  // The viewer renders the pins of the shown frame alone (comments-layer
+  // filters by frame-id); the workspace leaves it unset to keep every page
+  // thread visible.
+  frameId?: string | null;
   // The zoom of the overlay viewBox: the pins divide by it, so the circle
   // and its label keep one screen size at every zoom.
   zoom: number;
 }
 
-export function WorkspaceCommentBubbles({ pageId, zoom }: WorkspaceCommentBubblesProps) {
+export function WorkspaceCommentBubbles({ pageId, frameId, zoom }: WorkspaceCommentBubblesProps) {
   const state = useSyncExternalStore(
     subscribeWorkspace,
     getWorkspaceState,
     getInitialWorkspaceState,
   );
   const comments = state.comments;
+  const { profile } = useSession();
+  const profileId = profile?.id ?? null;
 
-  const pageThreads = comments.threads.filter((thread) => thread["page-id"] === pageId);
+  const pageThreads = comments.threads.filter(
+    (thread) =>
+      thread["page-id"] === pageId &&
+      (frameId === undefined || frameId === null || thread["frame-id"] === frameId),
+  );
+  // The "your comments" filter needs the profile id; the mentions filter
+  // narrows by the same profile afterwards.
+  const onlyForProfile = comments.filter === "yours" ? profileId : null;
   const threads = sortThreads(
-    visibleThreads(pageThreads, { showResolved: comments.showResolved }),
+    comments.filter === "mentions"
+      ? threadsMentioning(
+          visibleThreads(pageThreads, {
+            showResolved: comments.showResolved,
+            onlyForProfile,
+          }),
+          profileId,
+        )
+      : visibleThreads(pageThreads, {
+          showResolved: comments.showResolved,
+          onlyForProfile,
+        }),
   );
   const groups = zoom > 0 ? groupBubbles(threads, zoom) : [];
 

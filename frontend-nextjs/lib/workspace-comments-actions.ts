@@ -38,6 +38,7 @@ import {
   type Comment,
   type CommentPosition,
   type CommentThread,
+  type MentionCandidate,
 } from "@/lib/workspace-comments";
 import { pageObjects } from "@/lib/workspace";
 import type { UpdateFileSetCommentThreadPositionChange } from "@/lib/transit";
@@ -47,6 +48,13 @@ import {
   getWorkspaceViewport,
   setWorkspaceComments,
 } from "@/lib/workspace-store";
+
+// The share-id the viewer stored: every comment RPC carries it so a
+// share-link visitor passes the backend permission checks. Null in the
+// workspace.
+function shareId(): string | null {
+  return getWorkspaceState().shareId;
+}
 
 // Replace one thread in the slice by id, keeping the array identity stable for
 // the others so a partial update re-renders only what changed.
@@ -78,15 +86,27 @@ function removeReply(threadId: string, commentId: string): void {
 // --- Load ------------------------------------------------------------------
 
 // Load the threads of the open file. The shell runs it on mount; a failed load
-// only sets the error status so the panel can show the empty state.
-export async function loadCommentThreads(fileId: string): Promise<void> {
+// only sets the error status so the panel can show the empty state. The
+// viewer passes its share-id explicitly, so the call does not depend on the
+// store sync order.
+export async function loadCommentThreads(
+  fileId: string,
+  share?: string | null,
+): Promise<void> {
   setWorkspaceComments({ status: "loading" });
   try {
-    const threads = await fetchCommentThreads(fileId);
+    const threads = await fetchCommentThreads(fileId, share ?? shareId());
     setWorkspaceComments({ status: "ready", threads });
   } catch {
     setWorkspaceComments({ status: "error" });
   }
+}
+
+// The mention candidates the viewer takes from the view-only bundle (its
+// users are the team members, anonymized for share links). The workspace
+// keeps loading them through get-team-members.
+export function setCommentMembers(members: MentionCandidate[]): void {
+  setWorkspaceComments({ members });
 }
 
 // Load the team members for the @mention autocomplete (the shell runs it on
@@ -105,7 +125,7 @@ export async function loadCommentMembers(teamId: string): Promise<void> {
 // resolved row the list query returns).
 export async function refreshCommentThreads(fileId: string): Promise<void> {
   try {
-    const threads = await fetchCommentThreads(fileId);
+    const threads = await fetchCommentThreads(fileId, shareId());
     setWorkspaceComments({ status: "ready", threads });
   } catch {
     setWorkspaceComments({ status: "error" });
@@ -192,7 +212,7 @@ export async function openCommentThread(threadId: string): Promise<void> {
       loadingReplies: { ...comments.loadingReplies, [threadId]: true },
     });
     try {
-      const rows = await fetchComments(threadId);
+      const rows = await fetchComments(threadId, shareId());
       const next = getWorkspaceState().comments;
       setWorkspaceComments({
         replies: { ...next.replies, [threadId]: rows },
@@ -206,14 +226,14 @@ export async function openCommentThread(threadId: string): Promise<void> {
 
   // Marking read is best-effort: a failure leaves the badge, the row is open.
   patchThread(threadId, { "count-unread-comments": 0 });
-  await markThreadRead(threadId).catch(() => undefined);
+  await markThreadRead(threadId, shareId()).catch(() => undefined);
 }
 
 // --- Mutations -------------------------------------------------------------
 
 // Submit a reply on the open thread. The answer is appended to the slice.
 export async function submitReply(threadId: string, content: string): Promise<void> {
-  const comment = await addComment(threadId, content);
+  const comment = await addComment(threadId, content, shareId());
   appendReply(threadId, comment);
   const { comments } = getWorkspaceState();
   const thread = comments.threads.find((t) => t.id === threadId);
@@ -223,10 +243,13 @@ export async function submitReply(threadId: string, content: string): Promise<vo
 }
 
 // Create a thread at a world position anchored to the frame under it. The
-// store carries the file, page and objects the CLJS reads off @state.
+// store carries the file, page and objects the CLJS reads off @state. A
+// caller-provided frameId anchors the thread there instead (the viewer
+// create-draft passes the shown frame).
 export async function createThreadAtPosition(
   content: string,
   position: CommentPosition,
+  frameId?: string | null,
 ): Promise<CommentThread | null> {
   const state = getWorkspaceState();
   const fileId = state.fileId;
@@ -234,15 +257,22 @@ export async function createThreadAtPosition(
   if (fileId === null || pageId === null) return null;
 
   const objects = state.objects ?? (state.file ? pageObjects(state.file, pageId) : {});
-  const frameId = frameIdForPosition(objects, position);
+  const anchorFrameId = frameId ?? frameIdForPosition(objects, position);
 
-  const thread = await createCommentThread({ fileId, pageId, frameId, position, content });
+  const thread = await createCommentThread({
+    fileId,
+    pageId,
+    frameId: anchorFrameId,
+    position,
+    content,
+    shareId: state.shareId,
+  });
   const { comments } = getWorkspaceState();
   setWorkspaceComments({ threads: [...comments.threads, thread] });
   setWorkspaceComments({ openThreadId: thread.id, panelOpen: true });
   // The list row only carries the first comment's content as a preview; load
   // the thread's replies so the open panel is authoritative.
-  void fetchComments(thread.id)
+  void fetchComments(thread.id, state.shareId)
     .then((rows) => {
       const next = getWorkspaceState().comments;
       setWorkspaceComments({ replies: { ...next.replies, [thread.id]: rows } });
@@ -260,10 +290,14 @@ export async function createThreadAtCenter(content: string): Promise<CommentThre
 
 // Submit the floating composer of the placement flow: create at the picked
 // point (viewport center when no click landed) and leave the placing mode.
-export async function createThreadAtPlacement(content: string): Promise<CommentThread | null> {
+// A frameId anchors the draft to that frame (the viewer passes the shown one).
+export async function createThreadAtPlacement(
+  content: string,
+  frameId?: string | null,
+): Promise<CommentThread | null> {
   const point = getWorkspaceState().comments.placementPoint;
   const thread = point !== null
-    ? await createThreadAtPosition(content, point)
+    ? await createThreadAtPosition(content, point, frameId)
     : await createThreadAtCenter(content);
   if (thread !== null) cancelCommentPlacement();
   return thread;
@@ -333,12 +367,14 @@ export async function moveThreadToPosition(
       patchThread(threadId, { position: thread.position, "frame-id": undoFrameId });
       return;
     }
-    void updateThreadPosition(threadId, position, frameId).catch((cause: unknown) => {
-      console.warn("[comments] could not sync the pin position to the table:", cause);
-    });
+    void updateThreadPosition(threadId, position, frameId, state.shareId).catch(
+      (cause: unknown) => {
+        console.warn("[comments] could not sync the pin position to the table:", cause);
+      },
+    );
     return;
   }
-  await updateThreadPosition(threadId, position, frameId);
+  await updateThreadPosition(threadId, position, frameId, shareId());
 }
 
 // Undo/redo application of a pin move (batch 7.58): the history step has
@@ -360,6 +396,7 @@ export function applyCommentThreadPositionChange(
       change["comment-thread-id"],
       change.position,
       change["frame-id"],
+      shareId(),
     ).catch((cause: unknown) => {
       console.warn("[comments] could not sync the undone pin position:", cause);
     });
@@ -368,13 +405,13 @@ export function applyCommentThreadPositionChange(
 
 // Resolve or reopen a thread.
 export async function toggleThreadResolved(threadId: string, isResolved: boolean): Promise<void> {
-  await setThreadResolved(threadId, isResolved);
+  await setThreadResolved(threadId, isResolved, shareId());
   patchThread(threadId, { "is-resolved": isResolved });
 }
 
 // Delete a thread and drop it from the slice; close the panel if it was open.
 export async function removeThread(threadId: string): Promise<void> {
-  await deleteThread(threadId);
+  await deleteThread(threadId, shareId());
   const { comments } = getWorkspaceState();
   setWorkspaceComments({ threads: comments.threads.filter((t) => t.id !== threadId) });
   if (getWorkspaceState().comments.openThreadId === threadId) closeCommentThread();
@@ -382,7 +419,7 @@ export async function removeThread(threadId: string): Promise<void> {
 
 // Delete one reply from the open thread.
 export async function removeReplyFromThread(threadId: string, commentId: string): Promise<void> {
-  await deleteComment(commentId);
+  await deleteComment(commentId, shareId());
   removeReply(threadId, commentId);
 }
 
@@ -395,7 +432,7 @@ export async function editCommentInThread(
   commentId: string,
   content: string,
 ): Promise<void> {
-  const updated = await editComment(commentId, content);
+  const updated = await editComment(commentId, content, shareId());
   const { comments } = getWorkspaceState();
   const current = comments.replies[threadId] ?? [];
   const isFirst = current.length > 0 && current[0].id === commentId;

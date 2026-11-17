@@ -137,6 +137,10 @@ export interface WorkspaceState {
   // The open page: the ?page-id= resolved against the file, with the first
   // page of the file as the fallback.
   pageId: string | null;
+  // The share-link the viewer was opened with. The comment RPCs carry it so
+  // a link visitor without team membership passes the backend permission
+  // checks; the workspace route leaves it null.
+  shareId: string | null;
   // The failure the file load rejected with; unknown until narrowed, since
   // lib/exception-page branches on the RpcError causes it maps to the
   // exception page.
@@ -197,6 +201,7 @@ const initialState: WorkspaceState = {
   fileId: null,
   file: null,
   pageId: null,
+  shareId: null,
   error: null,
   zoom: null,
   vbox: null,

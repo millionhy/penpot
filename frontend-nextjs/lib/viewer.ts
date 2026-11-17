@@ -331,6 +331,9 @@ export interface ViewerQueryParams {
   section: string | null;
   zoom: string | null;
   interactionsMode: string | null;
+  // The raw ?share= value of the CLJS viewer: any present value asks the
+  // header to open the share dialog once (in-team admins only).
+  share: string | null;
 }
 
 // parse-long: a strict integer (no decimals, no exponents, no padding).
@@ -349,6 +352,7 @@ export function parseViewerQuery(search: URLSearchParams): ViewerQueryParams {
     section: search.get("section"),
     zoom: search.get("zoom"),
     interactionsMode: search.get("interactions-mode"),
+    share: search.get("share"),
   };
 }
 
@@ -576,6 +580,9 @@ export interface ViewerHrefParams {
   section?: string | null;
   zoom?: string | null;
   interactionsMode?: string | null;
+  // The CLJS events rebuild the href from the full query map, so ?share=
+  // survives every navigation until the URL is entered again.
+  share?: string | null;
 }
 
 // The URL of a viewer route: the CLJS query keys in a fixed order, null
@@ -592,6 +599,7 @@ export function viewerHref(params: ViewerHrefParams): string {
   if (params.interactionsMode !== null && params.interactionsMode !== undefined) {
     search.set("interactions-mode", params.interactionsMode);
   }
+  if (params.share !== null && params.share !== undefined) search.set("share", params.share);
   const query = search.toString();
   return query.length > 0 ? routePaths.viewer + "?" + query : routePaths.viewer;
 }
@@ -610,5 +618,6 @@ export function viewerQueryToHrefParams(query: ViewerQueryParams): ViewerHrefPar
     section: query.section,
     zoom: query.zoom,
     interactionsMode: query.interactionsMode,
+    share: query.share,
   };
 }

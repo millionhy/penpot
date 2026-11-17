@@ -194,6 +194,7 @@ describe("parseViewerQuery", () => {
       "frame-id": "aaaabbbb-cccc-dddd-eeee-ffff00001111",
       zoom: "fit",
       "interactions-mode": "show",
+      share: "1",
     });
     const query = parseViewerQuery(search);
     expect(query.fileId).toBe("11111111-2222-3333-4444-555555555555");
@@ -203,6 +204,7 @@ describe("parseViewerQuery", () => {
     expect(query.frameId).toBe("aaaabbbb-cccc-dddd-eeee-ffff00001111");
     expect(query.zoom).toBe("fit");
     expect(query.interactionsMode).toBe("show");
+    expect(query.share).toBe("1");
   });
 
   it("returns nulls for absent parameters", () => {
@@ -210,6 +212,7 @@ describe("parseViewerQuery", () => {
     expect(query.fileId).toBeNull();
     expect(query.index).toBeNull();
     expect(query.frameId).toBeNull();
+    expect(query.share).toBeNull();
   });
 
   it("rejects non-integer indexes like parse-long", () => {
@@ -445,6 +448,7 @@ describe("viewerHref", () => {
       section: "interactions",
       zoom: "fit",
       interactionsMode: "show",
+      share: "1",
     });
     const query = parseViewerQuery(new URLSearchParams(href.split("?")[1]));
     expect(query.fileId).toBe(FILE_ID);
@@ -455,6 +459,7 @@ describe("viewerHref", () => {
     expect(query.section).toBe("interactions");
     expect(query.zoom).toBe("fit");
     expect(query.interactionsMode).toBe("show");
+    expect(query.share).toBe("1");
   });
 });
 
@@ -472,6 +477,7 @@ describe("viewerQueryToHrefParams", () => {
       section: null,
       zoom: "fill",
       interactionsMode: null,
+      share: null,
     });
   });
 

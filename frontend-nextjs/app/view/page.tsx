@@ -52,31 +52,57 @@
 //   finishes, and a toggle close inverts the animation. A navigation whose
 //   origin frame cannot resolve drops the pending entry instead of
 //   dereferencing a missing viewport like the CLJS would.
-// - Three registered shortcuts stay unbound (select-all, open-inspect,
-//   open-comments) so their native browser keys keep working; see
-//   lib/viewer-shortcuts.
+// - Two registered shortcuts stay unbound (select-all, open-inspect) so
+//   their native browser keys keep working; see lib/viewer-shortcuts.
 // - toggle-theme persists through update-profile without the analytics
 //   origin marker, like the dashboard provider.
+// - The comments section (D22) ports comments-layer and comments-sidebar*:
+//   the pins and the click-to-place composer draw in an svg over the frame
+//   box, and the sidebar reuses the workspace comments panel, filtered to the
+//   shown frame. The panel state lives in lib/workspace-store, so the header
+//   menu, the pins and the list share it.
+// - The sections that need a session send the visitor to /auth/login with a
+//   callback-url; the CLJS opens a login modal over the viewer.
+// - ?share= opens the dialog once per visit for a team admin (the CLJS effect
+//   re-runs on every permissions / share change); closing it leaves the
+//   parameter in the URL, like the original.
+// - Inspect stays a recorded debt (D23): a request for it renders the
+//   interactions section and the URL is normalized to match.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import { ExceptionPage } from "@/components/exception-page";
 import { useNotifications } from "@/components/notifications";
 import { PenpotLoader } from "@/components/penpot-loader";
 import { QueryParams } from "@/components/query-params";
+import { ViewerCommentsLayer } from "@/components/viewer-comments-layer";
 import { ViewerHeader, type SitemapPage } from "@/components/viewer-header";
 import { ViewerOverlay } from "@/components/viewer-overlay";
 import { ViewerPagination } from "@/components/viewer-pagination";
+import { ViewerShareModal } from "@/components/viewer-share-modal";
 import { ViewerThumbnails } from "@/components/viewer-thumbnails";
 import { ViewerWasmViewport, type ViewerWasmBounds } from "@/components/viewer-wasm-viewport";
+import { WorkspaceCommentsPanel } from "@/components/workspace-comments-panel";
 import { dashboardHref, workspaceHref } from "@/lib/dashboard";
 import { nextTheme } from "@/lib/dashboard-shortcuts-runtime";
 import { useDocumentTitle } from "@/lib/dom";
 import { isExceptionCause } from "@/lib/exception-page";
 import { tr } from "@/lib/i18n";
+import { cmd } from "@/lib/rpc";
+import { routePaths } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { profileUpdateParams, updateProfile } from "@/lib/settings";
 import { createShortcutMatcher, customShortcutsFromProfile, isMacos } from "@/lib/shortcuts";
+import { set as transitSet } from "@/lib/transit";
 import {
   animatePlans,
   findGoToFrame,
@@ -93,6 +119,12 @@ import {
   type ViewerAction,
 } from "@/lib/viewer-interactions";
 import { closeOverlay, openOverlay } from "@/lib/viewer-overlays";
+import {
+  renderableViewerSection,
+  requiresLogin,
+  type ViewerSection,
+} from "@/lib/viewer-sections";
+import { type ShareLink } from "@/lib/viewer-share-links";
 import {
   autoFrameIndex,
   buildViewerPages,
@@ -126,8 +158,29 @@ import {
   viewerShortcutTarget,
   wheelZoomDirection,
 } from "@/lib/viewer-shortcuts-runtime";
+import type { MentionCandidate } from "@/lib/workspace-comments";
+import {
+  loadCommentThreads,
+  setCommentMembers,
+  setCommentsFilter,
+  setCommentsPanelOpen,
+  setCommentsShowResolved,
+} from "@/lib/workspace-comments-actions";
+import {
+  getInitialWorkspaceState,
+  getWorkspaceState,
+  resetWorkspaceState,
+  setWorkspaceState,
+  subscribeWorkspace,
+} from "@/lib/workspace-store";
 
 type ZoomType = "fit" | "fill";
+
+// The bundle rows arrive typed as { id; [key: string]: unknown }: the mention
+// candidates take the string fields only.
+function textField(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
 
 // rt/nav: building the same URL again is skipped instead of pushing a
 // duplicate history entry. The comparison ignores the parameter order.
@@ -199,6 +252,10 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // dv/flash-interactions lights it for 500 ms from a window click while
   // the mode is show-on-click (flash-done turns it off).
   const [showInteractions, setShowInteractions] = useState(false);
+  // The share dialog (D22): the bundle carries the stored links; the dialog
+  // creates and deletes them through the RPC and the shell keeps the list.
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareLinks, setShareLinks] = useState<ShareLink[]>([]);
 
   // The measured #viewer-section size: the zoom math input. A ref, not
   // state, because a resize only refreshes it (the recompute hangs off
@@ -226,6 +283,9 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   // (the CLJS take-until over the flash stream); only a new flash cancels
   // it, so a mode change leaves a pending flash alone, like the original.
   const flashTimerRef = useRef<number | null>(null);
+  // The ?share= auto-open runs once per visit (the CLJS effect re-runs on
+  // every permissions / share change and reopens the dialog).
+  const shareAutoOpenedRef = useRef(false);
 
   // check-platform? :macos resolves after mount so the server render stays
   // stable, like the dashboard provider.
@@ -320,14 +380,118 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     setOrigBounds(null);
   }, [origFrame?.id]);
 
-  const permissions = (data?.permissions ?? {}) as Record<string, unknown>;
+  const permissions = useMemo<Record<string, unknown>>(
+    () => (data?.permissions ?? {}) as Record<string, unknown>,
+    [data],
+  );
   const inTeam = permissions["in-team"] === true;
+  const isLogged = permissions["is-logged"] === true;
+  const isAdmin = permissions["is-admin"] === true;
+  // The section after the permission gate; inspect renders interactions
+  // until its panel lands (D23, renderableViewerSection).
+  const section: ViewerSection = renderableViewerSection(query.section, permissions);
+
+  // The comments slice (threads, filters, panel flags) lives in the workspace
+  // store, so the header menu, the pins and the sidebar share one state.
+  const workspaceComments = useSyncExternalStore(
+    subscribeWorkspace,
+    getWorkspaceState,
+    getInitialWorkspaceState,
+  ).comments;
+  const commentsFilter = workspaceComments.filter;
+  const commentsShowResolved = workspaceComments.showResolved;
+  const commentsPanelOpen = workspaceComments.panelOpen;
+
+  // The padded box of the shown frame in world units: the comments layer
+  // draws against it, with the selrect as the stand-in until the first
+  // report (the hotspot layer uses the same origin).
+  const commentsBounds = useMemo<ViewerWasmBounds | null>(() => {
+    if (wasmBounds !== null) return wasmBounds;
+    const rect = frame?.selrect;
+    if (rect === undefined) return null;
+    return { x: rect.x, y: rect.y, baseWidth: rect.width, baseHeight: rect.height };
+  }, [wasmBounds, frame]);
+
+  // The store carries the open file / page / share-link for the comments
+  // controller; the objects feed the draft frame resolution.
+  useEffect(() => {
+    if (data === null) return;
+    setWorkspaceState({
+      fileId: data.file.id,
+      file: null,
+      pageId: page?.id ?? null,
+      shareId,
+      objects: page?.objects ?? null,
+    });
+  }, [data, page, shareId]);
+
+  // The placement math reads the viewport slice: vbox is the padded frame
+  // box, vport the rendered size and zoom the viewBox scale.
+  useEffect(() => {
+    if (commentsBounds === null) return;
+    setWorkspaceState({
+      zoom,
+      vport: { width: frameWidth, height: frameHeight },
+      vbox: {
+        x: commentsBounds.x,
+        y: commentsBounds.y,
+        width: commentsBounds.baseWidth,
+        height: commentsBounds.baseHeight,
+      },
+    });
+  }, [zoom, frameWidth, frameHeight, commentsBounds]);
+
+  // finalize-workspace: the store is module-scoped, so leaving the viewer
+  // drops the file slice for the next route.
+  useEffect(
+    () => () => {
+      resetWorkspaceState();
+    },
+    [],
+  );
+
+  // initialize: only a logged-in profile loads the comment threads (the
+  // CLJS guards fetch-comment-threads with a profile). The bundle users are
+  // the team members and double as the @mention candidates.
+  useEffect(() => {
+    if (data === null || !isLogged) return;
+    const members: MentionCandidate[] = data.users.map((user) => ({
+      id: user.id,
+      fullname: textField(user.fullname),
+      email: textField(user.email),
+      "photo-id": textField(user["photo-id"]),
+    }));
+    setCommentMembers(members);
+    void loadCommentThreads(data.file.id, shareId);
+  }, [data, isLogged, shareId]);
+
+  // The bundle is the source of the stored share links; the dialog appends
+  // or removes the rows it creates / deletes.
+  useEffect(() => {
+    setShareLinks((data?.["share-links"] ?? []) as ShareLink[]);
+  }, [data]);
+
+  // ?share= opens the dialog once for a team admin (the header gate).
+  useEffect(() => {
+    if (data === null || query.share === null) return;
+    if (shareAutoOpenedRef.current) return;
+    if (!inTeam || !isAdmin) return;
+    shareAutoOpenedRef.current = true;
+    setShareOpen(true);
+  }, [data, query.share, inTeam, isAdmin]);
 
   // The bundle-fetched normalization below router.replaces the URL to add
   // the resolved index once the file loads; that in-page navigation makes
   // the App Router re-assert the root layout's default "Penpot" title, so
-  // query.index is passed as a dep to re-write the resolved title after it.
-  useDocumentTitle(data === null ? "" : "\u25b6 " + tr("title.viewer", data.file.name), [query.index]);
+  // every field the viewer navigates on is passed as a dep to re-write the
+  // resolved title after it: index (normalization), section (mode buttons,
+  // G V / G C), frame-id (page / frame picks) and zoom (fit / fill).
+  useDocumentTitle(data === null ? "" : "\u25b6 " + tr("title.viewer", data.file.name), [
+    query.index,
+    query.section,
+    query.frameId,
+    query.zoom,
+  ]);
 
   // bundle-fetched: pick the frame from frame-id / index / the first flow
   // and mirror it into the URL. The href rebuilds the full param set, so
@@ -361,15 +525,17 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
   }, [data, fileId, query, frames, page, router, normalizedFileId]);
 
   // viewer-content*: a section that is not allowed (the shell renders only
-  // interactions) falls back to interactions.
+  // interactions and comments) falls back to interactions, and the URL is
+  // normalized to the rendered section.
   useEffect(() => {
-    if (query.section === null || query.section === "interactions") return;
+    if (data === null) return;
+    if (query.section === null || query.section === section) return;
     const base = viewerQueryToHrefParams(query);
     if (base === null) return;
-    const href = viewerHref({ ...base, section: "interactions" });
+    const href = viewerHref({ ...base, section });
     if (sameSearch(href)) return;
     router.replace(href);
-  }, [query, router]);
+  }, [data, query, section, router]);
 
   // set-up-new-size: measure the viewer section once it is mounted and on
   // every window resize.
@@ -499,12 +665,45 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
     navigate(viewerHref({ ...base, pageId: id, index: 0 }));
   };
 
+  // go-to-section: the header buttons and the G V / G C shortcuts share the
+  // navigation; the open overlays belong to the leaving section and drop.
+  // A section that needs a session sends the visitor to the login route with
+  // a callback (the CLJS opens the login modal over the viewer).
+  const navigateToSection = useCallback(
+    (target: ViewerSection) => {
+      setOverlays([]);
+      const base = viewerQueryToHrefParams(query);
+      if (base === null) return;
+      navigate(viewerHref({ ...base, section: target }));
+    },
+    [query, navigate],
+  );
+
+  const handleLogin = useCallback(() => {
+    const callback = encodeURIComponent(window.location.href);
+    router.push(routePaths["auth-login"] + "?callback-url=" + callback);
+  }, [router]);
+
+  const handleGoToSection = useCallback(
+    (target: ViewerSection) => {
+      if (requiresLogin(target, permissions)) {
+        handleLogin();
+        return;
+      }
+      navigateToSection(target);
+    },
+    [permissions, handleLogin, navigateToSection],
+  );
+
   const handleGoToInteractions = useCallback(() => {
-    setOverlays([]);
-    const base = viewerQueryToHrefParams(query);
-    if (base === null) return;
-    navigate(viewerHref({ ...base, section: "interactions" }));
-  }, [query, navigate]);
+    handleGoToSection("interactions");
+  }, [handleGoToSection]);
+
+  // G C: the comments section, behind the same login gate (the header button
+  // checks it before calling onGoToSection).
+  const handleGoToComments = useCallback(() => {
+    handleGoToSection("comments");
+  }, [handleGoToSection]);
 
   // The flows menu pick: dv/go-to-frame (:starting-frame flow), which
   // clears the open overlays and resolves the index with the (or index 0)
@@ -579,6 +778,42 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
       "workspace-" + data.file.id,
     );
   }, [data, page]);
+
+  // create-share-link: the backend takes a set of page uuids (the schema is
+  // [:set ::sm/uuid]), so the draft pages go through the transit set. The
+  // dialog reports the failure.
+  const handleCreateShareLink = useCallback(
+    async (params: {
+      pages: string[];
+      whoComment: string;
+      whoInspect: string;
+    }): Promise<ShareLink | null> => {
+      if (data === null) return null;
+      try {
+        const link = await cmd<ShareLink>("create-share-link", {
+          "file-id": data.file.id,
+          pages: transitSet(params.pages),
+          "who-comment": params.whoComment,
+          "who-inspect": params.whoInspect,
+        });
+        setShareLinks((current) => [...current, link]);
+        return link;
+      } catch {
+        return null;
+      }
+    },
+    [data],
+  );
+
+  const handleDeleteShareLink = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      await cmd("delete-share-link", { id });
+      setShareLinks((current) => current.filter((link) => link.id !== id));
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   // increase-zoom / decrease-zoom / reset-zoom drop the zoom style without
   // touching the URL, like the CLJS events.
@@ -880,6 +1115,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
       nextFrame: handleNext,
       toggleTheme: handleToggleTheme,
       goToInteractions: handleGoToInteractions,
+      goToComments: handleGoToComments,
       goToWorkspace: handleGoToWorkspace,
     }),
     [
@@ -892,6 +1128,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
       handleNext,
       handleToggleTheme,
       handleGoToInteractions,
+      handleGoToComments,
       handleGoToWorkspace,
     ],
   );
@@ -968,6 +1205,7 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
           onPrev={handlePrev}
           onNext={handleNext}
           onFirst={handleFirst}
+          commentSidebar={section === "comments" && commentsPanelOpen}
         />
         <div className="pp-viewer-wrapper" style={{ width: wrapperWidth, height: wrapperHeight }}>
           <div className="pp-viewer-clipper">
@@ -1032,6 +1270,16 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
                   />
                 );
               })}
+              {/* The pins and the click-to-place composer of the comments
+                  section, over the frame box. */}
+              {section === "comments" && commentsBounds !== null ? (
+                <ViewerCommentsLayer
+                  pageId={page.id}
+                  frameId={frame.id}
+                  zoom={zoom}
+                  bounds={commentsBounds}
+                />
+              ) : null}
             </div>
           </div>
         </div>
@@ -1074,6 +1322,13 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
           {content}
         </section>
       </div>
+      {/* comments-sidebar*: fixed to the viewport, like the CLJS absolute
+          panel with no positioned ancestor. */}
+      {section === "comments" && commentsPanelOpen ? (
+        <aside className="pp-viewer-comments-sidebar">
+          <WorkspaceCommentsPanel pageId={page.id} frameId={frame?.id ?? null} />
+        </aside>
+      ) : null}
       <ViewerHeader
         projectName={data.project.name}
         fileName={data.file.name}
@@ -1083,16 +1338,27 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
         frameName={frame?.name}
         flows={menuFlows}
         frameId={frame?.id ?? null}
+        section={section}
+        permissions={permissions}
+        isLogged={isLogged}
         interactionsMode={interactionsMode}
         zoom={zoom}
         fullscreen={fullscreen}
         inTeam={inTeam}
+        commentsFilter={commentsFilter}
+        commentsShowResolved={commentsShowResolved}
+        commentsPanelOpen={commentsPanelOpen}
         onGoToDashboard={handleGoToDashboard}
         onGoToWorkspace={handleGoToWorkspace}
-        onGoToInteractions={handleGoToInteractions}
+        onGoToSection={handleGoToSection}
         onGoToPage={handleGoToPage}
         onSelectFlow={handleSelectFlow}
         onSelectInteractionsMode={handleSelectInteractionsMode}
+        onSelectCommentsFilter={setCommentsFilter}
+        onToggleCommentsResolved={() => setCommentsShowResolved(!commentsShowResolved)}
+        onToggleCommentsPanel={() => setCommentsPanelOpen(!commentsPanelOpen)}
+        onOpenShare={() => setShareOpen(true)}
+        onLogin={handleLogin}
         onToggleThumbnails={toggleThumbnails}
         onCloseThumbnails={closeThumbnails}
         onIncreaseZoom={handleIncreaseZoom}
@@ -1102,6 +1368,18 @@ function ViewerContent({ fileId, query }: { fileId: string; query: ViewerQueryPa
         onZoomFill={() => handleZoomType("fill")}
         onToggleFullscreen={toggleFullscreen}
       />
+      {shareOpen ? (
+        <ViewerShareModal
+          pageId={page.id}
+          pages={pageList}
+          links={shareLinks}
+          query={viewerQueryToHrefParams(query) ?? { fileId }}
+          zoomType={zoomType}
+          onClose={() => setShareOpen(false)}
+          onCreate={handleCreateShareLink}
+          onDelete={handleDeleteShareLink}
+        />
+      ) : null}
     </div>
   );
 }
