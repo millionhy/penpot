@@ -25,6 +25,11 @@ const backendOrigin = process.env.PENPOT_BACKEND_ORIGIN ?? "http://localhost:606
 // point this at the running penpot frontend nginx to get real bytes. Leave it
 // unset in production, where nginx already sits in front of the shell.
 const assetsOrigin = process.env.PENPOT_ASSETS_ORIGIN ?? backendOrigin;
+// The shape export runs on the exporter service, not the backend (the nginx
+// template routes location /api/export there before location /api). Production
+// nginx answers the path itself, so this rewrite only matters in dev; point it
+// at the running frontend nginx unless an exporter origin is given.
+const exporterOrigin = process.env.PENPOT_EXPORTER_ORIGIN ?? assetsOrigin;
 
 const nextConfig = {
   reactStrictMode: true,
@@ -39,6 +44,12 @@ const nextConfig = {
   outputFileTracingRoot: currentDir,
   async rewrites() {
     return [
+      {
+        // Must come before /api/:path*: the export command answers on the
+        // exporter, and the backend has no route for it.
+        source: "/api/export/:path*",
+        destination: `${exporterOrigin}/api/export/:path*`,
+      },
       {
         source: "/api/:path*",
         destination: `${backendOrigin}/api/:path*`,

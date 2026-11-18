@@ -1,21 +1,29 @@
 "use client";
 
-// The exports menu of the workspace style panel (F9.14): the :exports specs of
-// a shape, ported from sidebar/options/menus/exports.cljs.
+// The exports menu of the workspace style panel (F9.14, G1): the :exports
+// specs of a shape, ported from sidebar/options/menus/exports.cljs.
 //
 // A row is one spec: a format select (PNG, JPG, WEBP, SVG, PDF), a size select
 // for the bitmap formats, a suffix input and a remove button, with the one
-// download button of the menu under the list. The button stays disabled: the
-// render-wasm build ships no export entry point, so the panel edits and
-// persists the specs only. The deviation is documented in lib/workspace-exports.
+// download button of the menu under the list. The download asks the exporter
+// service through lib/workspace-export (one POST, wait, download), which is
+// the server branch of the CLJS request-export. The CLJS export-state widget
+// is not ported: the panel keeps a local "exporting" flag instead, and the
+// export does not need edit permission, only read access to the file.
+
+import { useState } from "react";
 
 import {
   DraftField,
   useDraftFields,
 } from "@/components/workspace-style-field";
 import { MinusIcon, PlusIcon } from "@/components/workspace-icons";
+import { useNotifications } from "@/components/notifications";
 import { tr } from "@/lib/i18n";
+import { useSession } from "@/lib/session";
 import type { WorkspaceShape } from "@/lib/workspace";
+import { exportShapes } from "@/lib/workspace-export";
+import { getWorkspaceState } from "@/lib/workspace-store";
 import {
   EXPORT_SCALES,
   EXPORT_TYPES,
@@ -38,11 +46,35 @@ export interface WorkspaceExportsProps {
 
 export function WorkspaceExports({ shape, disabled, send }: WorkspaceExportsProps) {
   const { drafts, setDraft, dropDraft, dropAllDrafts, commitAction } = useDraftFields(send);
+  const notifications = useNotifications();
+  const { profile } = useSession();
+  const [exporting, setExporting] = useState(false);
   const specs = exportsOf(shape);
 
   const commit = (fieldId: string, raw: string | undefined, next: ReturnType<typeof exportsOf>): void => {
     if (raw === undefined) return;
     commitAction(fieldId, raw, () => send({ exports: exportPatch(next) }));
+  };
+
+  // on-download of the CLJS menu: the specs of this shape, handed to the
+  // exporter as one request (a multi-spec list comes back as a zip).
+  const download = async (): Promise<void> => {
+    if (exporting || specs.length === 0 || profile === null) return;
+    const { fileId, pageId } = getWorkspaceState();
+    if (fileId === null || pageId === null) return;
+    setExporting(true);
+    try {
+      await exportShapes({
+        fileId,
+        pageId,
+        profileId: profile.id,
+        items: [{ shape: { id: shape.id, name: shape.name }, specs }],
+      });
+    } catch {
+      notifications.error(tr("workspace.options.exporting-object-error"));
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -154,15 +186,19 @@ export function WorkspaceExports({ shape, disabled, send }: WorkspaceExportsProp
       })}
 
       {/* The download of exports.cljs: one button for the whole list. The
-          renderer ships no export entry point, so it stays disabled. */}
+          exporter returns the single file, or a zip when the list has more
+          than one spec. */}
       {specs.length === 0 ? null : (
         <button
           type="button"
           className="pp-workspace-style-export-button"
           title={tr("workspace.options.export")}
-          disabled
+          disabled={exporting}
+          onClick={() => void download()}
         >
-          {tr("workspace.options.export-object", specs.length)}
+          {exporting
+            ? tr("workspace.options.exporting-object")
+            : tr("workspace.options.export-object", 1)}
         </button>
       )}
     </section>

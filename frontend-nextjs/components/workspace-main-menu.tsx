@@ -7,9 +7,17 @@
 // Wired in this slice: rename (when the file is editable), back to the
 // dashboard, select all (root children), deselect all, undo/redo through
 // the canvas handle (F9.7), the four z-order commands of the selection
-// (F9.8), the five zoom commands, hide UI, the artboard-name toggle and the
-// help link. Export, version history, shortcuts and about stay disabled;
-// menu shortcut labels are display only and no global handler is installed.
+// (F9.8), the five zoom commands, hide UI, the artboard-name toggle, the
+// selection's shape export (G1) and the help link. Version history,
+// shortcuts and about stay disabled; menu shortcut labels are display only
+// and no global handler is installed.
+//
+// The export entry deviates from the CLJS one, which opens the export-shapes
+// dialog for the selection (or every shape with specs when nothing is
+// selected). The shell sends the selected shapes' specs to the exporter
+// directly, so multi-selection and multi-spec lists come back as one zip;
+// the dialog's per-row include toggles are not ported yet. With nothing
+// exportable in the selection the entry stays disabled.
 //
 // The menu reads selection and objects from the store so its enabled
 // states stay correct even if the shell is memoized later. The page keeps
@@ -24,10 +32,14 @@ import {
   type MenuAnchor,
   type MenuEntry,
 } from "@/components/dashboard-menu";
+import { useNotifications } from "@/components/notifications";
 import type { WorkspaceCanvasHandle } from "@/components/workspace-wasm-canvas";
 import { tr } from "@/lib/i18n";
+import { useSession } from "@/lib/session";
 import { commandToTooltip, isMacos, metaLabel } from "@/lib/shortcuts";
 import { immediateChildren } from "@/lib/workspace";
+import { exportShapes } from "@/lib/workspace-export";
+import { exportsOf } from "@/lib/workspace-exports";
 import {
   clearSelection,
   getInitialWorkspaceState,
@@ -62,6 +74,8 @@ export function WorkspaceMainMenu({
   canvas,
 }: WorkspaceMainMenuProps) {
   const router = useRouter();
+  const notifications = useNotifications();
+  const { profile } = useSession();
   const state = useSyncExternalStore(
     subscribeWorkspace,
     getWorkspaceState,
@@ -75,12 +89,35 @@ export function WorkspaceMainMenu({
   const hasSelection = state.selection.length > 0;
   const macos = isMacos();
 
+  // The shapes of the selection that carry export specs, in selection order.
+  const exportItems = useMemo(() => {
+    const objects = state.objects ?? {};
+    const items = [];
+    for (const id of state.selection) {
+      const shape = objects[id];
+      if (shape === undefined || shape === null) continue;
+      const specs = exportsOf(shape);
+      if (specs.length === 0) continue;
+      items.push({ shape: { id: shape.id, name: shape.name }, specs });
+    }
+    return items;
+  }, [state.objects, state.selection]);
+
   const entries = useMemo<MenuEntry[]>(() => {
     // Select all selects the root children of the page, the documented
     // deviation from the CLJS select-all.
     const selectAll = (): void => {
       const objects = getWorkspaceState().objects ?? {};
       setSelection(immediateChildren(objects).map((shape) => shape.id));
+    };
+
+    const exportSelection = (): void => {
+      const { fileId, pageId } = getWorkspaceState();
+      if (fileId === null || pageId === null || exportItems.length === 0) return;
+      if (profile === null) return;
+      void exportShapes({ fileId, pageId, profileId: profile.id, items: exportItems }).catch(() => {
+        notifications.error(tr("workspace.options.exporting-object-error"));
+      });
     };
 
     return [
@@ -107,8 +144,8 @@ export function WorkspaceMainMenu({
             type: "item",
             id: "workspace-menu-export",
             label: tr("labels.export"),
-            disabled: true,
-            onSelect: noop,
+            disabled: exportItems.length === 0 || profile === null,
+            onSelect: exportSelection,
           },
           {
             type: "item",
@@ -280,12 +317,15 @@ export function WorkspaceMainMenu({
   }, [
     canEdit,
     canvas,
+    exportItems,
     hasSelection,
     hasShapes,
     macos,
+    notifications,
     onRename,
     onToggleFrameTitles,
     onToggleHideUI,
+    profile,
     router,
     showFrameTitles,
     state.canRedo,

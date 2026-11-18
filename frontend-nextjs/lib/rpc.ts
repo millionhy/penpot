@@ -366,6 +366,18 @@ export async function cmdEncoded<T = unknown>(
   return once<T>("post", uri, {}, opts, body);
 }
 
+// A POST to a transit endpoint outside api/main/methods: the exporter service
+// answers /api/export (a sibling mount the front nginx routes to it, and the
+// Next rewrites proxy in dev). Encoding, credentials and error classification
+// match cmd; a mutating call is not retried.
+export async function postTransit<T = unknown>(
+  path: string,
+  params: Record<string, unknown>,
+  opts: RpcOptions = {},
+): Promise<T> {
+  return once<T>("post", joinUrl(config.publicUri, path), params, opts);
+}
+
 // The undecoded leg of cmd!: the render-wasm value bridge (F6.4) hands the
 // raw transit text to the compiled CLJS decoder, which owns the penpot read
 // handlers (objects-map/v2, path-data, pointer...). transit-js would flatten

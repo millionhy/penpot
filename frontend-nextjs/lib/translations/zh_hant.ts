@@ -1148,6 +1148,8 @@ export const zh_hant: Record<string, TranslationEntry> = {
   "workspace.options.export.add-export": "新增匯出",
   "workspace.options.export.remove-export": "移除匯出",
   "workspace.options.export.suffix": "後綴",
+  "workspace.options.exporting-object": "正在匯出…",
+  "workspace.options.exporting-object-error": "匯出失敗",
   "workspace.options.fill": "填充",
   "workspace.options.fill.add-fill": "新增填充",
   "workspace.options.fill.remove-fill": "移除填充",

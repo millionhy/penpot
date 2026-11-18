@@ -1014,6 +1014,8 @@ export const zh_cn: Record<string, TranslationEntry> = {
   "workspace.options.export.add-export": "新增导出",
   "workspace.options.export.remove-export": "移除导出",
   "workspace.options.export.suffix": "后缀",
+  "workspace.options.exporting-object": "正在导出…",
+  "workspace.options.exporting-object-error": "导出失败",
   "workspace.options.fill": "填充",
   "workspace.options.fill.add-fill": "新增填充",
   "workspace.options.fill.remove-fill": "移除填充",

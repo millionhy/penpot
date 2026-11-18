@@ -34,9 +34,16 @@ export function triggerDownload(filename: string, blob: Blob): void {
 }
 
 // cm/mtype->extension (common/src/app/common/media.cljc), limited to the types
-// the shell downloads today.
+// the shell downloads today: the .penpot file and the five shape exports (plus
+// the zip the exporter answers with when an export carries several objects).
 const mtypeExtensions: Record<string, string> = {
   "application/penpot": ".penpot",
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "image/svg+xml": ".svg",
+  "application/pdf": ".pdf",
+  "application/zip": ".zip",
 };
 
 // dom/trigger-download-uri in app.util.dom: a direct URI download through a

@@ -1160,6 +1160,8 @@ export const en: Record<string, TranslationEntry> = {
   "workspace.options.export.add-export": "Add export",
   "workspace.options.export.remove-export": "Remove export",
   "workspace.options.export.suffix": "Suffix",
+  "workspace.options.exporting-object": "Exporting…",
+  "workspace.options.exporting-object-error": "Export failed",
   "workspace.options.fill": "Fill",
   "workspace.options.fill.add-fill": "Add fill",
   "workspace.options.fill.remove-fill": "Remove fill",

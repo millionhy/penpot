@@ -9,8 +9,9 @@
 //   splices by index, and the scale select only shows for the bitmap types).
 //
 // Deviations from the CLJS original, documented (AD12):
-// - The download button is not wired: the render-wasm build ships no export
-//   entry point, so the panel edits the specs and shows the button disabled.
+// - The download button lives in lib/workspace-export.ts (the server branch:
+//   the render-wasm build ships no export entry point); this module stays the
+//   pure spec surgery.
 // - A multi selection keeps the batch read-only; the single-shape menu owns
 //   the rows.
 
