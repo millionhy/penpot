@@ -84,7 +84,7 @@
 | --- | --- | --- | --- |
 | G0 | 口径与盘点 | ✅ | 2026-11-18：确认无 `.cjs`；统计 CLJS 资产；划定 backend `.clj` 与 common 后端分支边界 |
 | G1 | 补齐新端入口（P0） | ✅ | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）、workspace shape 导出入口（7.64）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项 |
-| G2 | exporter TS 重写（P1） | 🔄 | 34 文件 / 3,850 行；新树 `exporter/src-ts/`，旧 CLJS 运行至 G2.7 切换；G2.1–G2.2 已落地（7.65、7.66） |
+| G2 | exporter TS 重写（P1） | 🔄 | 34 文件 / 3,850 行；新树 `exporter/src-ts/`，旧 CLJS 运行至 G2.7 切换；G2.1–G2.3 已落地（7.65、7.66、7.67） |
 | G3 | library TS 重写（P2） | ⬜ | 2 文件 / 505 行；`.penpot` 导出库，金样本回归 |
 | G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
 | G5 | common 前端分支镜像（P4） | ⬜ | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管 |
@@ -427,7 +427,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 
 1. **G1 / P0 补齐新端入口**：先补没有页面或没有入口的洞——`/settings/integrations`（2026-11-18 已补，见 7.61）、`/subscribe-nitrate`（2026-11-18 已补，见 7.62）、应用内 release notes（2026-11-18 已补，见 7.63）、workspace shape 导出入口（2026-11-18 已补，见 7.64）、`/render-sprite/:file-id`（死路由：旧端无页面组件，exporter 走 `render.html`，G4 删除）。这些是新旧功能不对等的最大缺口；补齐后，旧端对应路由才可删除。
 2. **G2 / P1 exporter 全量 TS**：`exporter/src` 34 文件 / 3,850 行，独立 Node 进程，边界清晰，可单测。保留 RPC 共享密钥、Redis 进度、Playwright 渲染、wasm pool 与 bitmap/pdf/svg 三类 renderer 的外部行为；用同一 `.penpot` 金样本对拍。
-   - 分片：G2.1 基础层（config/logging/errors/flags/version/uuid/data/uri/transit/mime/shell/router/exchange，✅ 见 7.65）→ G2.2 http 适配 + `on-error` + auth（✅ 见 7.66）→ G2.3 redis + jobs（store/scheduler/utils）+ legacy export 入口与 `/jobs` 处理器接线 → G2.4 browser + renderer + resources → G2.5 wasm headless（含 `common/render_wasm` 的 TS 镜像）→ G2.6 export_shapes/export_frames + `.penpot` 金样本对拍 → G2.7 构建与部署切换（`package.json`、esbuild、`target/app.js`）。
+   - 分片：G2.1 基础层（config/logging/errors/flags/version/uuid/data/uri/transit/mime/shell/router/exchange，✅ 见 7.65）→ G2.2 http 适配 + `on-error` + auth（✅ 见 7.66）→ G2.3 redis + jobs（store/scheduler/utils）+ legacy export 入口与 `/jobs` 处理器接线（✅ 见 7.67）→ G2.4 browser + renderer + resources → G2.5 wasm headless（含 `common/render_wasm` 的 TS 镜像）→ G2.6 export_shapes/export_frames + `.penpot` 金样本对拍 → G2.7 构建与部署切换（`package.json`、esbuild、`target/app.js`）。
 3. **G3 / P2 library TS**：`library/src/lib` 2 文件 / 505 行，`.penpot` 导出实现，依赖 `common` 的类型、schema 与文件构建器。先锁 API 与产物格式，再用金样本回归；不改变插件/库的对外契约。
 4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
 5. **G5 / P4 common 前端分支镜像**：只对前端/Node 用到的 `common` 逻辑做 TS 等价实现（类型、几何、schema、file-change 已部分由 F1.2 完成）；不改 `.cljc` 的 Clojure 分支。等 backend-rust 接管后再整体去掉 Clojure 依赖。
@@ -463,8 +463,8 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
         M0 workspace | M1 transit | M2 errors+config | M3 rpc(axum) | M4 session | M5 storage | M6 worker | M7 ws
-阶段 G  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）；G2.1 基础层与 G2.2 http 适配落地
-        G1 入口 4/4（render-sprite 死路由剔除） | G2 exporter 2/7 | G3 library | G4 frontend | G5 common
+阶段 G  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）；G2.1–G2.3 落地
+        G1 入口 4/4（render-sprite 死路由剔除） | G2 exporter 3/7 | G3 library | G4 frontend | G5 common
 支撑    ▒▒▒▒▒▒▒▒  S1 RPC 清单 → F1.2 ; S2 OpenAPI ⛔ ; S3 DB schema → B5/B6 ; S4 transit 金样本 → B1 ; S5 JWE 向量 ⛔
 图例： █ 进行中/完成　▒ 可并行　░ 未开始
 ```
@@ -3198,6 +3198,15 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 单测：`handlers.test.ts` 8 例覆盖六个状态码分支与 assertion 归一；`auth.test.ts` 10 例覆盖 RPC 地址与请求头、cookie 带 token、60s 缓存（含匿名）、`uuid/zero` → 匿名、非 200 与传输失败、`requireProfileId` 拒绝/通过、`checkOwner` 三例；`http.test.ts` 12 例走真 socket：`/readyz`、空 200 → 204 + `content-length: 0`、query 合并、transit body 覆盖 query、gzip 解压、非 transit 原文、json-verbose + 长度、字符串 body 不动、cookie 解码、jobs 201/202、深路径 404、raised 401 映射。
 - 验证：`tsc -p exporter/tsconfig.json` 0；`vitest run` 14 文件 105 例全过（G2.1 的 71 + 本轮 34）。依赖仍借用 `frontend-nextjs` 的 `typescript`/`vitest`（临时链接，不入库）。
 - 下一步：G2.3——Redis 连接与 job store、scheduler、utils，legacy `POST /api/export` 与 `/jobs` 处理器接线。
+
+### 7.67 本轮（2026-11-18，第六十六批：G2.3 exporter Redis 与 job 生命周期）
+
+- 口径：G2 第三片。旧链是 `app.redis`（carmine 连接 + `tenant-key`/`redis-key` + pub/sub）→ `app.jobs`（内存注册表、`pubsub` 进度、取消信号、state 迁移）→ `jobs/store`（Redis hash 单字段 blob + TTL）→ `jobs/scheduler`（并发/单 profile/队列上限与 headless worker 容量）→ `jobs/utils`（managed 临时文件清理）→ `handlers/export`（`create` / `export-now`）→ `handlers/jobs`（`create`/`fetch`/`cancel`）→ legacy `POST /api/export`。行为不变：进度写入 `export-update`、取消走 `job-cancel` 主题、终态首个赢、TTL 由 `exporter-job-ttl` 控制。
+- 新增：`app/redis.ts`（`parseUri`、`encodeCommand`、`parseReply`、`Connection`、`init`/`stop`/`tenantKey`/`redisKey`/`publish`/`subscribe`/`hset`/`hgetall`/`expire`/`del`/`scan`）；`app/jobs.ts`（记录结构、内存注册表、创建/查询/迁移/进度节流/取消信号/清理、`init` 订阅取消主题）；`app/jobs/store.ts`、`app/jobs/scheduler.ts`、`app/jobs/utils.ts`；`app/handlers/export.ts`（`conformParams`、`createExportService`，`createJob` 交给 scheduler、`exportNow` 立即跑）；`app/handlers/jobs.ts`（`create`/`fetch`/`cancel`）；`app/handlers.ts` 增 `createLegacyHandler`。
+- 决策与偏差：① 不引入 `ioredis`（本机无此包，与「少依赖」一致），手写 RESP2 客户端（`node:net`）：支持 `HSET`/`HGETALL`/`EXPIRE`/`DEL`/`SCAN`/`PUBLISH`/`SUBSCRIBE`/`QUIT`、FIFO 命令队列、1s 重连并在连接后重订阅、5s 连接超时；无连接时读操作吞错（`hgetall`/`scan` 返回空）、写操作只 warn，不阻断导出。② 取消主题改为函数惰性求值：模块加载期读 config 会让任何 import 它的单测在设 env 之前崩掉。③ `createScheduler({ capacity })` 把 headless worker 容量注入，G2.5 wasm pool 接管；并发/单 profile/队列上限每次从 config 读，测试可改 env。④ 队列满同步 `raise`，与 CLJS 的即时拒绝一致；异步返回 rejected promise 会漏成 unhandled。⑤ `ResourceHandle`（prepare 时已知的名字/文件名/mtype/path）与 `Resource`（渲染产物）分开，对应 CLJS 的 `rsc/create` 与上传结果。⑥ 命令表注入，G2.6 再填 `export-shapes`/`export-frames`。⑦ legacy 入口立即返回 handle（去掉 `path`），`wait=true` 才等 pending；会话存在时用会话覆盖 body 的 `profile-id`。
+- 单测：20 文件 168 例（G2.2 的 105 + 本轮 63）——`redis` 15（uri 解析、RESP 编解码含半截 bulk 与 nil、端到端 hset/hgetall/scan/del/pubsub/stop）、`jobs` 15（生命周期、进度节流、取消、release、`checkCancelled`、`init` 订阅）、`store` 7（blob 写入、nil 字段、往返、坏 blob、`fetchAll`、取消主题）、`scheduler` 4（并发与排队、队列满、headless 容量、取消排队）、`handlers/export` 9（conform 4、createJob 3、exportNow 2）、`handlers/jobs` 8（create 3、fetch 3、cancel 2）、legacy handler 5。新增 `test/redis-server.ts` mock RESP 服务端，单测不依赖外部 Redis。
+- 验证：`tsc -p exporter/tsconfig.json` 0；`vitest run` 20 文件 168 例全过。依赖仍借用 `frontend-nextjs` 的 `typescript`/`vitest`（临时链接，不入库）。
+- 下一步：G2.4——`app.browser`（Playwright 池）、`app.renderer`、`app.resources` 与临时资源上传。
 
 ---
 
