@@ -9,7 +9,7 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）已登记，G0 完成、G1–G5 未开始；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0 完成、G1 进行中（首片 `/settings/integrations` 已补）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
 | 最后更新 | 2026-11-18 |
@@ -83,7 +83,7 @@
 | 编号 | 任务 | 状态 | 交付物 / 说明 |
 | --- | --- | --- | --- |
 | G0 | 口径与盘点 | ✅ | 2026-11-18：确认无 `.cjs`；统计 CLJS 资产；划定 backend `.clj` 与 common 后端分支边界 |
-| G1 | 补齐新端入口（P0） | ⬜ | `/settings/integrations`、`/render-sprite/:file-id`、`/subscribe-nitrate`、应用内 release notes、导出入口 |
+| G1 | 补齐新端入口（P0） | 🔧 | 2026-11-18：`/settings/integrations` 已补（MCP 服务器 + 个人访问令牌，见 7.61）；余 `/render-sprite/:file-id`、`/subscribe-nitrate`、应用内 release notes、导出入口 |
 | G2 | exporter TS 重写（P1） | ⬜ | 34 文件 / 3,850 行；独立 Node 进程，保留 RPC/Redis/Playwright 行为 |
 | G3 | library TS 重写（P2） | ⬜ | 2 文件 / 505 行；`.penpot` 导出库，金样本回归 |
 | G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
@@ -425,7 +425,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 
 **执行顺序（对应总表 G1–G5）**
 
-1. **G1 / P0 补齐新端入口**：先补没有页面或没有入口的洞——`/settings/integrations`（侧栏按 flag 显示但无 page，当前 404）、`/render-sprite/:file-id`（F6.6 曾登记不做）、`/subscribe-nitrate`、应用内 release notes（当前为外链）、图片/PDF 导出入口（`api/export` 与 export jobs 未接，workspace 导出按钮禁用）。这些是新旧功能不对等的最大缺口；补齐后，旧端对应路由才可删除。
+1. **G1 / P0 补齐新端入口**：先补没有页面或没有入口的洞——`/settings/integrations`（2026-11-18 已补，见 7.61）、`/render-sprite/:file-id`（F6.6 曾登记不做）、`/subscribe-nitrate`、应用内 release notes（当前为外链）、图片/PDF 导出入口（`api/export` 与 export jobs 未接，workspace 导出按钮禁用）。这些是新旧功能不对等的最大缺口；补齐后，旧端对应路由才可删除。
 2. **G2 / P1 exporter 全量 TS**：`exporter/src` 34 文件 / 3,850 行，独立 Node 进程，边界清晰，可单测。保留 RPC 共享密钥、Redis 进度、Playwright 渲染、wasm pool 与 bitmap/pdf/svg 三类 renderer 的外部行为；用同一 `.penpot` 金样本对拍。
 3. **G3 / P2 library TS**：`library/src/lib` 2 文件 / 505 行，`.penpot` 导出实现，依赖 `common` 的类型、schema 与文件构建器。先锁 API 与产物格式，再用金样本回归；不改变插件/库的对外契约。
 4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
@@ -462,8 +462,8 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
         M0 workspace | M1 transit | M2 errors+config | M3 rpc(axum) | M4 session | M5 storage | M6 worker | M7 ws
-阶段 G  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1–G5 未开始
-        G1 入口 | G2 exporter | G3 library | G4 frontend | G5 common
+阶段 G  █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 进行中（首片 integrations）
+        G1 入口 1/5 | G2 exporter | G3 library | G4 frontend | G5 common
 支撑    ▒▒▒▒▒▒▒▒  S1 RPC 清单 → F1.2 ; S2 OpenAPI ⛔ ; S3 DB schema → B5/B6 ; S4 transit 金样本 → B1 ; S5 JWE 向量 ⛔
 图例： █ 进行中/完成　▒ 可并行　░ 未开始
 ```
@@ -3137,6 +3137,15 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 边界：`backend/` 与 Clojure 构建脚本不在范围；`common/` 的 Clojure 分支保留，只做前端/Node 侧 TS 镜像；`frontend/text-editor/` 是 JS，不是 CLJS；`render-wasm` 是 Rust；`mcp`/`plugins`/`media-processor` 已是 TS。
 - 顺序（已写入 §4 阶段 G）：G1 补齐新端入口 → G2 exporter TS → G3 library TS → G4 frontend 旧端收尾并停 shadow-cljs → G5 common 前端镜像收尾。理由：入口缺口影响功能对等；exporter/library 边界独立、可单测；frontend 量最大放后面；common 受后端约束最后收口。
 - 未改代码；仅更新 `rewrite.md`。
+
+### 7.61 本轮（2026-11-18，第六十批：G1 首片 `/settings/integrations`）
+
+- 口径：G1 第一片。侧栏在 `mcp`/`access-tokens` flag 下已列出该路由，但 `app/settings` 没有对应 page，点击得到 404；按 `frontend/src/app/main/ui/settings/integrations.cljs`（666 行）与 `integrations.scss`（241 行）移植。
+- 新增：`lib/integrations.ts`（命令封装、mcp/个人令牌过滤、有效期判断、`mcpServerUrl`、`formatTokenDate`、`tokenSubtitle` 与 20 例单测）；`components/integrations-dialogs.tsx`（CopyField / Toggle / 创建弹窗 / 已创建弹窗 / TokenFlow）；`components/integrations-token-item.tsx`（令牌行与菜单）；`app/settings/integrations/page.tsx`；`styles/integrations.css`。
+- 修正：`updateProfileProps` 之前把 props 当普通对象交给 transit，键到后端是字符串，而 `schema:update-profile-props` 是闭集 keyword 键，回 400；现与 `customShortcutsWire` 一致用 `keywordMap` 包装。MCP 开关此前因此只弹 toast、状态不落库。
+- 翻译：抽取脚本只认静态调用点；本轮把弹窗标题、开关文案与成功通知从数据表/三元参数改成字面量调用，en 目录 1,299/1,299。
+- 验证：`tsc` 0；`next lint` 0（仅既有 warning）；全量 `vitest` 102 文件 2,190 例全过。docker 后端 + `:3450` 外壳冒烟（Edge）：注册 → 两区块渲染 → 生成 MCP key（354 字符）→ 开关转 `aria-checked="true"`、URL 为 `mcp/stream?userToken=` → 创建个人令牌（720h）→ 过期文案 → 菜单删除 → 空态恢复；无 400（仅 favicon 404）。
+- 下一步：G1 余项 `/render-sprite/:file-id`、`/subscribe-nitrate`、应用内 release notes、导出入口。
 
 ---
 
