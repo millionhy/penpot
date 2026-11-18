@@ -6,13 +6,13 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档状态 | 规划已对齐当前仓库；阶段 F 进行中（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零；F8 协作四片完成，见 7.46–7.48） |
+| 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F（frontend-nextjs）进行中；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）已登记，G0 完成、G1–G5 未开始；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
-| 最后更新 | 2026-11-02 |
+| 最后更新 | 2026-11-18 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -64,7 +64,32 @@
 | B8 | M8 | `rpc` 只读命令承接 | ⛔ | 前置：C3 DDL + C4 OpenAPI + 补齐 `::sm/result` + 可用 devenv。永久排除：`add-file-transient-changes`/binfile/files 写路径/thumbnails/nitrate（`file.data` blob = Fressian v4/v5，JVM 专有） |
 | — | — | `render-native` | ⬜ 暂缓 | `render-wasm` 无 headless-native API（24 处 `cfg(target_arch="wasm32")` + GL `gpu_state`），需先抽 core 且要 file-data 解码 |
 
-### 支撑任务（契约，只读后端，可与阶段 F 并行）
+### 阶段 G：去 CLJS 化（TypeScript 重写，已登记）
+
+口径：仓库内所有 ClojureScript（`*.cljs`，以及 `*.cljc` 的前端分支）最终都由 TypeScript 重写，不保留 CLJS 作为最终实现。仓库当前无 `*.cjs` 文件，此处 cjs 指 CLJS。`backend/` 的 `*.clj` 与 Clojure 构建脚本不是 CLJS，不在本阶段；`common/` 的 `*.cljc` 在后端仍为 Clojure 时保留其 Clojure 分支。
+
+规模基线（2026-11-18 静态统计，已排除 `node_modules`/`target`/`.cpcache`/`vendor`）：
+
+| 资产 | 语言 | 规模 |
+| --- | --- | ---: |
+| `frontend/src` | `.cljs` | 682 文件 / 154,262 行 |
+| `frontend/test` | `.cljs` | 140 / 28,379 |
+| `exporter/src` | `.cljs` | 34 / 3,850 |
+| `library/src/lib` | `.cljs` | 2 / 505 |
+| `common/src` | `.cljc` | 156 / 47,379 |
+| `common/test` | `.cljc` | 99 / 30,598 |
+| `frontend-nextjs`（已完成 TS 面） | `.ts`/`.tsx` | app 7,477 + components 29,182 + lib 64,856 |
+
+| 编号 | 任务 | 状态 | 交付物 / 说明 |
+| --- | --- | --- | --- |
+| G0 | 口径与盘点 | ✅ | 2026-11-18：确认无 `.cjs`；统计 CLJS 资产；划定 backend `.clj` 与 common 后端分支边界 |
+| G1 | 补齐新端入口（P0） | ⬜ | `/settings/integrations`、`/render-sprite/:file-id`、`/subscribe-nitrate`、应用内 release notes、导出入口 |
+| G2 | exporter TS 重写（P1） | ⬜ | 34 文件 / 3,850 行；独立 Node 进程，保留 RPC/Redis/Playwright 行为 |
+| G3 | library TS 重写（P2） | ⬜ | 2 文件 / 505 行；`.penpot` 导出库，金样本回归 |
+| G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
+| G5 | common 前端分支镜像（P4） | ⬜ | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管 |
+
+### 支撑任务（阶段 B 契约前置，只读后端，可与阶段 F 并行）
 
 | 编号 | 任务 | 状态 | 说明 |
 | --- | --- | --- | --- |
@@ -84,15 +109,15 @@
 
 | 模块 | 技术 | 位置 | 迁移取向 |
 | --- | --- | --- | --- |
-| 前端 | ClojureScript + Potok + Rumext/React 19 | `frontend/` | 由 `frontend-nextjs/` 逐路由绞杀 |
+| 前端 | ClojureScript + Potok + Rumext/React 19 | `frontend/` | 由 `frontend-nextjs/` 逐路由绞杀；剩余 CLJS 归 G4，最终删除 |
 | 后端 | Clojure（JVM）+ Integrant | `backend/` | 保留；阶段 B 起由 `backend-rust/` 增量承接 |
-| 共享层 | CLJC（类型/几何/schema/file-change） | `common/` | 保留；前端侧以 TS 类型重表达（F1.2） |
+| 共享层 | CLJC（类型/几何/schema/file-change） | `common/` | Clojure 分支保留；前端/Node 侧 TS 镜像（F1.2、G5） |
 | 渲染引擎 | Rust → WASM（Skia + WebGL） | `render-wasm/` | **保留并复用**（Next.js 直接加载 wasm） |
-| 导出服务 | ClojureScript + Node + Playwright | `exporter/` | 保留；阶段 B 评估 Rust 原生导出 |
+| 导出服务 | ClojureScript + Node + Playwright | `exporter/` | 运行保留；G2 全量 TS 重写 |
 | 媒体处理 | TypeScript/Node（sharp + FontForge） | `media-processor/` | 保留 |
 | MCP | TypeScript（WS :4402） | `mcp/` | 保留 |
 | 插件 | TypeScript 运行时 + Plugin API | `plugins/` | 保留；前端侧复用 SES 运行时 |
-| 设计库 | `@penpot/library` | `library/` | 保留 |
+| 设计库 | `@penpot/library`（CLJS） | `library/` | G3 TS 重写，保持 API 与产物格式 |
 
 依赖图：`frontend → common`、`backend → common`、`exporter → common`、`frontend → render-wasm`。
 
@@ -152,7 +177,7 @@
         +---------------------+---------------------+
         |                                           |
   frontend-nextjs                          frontend (CLJS)
-  (Next.js · React 19 · SSR)               (保留, 逐路由绞杀, 最后剩 workspace)
+  (Next.js · React 19 · SSR)               (迁移期保留, 逐路由绞杀, G4 后删除)
         |                                           |
         +---------------------+---------------------+
                               |  Transit RPC /api/main/methods · WS /ws/notifications
@@ -179,7 +204,7 @@
 
 ```
 penpot/
-├── frontend/          (ClojureScript, 保留, 逐路由绞杀)
+├── frontend/          (ClojureScript, 迁移期保留, G4 后删除)
 ├── frontend-nextjs/   (新 Next.js 前端) —— 本轮已建脚手架 ✅
 │   ├── app/           App Router 路由树(auth/settings/dashboard/view/workspace)
 │   ├── lib/           rpc/transit/errors/config/routes/types
@@ -191,7 +216,9 @@ penpot/
 │   └── crates/        transit / errors / config / session / db / storage / worker / ws / rpc
 ├── common/            (CLJC 共享, 保留)
 ├── render-wasm/       (Rust→WASM, 保留, 前后端共用)
-├── exporter/  media-processor/  mcp/  plugins/  library/  docs/   (保留)
+├── exporter/          (CLJS+Node, 运行保留；G2 TS 重写)
+├── library/           (CLJS, G3 TS 重写)
+├── media-processor/  mcp/  plugins/  docs/   (保留)
 └── api/               (契约产物, S1/S2/S3 生成后落地) —— 未建 ⬜
 ```
 
@@ -202,7 +229,7 @@ pnpm 工作区（`frontend-nextjs/`，`storeDir: ../.pnpm-store`），新后端�
 
 ## 4. 阶段计划
 
-### 阶段 F：frontend-nextjs（前端优先，进行中）
+### 阶段 F：frontend-nextjs（前端优先，已收口）
 
 目标：用 Next.js 外壳逐路由替换 CLJS 前端，后端 API 保持不变。
 
@@ -392,6 +419,39 @@ M5 storage → M6 worker → M7 ws`。`transit` 先做的理由：RPC 请求体�
 binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nitrate` 31 + `nitrate` 13 命令）。
 这些永久留在 Clojure 侧。
 
+### 阶段 G：去 CLJS 化（TypeScript 重写，已登记）
+
+目标：把仓库内所有 CLJS 实现改成 TypeScript，最终删除 CLJS 工具链与旧 `frontend/`。不重写后端；`backend/` 的 Clojure 与 `common/` 的后端分支保留。
+
+**执行顺序（对应总表 G1–G5）**
+
+1. **G1 / P0 补齐新端入口**：先补没有页面或没有入口的洞——`/settings/integrations`（侧栏按 flag 显示但无 page，当前 404）、`/render-sprite/:file-id`（F6.6 曾登记不做）、`/subscribe-nitrate`、应用内 release notes（当前为外链）、图片/PDF 导出入口（`api/export` 与 export jobs 未接，workspace 导出按钮禁用）。这些是新旧功能不对等的最大缺口；补齐后，旧端对应路由才可删除。
+2. **G2 / P1 exporter 全量 TS**：`exporter/src` 34 文件 / 3,850 行，独立 Node 进程，边界清晰，可单测。保留 RPC 共享密钥、Redis 进度、Playwright 渲染、wasm pool 与 bitmap/pdf/svg 三类 renderer 的外部行为；用同一 `.penpot` 金样本对拍。
+3. **G3 / P2 library TS**：`library/src/lib` 2 文件 / 505 行，`.penpot` 导出实现，依赖 `common` 的类型、schema 与文件构建器。先锁 API 与产物格式，再用金样本回归；不改变插件/库的对外契约。
+4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
+5. **G5 / P4 common 前端分支镜像**：只对前端/Node 用到的 `common` 逻辑做 TS 等价实现（类型、几何、schema、file-change 已部分由 F1.2 完成）；不改 `.cljc` 的 Clojure 分支。等 backend-rust 接管后再整体去掉 Clojure 依赖。
+
+**范围边界**
+
+- 纳入：`frontend/src`、`frontend/test`、`exporter/src`、`library/src/lib` 的 `.cljs`；`frontend` 与 `common` 中供前端使用的 `.cljc` 分支。
+- 不纳入：`backend/` 的 `.clj`/`.cljc` 后端实现、Clojure 构建脚本（`build.clj`、`deps.edn` 驱动的工具）；`render-wasm/`（Rust）；`mcp/`、`plugins/`、`media-processor/`（已 TS）；`frontend/text-editor/`（JS，不是 CLJS）。
+- `common/` 是双端共享层：后端仍为 Clojure 时，TS 版只能是前端/Node 侧的等价实现，不能删除 `.cljc`。这是本阶段唯一的硬边界。
+
+**每片 DoD**
+
+1. 对应 CLJS 行为有逐项清单，关键路径有 vitest/Playwright 覆盖；
+2. `pnpm typecheck`、`pnpm lint`、`pnpm test` 全绿（exporter/library 用各自脚本）；
+3. 旧 `.cljs` 文件与不再引用的 CLJS 测试已删除，CI 不再跑该目录的 CLJS target；
+4. 不新增 `.cljs`；文档（`rewrite.md`、`frontend-nextjs/README.md`）路由表与状态同步；
+5. 涉及导出/插件 API 的切片必须过金样本或 API 回归。
+
+**风险**
+
+- 新旧双份实现漂移：每片完成即删旧文件，代码评审拒绝新增 CLJS。
+- `common` 双端耦合：G5 只做 TS 镜像，不改 `.cljc`；后端接管前不删 Clojure 分支。
+- 导出/插件契约破坏：G2/G3 先冻结金样本与 API 快照，再改实现。
+- 工作量：15 万行旧端不等于从零重写；新端已有约 10 万行 TS 对应，按命名空间核对后大部分是删除与补齐。
+
 ---
 
 ## 5. 里程碑（前端优先）
@@ -402,6 +462,8 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
         M0 workspace | M1 transit | M2 errors+config | M3 rpc(axum) | M4 session | M5 storage | M6 worker | M7 ws
+阶段 G  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1–G5 未开始
+        G1 入口 | G2 exporter | G3 library | G4 frontend | G5 common
 支撑    ▒▒▒▒▒▒▒▒  S1 RPC 清单 → F1.2 ; S2 OpenAPI ⛔ ; S3 DB schema → B5/B6 ; S4 transit 金样本 → B1 ; S5 JWE 向量 ⛔
 图例： █ 进行中/完成　▒ 可并行　░ 未开始
 ```
@@ -413,10 +475,13 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 | 风险 | 概率 | 影响 | 缓解 |
 | --- | --- | --- | --- |
 | 两套前端体验割裂 | 中 | 中 | 复用 `@penpot/ui` + 移植 ds 令牌，统一设计系统（F2） |
+| 新旧前端双份实现漂移 | 高 | 中 | 每片完成即删旧 `.cljs`；CI 禁止新增；README/路由表同步（G4） |
+| `common` 的 `.cljc` 双端耦合 | 高 | 中 | G5 只做前端/Node 侧 TS 镜像，不改 Clojure 分支；backend-rust 接管后再去 CLJ |
+| exporter/library 重写破坏产物契约 | 中 | 严重 | 先冻结 `.penpot` 金样本与插件 API 快照，再改实现（G2/G3） |
 | Transit 复杂值往返不一致 | 中 | 严重 | F1.1 完整移植 handler；对 file/change 做往返测试 |
 | 响应类型覆盖不足 | 高 | 中 | S1/F1.2 生成 api-types；缺 `::sm/result` 的命令先标手写类型 |
 | 会话吊销在两栈不一致 | 中 | 严重 | 前端只复用 cookie 会话；后端侧统一由网关代查 `http_session_v2`（B4） |
-| workspace 迁移复杂度 | 高 | 严重 | 放到 F9 最后，前置 F3–F8 验证；必要时长期保留 CLJS workspace |
+| workspace 迁移复杂度 | 高 | 严重 | 已由 F9 完成主体；余项按 G4 切片收尾，不保留 CLJS workspace |
 | Rust 与 WASM 渲染差异 | 中 | 中 | render-native 已暂缓；将来开工时像素级对比 + CI 金丝雀 |
 | 契约工具需 JVM/GitHub | 中 | 中 | S2/S3/S5 解锁条件见 §8；S1/S4 走静态扫描/离线预言机不依赖运行时 |
 | file data blob = **Fressian v4/v5**（JVM 专有，无 Rust 实现） | 高 | 严重 | 阶段 B 不读写 `file.data`/`file_data.data`；写路径与领域核心永久留在 Clojure（见 B8 排除清单） |
@@ -3064,6 +3129,14 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   `next lint` 0。浏览器冒烟未跑（本机无 docker 后端，同上批口径）。
 - 下一步：阶段 F 登记余项清零（唯 F2 行的 `@penpot/ui` 接线为历史口径，
   实质已由自研组件满足）；阶段 B 的 M0/M1（backend-rust，排除目录需先授权）。
+
+### 7.60 本轮（2026-11-18，第五十九批：登记阶段 G「去 CLJS 化」）
+
+- 口径：用户要求仓库内所有 CLJS 最终都用 TypeScript 重写。核对后确认仓库无 `*.cjs` 文件，cjs 指 ClojureScript；`backend/` 的 `.clj` 不是 CLJS，按“抛开后端”不纳入。
+- 静态盘点（排除 `node_modules`/`target`/`.cpcache`/`vendor`）：`frontend/src` 682 `.cljs` / 154,262 行（`ui` 442/90,005、`data` 111/35,821、`plugins` 32/9,852、`render_wasm` 11/4,672、`util` 53/6,059、`worker` 7/1,062）；`frontend/test` 140/28,379；`exporter/src` 34/3,850；`library/src/lib` 2/505；`common/src` 156 `.cljc`/47,379；`common/test` 99 `.cljc`/30,598。新端 TS 面：app 7,477 + components 29,182 + lib 64,856。
+- 边界：`backend/` 与 Clojure 构建脚本不在范围；`common/` 的 Clojure 分支保留，只做前端/Node 侧 TS 镜像；`frontend/text-editor/` 是 JS，不是 CLJS；`render-wasm` 是 Rust；`mcp`/`plugins`/`media-processor` 已是 TS。
+- 顺序（已写入 §4 阶段 G）：G1 补齐新端入口 → G2 exporter TS → G3 library TS → G4 frontend 旧端收尾并停 shadow-cljs → G5 common 前端镜像收尾。理由：入口缺口影响功能对等；exporter/library 边界独立、可单测；frontend 量最大放后面；common 受后端约束最后收口。
+- 未改代码；仅更新 `rewrite.md`。
 
 ---
 
