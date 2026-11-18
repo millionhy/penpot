@@ -3,6 +3,8 @@
 // groups them, which keeps the handler signatures readable without changing the
 // wire contract.
 
+import type { IncomingMessage, ServerResponse } from "node:http";
+
 export interface ExchangeRequest {
   method: string;
   path: string;
@@ -15,6 +17,9 @@ export interface ExchangeRequest {
   authToken?: string;
   // Decoded application/transit+json body, when the request carries one.
   body?: unknown;
+  // The node request/response pair; the http adapter sets it and unit tests
+  // leave it out.
+  http?: { req: IncomingMessage; res: ServerResponse };
 }
 
 export interface ExchangeResponse {
