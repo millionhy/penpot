@@ -9,12 +9,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { config } from "@/lib/config";
 import {
+  activateNitrateEntryPopup,
   adminConsoleCreateOrganizationHref,
   appendQueryParam,
   buildAdminConsoleHref,
   buildAdminConsoleUrl,
   buildNitrateCallbackUrls,
   buildTeamsToLeave,
+  consumeNitrateEntryPopup,
   fetchConnectivity,
   fetchSubscriptionWarning,
   getLeaveOrganizationSummary,
@@ -26,6 +28,8 @@ import {
   leaveOrganizationModalKind,
   nitrateCheckoutHref,
   nitrateConnectivity,
+  nitrateEntryPopupPending,
+  nitrateEntryProps,
   offlineConnectivity,
   organizationLeaveInfo,
   organizationTeams,
@@ -456,5 +460,88 @@ describe("nitrate activation codes", () => {
     expect(calls[0].init.method).toBe("GET");
     expect(calls[0].url).toBe("/api/main/methods/get-nitrate-activation-code-request");
     expect(result).toBe("eyJyZXEiOiJmaWxlIn0=");
+  });
+});
+
+// --- entry popup ------------------------------------------------------------
+
+// /subscribe-nitrate and the dashboard hand-off in use-nitrate-entry-popup:
+// the flag lives in the plain "penpot" storage under the ::nitrate-entry-
+// pending-popup keyword, so a CLJS tab and a shell tab share it.
+describe("nitrate entry popup", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubLocalStorage(): Map<string, string> {
+    const store = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => void store.set(key, value),
+        removeItem: (key: string) => void store.delete(key),
+      },
+    });
+    return store;
+  }
+
+  it("sets and consumes the flag under the CLJS storage key", () => {
+    const store = stubLocalStorage();
+    expect(nitrateEntryPopupPending()).toBe(false);
+
+    activateNitrateEntryPopup();
+    // app.util.storage writes (t/encode-str val {:with-meta true}), whose
+    // top-level quote tag is how a CLJS tab stores the same flag.
+    expect(
+      store.get("penpot:app.main.data.nitrate/nitrate-entry-pending-popup"),
+    ).toBe('["~#\'",true]');
+    expect(nitrateEntryPopupPending()).toBe(true);
+
+    consumeNitrateEntryPopup();
+    expect(store.size).toBe(0);
+    expect(nitrateEntryPopupPending()).toBe(false);
+  });
+
+  it("treats a non-true stored value as pending=false", () => {
+    const store = stubLocalStorage();
+    store.set(
+      "penpot:app.main.data.nitrate/nitrate-entry-pending-popup",
+      encodeTransit("yes"),
+    );
+    expect(nitrateEntryPopupPending()).toBe(false);
+  });
+
+  it("skips the first onboarding and marks this release's notes as seen", () => {
+    expect(
+      nitrateEntryProps({
+        onboardingViewed: false,
+        nitrateOnboardingViewed: false,
+        releaseNotesVersion: "2.9",
+      }),
+    ).toEqual({
+      "nitrate-onboarding-viewed": false,
+      "onboarding-viewed": true,
+      "release-notes-viewed": "2.9",
+    });
+  });
+
+  it("leaves the release stamp alone when the shell has no version", () => {
+    expect(
+      nitrateEntryProps({
+        onboardingViewed: false,
+        nitrateOnboardingViewed: true,
+        releaseNotesVersion: null,
+      }),
+    ).toEqual({ "onboarding-viewed": true });
+  });
+
+  it("keeps a returning visitor's props untouched", () => {
+    expect(
+      nitrateEntryProps({
+        onboardingViewed: true,
+        nitrateOnboardingViewed: true,
+        releaseNotesVersion: "2.9",
+      }),
+    ).toEqual({});
   });
 });

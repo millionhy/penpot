@@ -10,22 +10,72 @@
 //
 // The dashboard shortcuts registry (app.main.data.dashboard.shortcuts, F5.6)
 // mounts through DashboardShortcutsProvider inside DashboardProvider, which
-// owns the navigate and default-project actions the matcher needs. Not here
-// yet: the onboarding and release-notes modals gated by the :onboarding flag.
+// owns the navigate and default-project actions the matcher needs. The
+// nitrate entry flow below ports use-nitrate-entry-popup; the rest of the
+// onboarding and release-notes modals gated by the :onboarding flag are still
+// missing.
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { AuthGuard } from "@/components/auth-guard";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import { useNitrateFormPopup } from "@/components/nitrate-modals";
+import { useNotifications } from "@/components/notifications";
 import { PluginInstallFlow } from "@/components/plugin-install-flow";
 import { ProgressProvider } from "@/components/progress-notification";
+import { config } from "@/lib/config";
 import { singleSelectedFileId, workspaceHref } from "@/lib/dashboard";
 import { DashboardProvider, useDashboard } from "@/lib/dashboard-context";
 import { DashboardShortcutsProvider } from "@/lib/dashboard-shortcuts-context";
+import { tr } from "@/lib/i18n";
+import {
+  consumeNitrateEntryPopup,
+  nitrateEntryPopupPending,
+  nitrateEntryProps,
+} from "@/lib/nitrate";
+import { useSession } from "@/lib/session";
+import { updateProfileProps, type RuntimeProfile } from "@/lib/settings";
+
+// use-nitrate-entry-popup in dashboard*: /subscribe-nitrate leaves a flag in
+// the shared storage; the first dashboard mount after it consumes the flag,
+// marks the onboarding as viewed and opens the enterprise (nitrate) form.
+function useNitrateEntryPopup() {
+  const { profile, refresh } = useSession();
+  const notifications = useNotifications();
+  const openNitrateForm = useNitrateFormPopup();
+  const consumed = useRef(false);
+
+  const runtime = (profile ?? null) as RuntimeProfile | null;
+  const onboardingViewed = runtime?.props?.["onboarding-viewed"] === true;
+  const nitrateOnboardingViewed = runtime?.props?.["nitrate-onboarding-viewed"] === true;
+
+  useEffect(() => {
+    // Wait for get-profile (runtime null) so the props read is the stored one.
+    if (consumed.current || runtime === null) return;
+    if (!nitrateEntryPopupPending()) return;
+
+    consumed.current = true;
+    consumeNitrateEntryPopup();
+
+    const props = nitrateEntryProps({
+      onboardingViewed,
+      nitrateOnboardingViewed,
+      releaseNotesVersion: config.version,
+    });
+    if (Object.keys(props).length > 0) {
+      void updateProfileProps(props)
+        .then(() => refresh())
+        .catch(() => notifications.error(tr("errors.generic")));
+    }
+    openNitrateForm();
+  }, [runtime, onboardingViewed, nitrateOnboardingViewed, openNitrateForm, refresh, notifications]);
+}
 
 function DashboardFrame({ children }: { children: React.ReactNode }) {
   const { teamId, selection, clearSelection } = useDashboard();
   const router = useRouter();
+
+  useNitrateEntryPopup();
 
   // The global keydown in dashboard*: Enter opens the selection when it holds
   // exactly one file (dd/open-selected-file). Grid items handle their own

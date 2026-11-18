@@ -55,9 +55,12 @@ export function createStorage(kind: "local" | "session", prefix: string): Namesp
   };
 }
 
-// Same prefixes as the defonce storages in app.util.storage.
+// Same prefixes as the defonce storages in app.util.storage. The plain
+// "penpot" storage is the one the nitrate entry flag and other app slices
+// share with a CLJS tab on the same origin.
 export const globalStorage = createStorage("local", "penpot-global");
 export const userStorage = createStorage("local", "penpot-user");
+export const storage = createStorage("local", "penpot");
 export const sessionStorage = createStorage("session", "penpot");
 
 // Namespaces the shell writes to, matching the CLJS keyword namespaces.

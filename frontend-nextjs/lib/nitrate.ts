@@ -29,6 +29,7 @@ import { config, hasFlag } from "@/lib/config";
 import type { InstantValue } from "@/lib/dashboard";
 import { tr } from "@/lib/i18n";
 import { cmd } from "@/lib/rpc";
+import { storage } from "@/lib/storage";
 import type { TeamWithOrganization } from "@/lib/team";
 import type { RpcParams, RpcResults } from "@/lib/types";
 
@@ -581,4 +582,53 @@ export function leaveOrganizationModalKind(
     return "warning";
   }
   return "confirm";
+}
+
+// --- Entry popup -------------------------------------------------------------
+//
+// /subscribe-nitrate (app.main.ui.nitrate.entry) does not render anything: it
+// flags the shared "penpot" localStorage entry and sends the visitor on, and
+// the dashboard consumes the flag on its next mount to open the enterprise
+// form (use-nitrate-entry-popup in app.main.ui.dashboard).
+
+const nitrateNamespace = "app.main.data.nitrate";
+const nitrateEntryPopupName = "nitrate-entry-pending-popup";
+
+export function activateNitrateEntryPopup(): void {
+  storage.set(nitrateNamespace, nitrateEntryPopupName, true);
+}
+
+export function nitrateEntryPopupPending(): boolean {
+  return storage.get(nitrateNamespace, nitrateEntryPopupName) === true;
+}
+
+export function consumeNitrateEntryPopup(): void {
+  storage.remove(nitrateNamespace, nitrateEntryPopupName);
+}
+
+export interface NitrateEntryProfileState {
+  onboardingViewed: boolean;
+  nitrateOnboardingViewed: boolean;
+  // (:main cf/version); a null version leaves the flag untouched instead of
+  // clearing the stored one (the shell build stamp is optional).
+  releaseNotesVersion: string | null;
+}
+
+// The cond-> of use-nitrate-entry-popup: skipping the onboarding the first time
+// also marks this release's notes as viewed; the nitrate flag only lands when
+// neither onboarding has been seen, so a returning visitor keeps their state.
+export function nitrateEntryProps(
+  state: NitrateEntryProfileState,
+): Record<string, unknown> {
+  const props: Record<string, unknown> = {};
+  if (!state.nitrateOnboardingViewed && !state.onboardingViewed) {
+    props["nitrate-onboarding-viewed"] = false;
+  }
+  if (!state.onboardingViewed) {
+    props["onboarding-viewed"] = true;
+    if (state.releaseNotesVersion !== null) {
+      props["release-notes-viewed"] = state.releaseNotesVersion;
+    }
+  }
+  return props;
 }
