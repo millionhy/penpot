@@ -1,0 +1,172 @@
+/* Release notes (G1). Port of frontend/src/app/main/ui/releases/base.scss,
+   common.scss and v2_18.scss onto the tokens in styles/tokens.css. The CLJS
+   files are SCSS modules scoped per component; the shell keeps the same shapes
+   with plain pp-relnotes-* classes.
+
+   The modal lives inside the shared ModalProvider (.pp-modal), so the
+   :has(.pp-relnotes) rule below lifts the 480px dialog cap and re-enables the
+   overflow the 888x500 frame needs. */
+
+.pp-modal:has(.pp-relnotes) {
+  max-block-size: none;
+  max-inline-size: none;
+  overflow: visible;
+}
+
+.pp-relnotes {
+  /* base.scss caps nothing; the shell keeps the frame inside the viewport. */
+  max-inline-size: calc(100vw - var(--sp-xxl) * 2);
+}
+
+/* animations.scss .animated + fade-in/fade-in-down, under local names. */
+.pp-relnotes-animated {
+  animation-duration: 1s;
+  animation-fill-mode: both;
+}
+
+.pp-relnotes-fade-in {
+  animation-name: pp-relnotes-fade-in;
+}
+
+.pp-relnotes-fade-in-down {
+  animation-name: pp-relnotes-fade-in-down;
+}
+
+@keyframes pp-relnotes-fade-in {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes pp-relnotes-fade-in-down {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -100%, 0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pp-relnotes-container {
+  background-color: var(--color-background-primary);
+  border: var(--b-2) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  block-size: var(--sz-500);
+  display: grid;
+  grid-template-columns: minmax(0, 20.25rem) minmax(0, 1fr);
+  /* px2rem(888) in base.scss. */
+  inline-size: 55.5rem;
+  max-inline-size: 100%;
+}
+
+.pp-relnotes-image {
+  block-size: 100%;
+  border-radius: var(--br-8) 0 0 var(--br-8);
+  inline-size: 100%;
+  /* The source art is 915x1400 for a 324x500 slot. */
+  object-fit: cover;
+}
+
+.pp-relnotes-content {
+  display: grid;
+  gap: var(--sp-xxl);
+  grid-template-rows: auto 1fr var(--sz-32);
+  min-inline-size: 0;
+  padding: var(--sz-40);
+}
+
+.pp-relnotes-header {
+  display: grid;
+  gap: var(--sp-s);
+}
+
+/* ds typography headline-large. */
+.pp-relnotes-title {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-18);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-dense);
+  margin: 0;
+  text-transform: uppercase;
+}
+
+/* ds typography headline-small. */
+.pp-relnotes-version-tag {
+  align-items: center;
+  background-color: var(--color-foreground-primary);
+  block-size: var(--sz-32);
+  border-radius: var(--br-8);
+  color: var(--color-background-tertiary);
+  display: flex;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  inline-size: var(--sz-96);
+  justify-content: center;
+  line-height: var(--lh-dense);
+  text-transform: uppercase;
+}
+
+.pp-relnotes-features {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-s);
+  /* The 1fr row keeps long slides reachable without growing the frame. */
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.pp-relnotes-features-intro {
+  gap: var(--sp-l);
+  inline-size: 27.5rem;
+  max-inline-size: 100%;
+}
+
+/* ds typography body-medium. */
+.pp-relnotes-paragraph {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
+  margin: 0;
+}
+
+.pp-relnotes-navigation {
+  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  inline-size: 100%;
+}
+
+.pp-relnotes-dots {
+  display: flex;
+  gap: var(--sp-s);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pp-relnotes-dot {
+  background-color: var(--color-background-quaternary);
+  border: 0;
+  border-radius: var(--br-circle);
+  block-size: var(--sz-12);
+  cursor: pointer;
+  inline-size: var(--sz-12);
+  padding: 0;
+}
+
+.pp-relnotes-dot-current {
+  background-color: var(--color-accent-primary);
+}
+
+.pp-relnotes-next {
+  align-self: center;
+  justify-self: end;
+}

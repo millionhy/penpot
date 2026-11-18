@@ -538,6 +538,7 @@ export const zh_cn: Record<string, TranslationEntry> = {
   "labels.uploading": "正在上传…",
   "labels.uploading-file": "正在上传文件…",
   "labels.variant": "变体",
+  "labels.version-notes": "版本 %s 说明",
   "labels.viewer": "查看者",
   "labels.webhooks": "Webhook",
   "labels.write-new-comment": "写一条新评论",

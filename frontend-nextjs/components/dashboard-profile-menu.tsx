@@ -11,12 +11,14 @@
 //   needs no positioning library.
 // - ev/event telemetry on the external links is dropped; the shell has no
 //   analytics seam yet.
-// - The about submenu omits the release-notes entry (labels.version-notes):
-//   it needs the onboarding/release-notes modal system, scheduled for F5.6.
-//   Check-for-updates landed with F5.2 (lib/check-updates.ts +
-//   components/check-updates.tsx); its entry renders only when
-//   NEXT_PUBLIC_PENPOT_VERSION is set, since without an installed version
-//   there is nothing to compare against.
+// - The about submenu carries the release-notes entry (labels.version-notes):
+//   it opens components/release-notes.tsx when the running version has in-app
+//   content and falls back to the external release-notes page otherwise (the
+//   CLJS would open an empty modal). The alt+mod variant that reopens the
+//   onboarding is dropped: the shell has no onboarding flow. Check-for-updates
+//   landed with F5.2 (lib/check-updates.ts + components/check-updates.tsx); its
+//   entry renders only when NEXT_PUBLIC_PENPOT_VERSION is set, since without an
+//   installed version there is nothing to compare against.
 // - nitrate/subscription blocks (profile-section*, F5.7b) render above this
 //   menu in components/subscription.tsx. The comment bell and feed
 //   (comments-icon* + comments-section) sit in the second grid column of
@@ -34,12 +36,15 @@ import { runCheckForUpdates } from "@/components/check-updates";
 import { DashboardComments } from "@/components/dashboard-comments";
 import { useModal } from "@/components/modal";
 import { PluginManagementDialog } from "@/components/plugin-management";
+import { ReleaseNotesModal } from "@/components/release-notes";
 import { logout } from "@/lib/auth";
 import { generateAvatar } from "@/lib/avatars";
+import { RELEASE_NOTES_URL } from "@/lib/check-updates";
 import { config } from "@/lib/config";
 import { canEdit } from "@/lib/dashboard";
 import { useDashboard } from "@/lib/dashboard-context";
 import { tr } from "@/lib/i18n";
+import { releaseNotesContentVersion } from "@/lib/release-notes";
 import { routePaths } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { feedbackVisible, profilePhotoUrl, type RuntimeProfile } from "@/lib/settings";
@@ -149,6 +154,20 @@ export function DashboardProfileMenu() {
   };
 
   const showFeedback = feedbackVisible(config.flags);
+
+  // show-release-notes in about-penpot-menu*: modal/show {:type :release-notes
+  // :version (:main version)}. The registry decides whether the shell has
+  // content for this version; without it the entry opens the external page
+  // instead of the CLJS empty modal.
+  const onShowReleaseNotes = () => {
+    setOpen(false);
+    const version = releaseNotesContentVersion(config.version);
+    if (version !== null) {
+      modal.open(<ReleaseNotesModal version={version} />);
+    } else {
+      window.open(RELEASE_NOTES_URL, "_blank", "noopener,noreferrer");
+    }
+  };
 
   return (
     <div className="pp-profile-section" ref={rootRef}>
@@ -274,9 +293,8 @@ export function DashboardProfileMenu() {
           </li>
 
           <li role="none">
-            {/* about-penpot-menu*: the row expands into the changelog, the
-                terms and the update check; the release-notes entry lands with
-                F5.6 together with its modal. */}
+            {/* about-penpot-menu*: the row expands into the notes, the
+                changelog, the terms and the update check. */}
             <button
               type="button"
               role="menuitem"
@@ -295,6 +313,19 @@ export function DashboardProfileMenu() {
             </button>
             {subMenu === "about-penpot" ? (
               <ul className="pp-sub-menu" role="menu">
+                {config.version !== null ? (
+                  <li role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="pp-submenu-item"
+                      data-testid="version-notes"
+                      onClick={onShowReleaseNotes}
+                    >
+                      {tr("labels.version-notes", config.version)}
+                    </button>
+                  </li>
+                ) : null}
                 <li role="none">
                   <a
                     role="menuitem"

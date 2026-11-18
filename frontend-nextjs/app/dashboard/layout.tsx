@@ -11,18 +11,20 @@
 // The dashboard shortcuts registry (app.main.data.dashboard.shortcuts, F5.6)
 // mounts through DashboardShortcutsProvider inside DashboardProvider, which
 // owns the navigate and default-project actions the matcher needs. The
-// nitrate entry flow below ports use-nitrate-entry-popup; the rest of the
-// onboarding and release-notes modals gated by the :onboarding flag are still
-// missing.
+// nitrate entry flow below ports use-nitrate-entry-popup; useReleaseNotesPopup
+// ports the release-notes branch of show-release-modal?. The onboarding
+// questions/team modals gated by the same flag are still missing.
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { AuthGuard } from "@/components/auth-guard";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import { useModal } from "@/components/modal";
 import { useNitrateFormPopup } from "@/components/nitrate-modals";
 import { useNotifications } from "@/components/notifications";
 import { PluginInstallFlow } from "@/components/plugin-install-flow";
 import { ProgressProvider } from "@/components/progress-notification";
+import { ReleaseNotesModal } from "@/components/release-notes";
 import { config } from "@/lib/config";
 import { singleSelectedFileId, workspaceHref } from "@/lib/dashboard";
 import { DashboardProvider, useDashboard } from "@/lib/dashboard-context";
@@ -33,6 +35,11 @@ import {
   nitrateEntryPopupPending,
   nitrateEntryProps,
 } from "@/lib/nitrate";
+import {
+  mainVersion,
+  releaseNotesContentVersion,
+  shouldShowReleaseNotes,
+} from "@/lib/release-notes";
 import { useSession } from "@/lib/session";
 import { updateProfileProps, type RuntimeProfile } from "@/lib/settings";
 
@@ -60,7 +67,7 @@ function useNitrateEntryPopup() {
     const props = nitrateEntryProps({
       onboardingViewed,
       nitrateOnboardingViewed,
-      releaseNotesVersion: config.version,
+      releaseNotesVersion: mainVersion(config.version),
     });
     if (Object.keys(props).length > 0) {
       void updateProfileProps(props)
@@ -71,11 +78,47 @@ function useNitrateEntryPopup() {
   }, [runtime, onboardingViewed, nitrateOnboardingViewed, openNitrateForm, refresh, notifications]);
 }
 
+// show-release-modal? branch of app.main.ui: once the onboarding is behind the
+// profile, a release whose main version is not stamped on the profile pops the
+// notes. The nitrate entry takes precedence, so the pending flag is read during
+// render (the CLJS computes :nitrate-entry-active? the same way) before the
+// effect above consumes it.
+function useReleaseNotesPopup() {
+  const { profile } = useSession();
+  const modal = useModal();
+  const opened = useRef(false);
+  const nitrateEntryActive = nitrateEntryPopupPending();
+
+  const runtime = (profile ?? null) as RuntimeProfile | null;
+  const props = runtime?.props as Record<string, unknown> | undefined;
+
+  useEffect(() => {
+    // Wait for get-profile (runtime null) so the props read is the stored one.
+    if (opened.current || runtime === null) return;
+    if (
+      !shouldShowReleaseNotes({
+        version: config.version,
+        props,
+        flags: config.flags,
+        nitrateEntryActive,
+      })
+    )
+      return;
+
+    const version = releaseNotesContentVersion(config.version);
+    if (version === null) return;
+
+    opened.current = true;
+    modal.open(<ReleaseNotesModal version={version} />);
+  }, [runtime, props, nitrateEntryActive, modal]);
+}
+
 function DashboardFrame({ children }: { children: React.ReactNode }) {
   const { teamId, selection, clearSelection } = useDashboard();
   const router = useRouter();
 
   useNitrateEntryPopup();
+  useReleaseNotesPopup();
 
   // The global keydown in dashboard*: Enter opens the selection when it holds
   // exactly one file (dd/open-selected-file). Grid items handle their own

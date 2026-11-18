@@ -616,6 +616,7 @@ export const en: Record<string, TranslationEntry> = {
   "labels.uploading": "Uploading…",
   "labels.uploading-file": "Uploading file…",
   "labels.variant": "Variant",
+  "labels.version-notes": "Version %s notes",
   "labels.viewer": "Viewer",
   "labels.webhooks": "Webhooks",
   "labels.write-new-comment": "Write new comment",

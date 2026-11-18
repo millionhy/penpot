@@ -606,6 +606,7 @@ export const zh_hant: Record<string, TranslationEntry> = {
   "labels.uploading": "正在上傳…",
   "labels.uploading-file": "正在上傳檔案…",
   "labels.variant": "變體",
+  "labels.version-notes": "版本 %s 說明",
   "labels.viewer": "檢視者",
   "labels.webhooks": "Webhook",
   "labels.write-new-comment": "撰寫新留言",
