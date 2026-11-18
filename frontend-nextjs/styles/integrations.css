@@ -1,0 +1,417 @@
+/* Integrations page (G1). Port of
+   frontend/src/app/main/ui/settings/integrations.scss onto the tokens in
+   styles/tokens.css; class names carry the pp- prefix like the other
+   flattened stylesheets. The CLJS page also covers the styles of the three
+   token dialogs, which the shell renders through .pp-modal-*. */
+
+.pp-integrations {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: var(--sz-32);
+  inline-size: var(--sz-500);
+  max-inline-size: 100%;
+  margin: var(--sz-88) auto var(--sz-120);
+}
+
+.pp-integrations h2,
+.pp-integrations h3 {
+  margin: 0;
+}
+
+.pp-integrations-title {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-24);
+  font-weight: var(--fw-regular);
+}
+
+.pp-integrations h3 {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+}
+
+.pp-integration-secondary {
+  color: var(--color-foreground-secondary);
+  font-size: var(--fs-14);
+  margin: 0;
+}
+
+.pp-text-center {
+  text-align: center;
+}
+
+.pp-integration-frame .pp-text-center span {
+  display: block;
+}
+
+.pp-fit-content {
+  inline-size: fit-content;
+}
+
+.pp-integrations-separator {
+  border: var(--b-1) solid var(--color-background-quaternary);
+  margin: var(--sp-s) 0;
+}
+
+/* --- MCP server section --- */
+
+.pp-mcp-server-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-l);
+}
+
+.pp-mcp-server-heading {
+  align-items: baseline;
+  display: flex;
+  flex-direction: row;
+  gap: var(--sp-s);
+}
+
+.pp-mcp-server-heading h2 {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-20);
+  font-weight: var(--fw-regular);
+  margin: var(--sp-s) 0;
+}
+
+.pp-mcp-server-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-m);
+}
+
+.pp-mcp-server-key {
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-mcp-server-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-l);
+}
+
+.pp-mcp-server-regenerate {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-s);
+}
+
+.pp-mcp-server-regenerate .pp-btn-primary {
+  inline-size: fit-content;
+}
+
+.pp-integration-info {
+  align-items: center;
+  color: var(--color-foreground-secondary);
+  display: inline-flex;
+}
+
+.pp-integration-info svg {
+  block-size: var(--sz-16);
+  fill: none;
+  inline-size: var(--sz-16);
+  stroke: currentColor;
+}
+
+/* The switch sits in a relative box; the cover is a button so the pointer
+   and the keyboard both reach "generate"/"regenerate" while no usable key
+   exists. */
+.pp-mcp-server-switch {
+  inline-size: fit-content;
+  position: relative;
+}
+
+.pp-mcp-server-switch-cover {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  inset: 0;
+  padding: 0;
+  position: absolute;
+}
+
+.pp-toggle {
+  align-items: center;
+  display: flex;
+  gap: var(--sp-s);
+}
+
+.pp-toggle-control {
+  background: var(--color-background-quaternary);
+  border: 0;
+  border-radius: 999px;
+  block-size: 1.125rem;
+  cursor: pointer;
+  inline-size: 1.875rem;
+  padding: 0;
+  position: relative;
+}
+
+.pp-toggle-control[aria-checked="true"] {
+  background: var(--color-accent-primary);
+}
+
+.pp-toggle-thumb {
+  background: var(--color-static-white);
+  border-radius: 50%;
+  block-size: 0.875rem;
+  inline-size: 0.875rem;
+  inset-block-start: 0.125rem;
+  inset-inline-start: 0.125rem;
+  position: absolute;
+  transition: inset-inline-start 0.15s ease;
+}
+
+.pp-toggle-control[aria-checked="true"] .pp-toggle-thumb {
+  inset-inline-start: calc(100% - 1rem);
+}
+
+.pp-toggle-label {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-14);
+}
+
+.pp-mcp-server-help-link {
+  align-items: center;
+  color: var(--color-accent-primary);
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: row;
+  gap: var(--sp-xs);
+  text-decoration: none;
+}
+
+.pp-mcp-server-help-link svg {
+  block-size: var(--sz-16);
+  fill: none;
+  inline-size: var(--sz-16);
+  stroke: currentColor;
+}
+
+/* --- context pills (notification-pill* levels) --- */
+
+.pp-integration-pill {
+  border-radius: var(--br-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-m);
+  padding: var(--sp-m) var(--sp-l);
+}
+
+.pp-integration-pill p {
+  margin: 0;
+}
+
+.pp-integration-pill-default,
+.pp-integration-pill-info {
+  background: var(--color-background-tertiary);
+  border: var(--b-1) solid var(--color-background-quaternary);
+}
+
+.pp-integration-pill-default {
+  padding-inline-end: var(--sp-xxl);
+}
+
+.pp-integration-pill-error {
+  background: var(--color-background-error);
+  border: var(--b-1) solid var(--color-accent-error);
+}
+
+/* --- access tokens section --- */
+
+.pp-access-tokens-section {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: var(--sp-m);
+}
+
+.pp-access-tokens-section h2 {
+  color: var(--color-foreground-primary);
+  font-size: var(--fs-20);
+  font-weight: var(--fw-regular);
+}
+
+.pp-integration-frame {
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  padding: var(--sp-m);
+}
+
+.pp-token-list {
+  display: grid;
+  grid-auto-rows: var(--sz-64);
+  gap: var(--sp-m);
+}
+
+.pp-token-item {
+  align-items: center;
+  background-color: var(--color-background-tertiary);
+  border-radius: var(--br-8);
+  display: grid;
+  grid-template-columns: 45% 1fr auto;
+}
+
+.pp-token-item-title {
+  align-items: center;
+  block-size: var(--sz-64);
+  color: var(--color-foreground-primary);
+  display: flex;
+  overflow: hidden;
+  padding: 0 var(--sp-l);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-token-item-subtitle {
+  align-items: center;
+  block-size: var(--sz-64);
+  color: var(--color-foreground-secondary);
+  display: flex;
+  font-size: var(--fs-12);
+}
+
+.pp-token-item-subtitle-warning {
+  background-color: var(--color-background-warning);
+  block-size: fit-content;
+  border: var(--b-1) solid var(--color-accent-warning);
+  border-radius: var(--br-8);
+  color: var(--color-foreground-primary);
+  inline-size: fit-content;
+  padding: var(--sp-s) var(--sp-m);
+}
+
+.pp-token-item-actions {
+  position: relative;
+}
+
+.pp-token-item-menu-button {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 0 var(--br-8) var(--br-8) 0;
+  block-size: var(--sz-64);
+  color: var(--color-foreground-secondary);
+  cursor: pointer;
+  display: flex;
+  inline-size: var(--sz-48);
+  justify-content: center;
+  padding: 0;
+}
+
+.pp-token-item-menu-button:hover {
+  background: var(--color-background-quaternary);
+  color: var(--color-foreground-primary);
+}
+
+.pp-token-item-menu-button svg {
+  block-size: var(--sz-16);
+  fill: currentColor;
+  inline-size: var(--sz-16);
+}
+
+.pp-token-item-menu {
+  background: var(--color-background-primary);
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: var(--br-8);
+  box-shadow: var(--el-shadow-dark);
+  inset-block-start: calc(var(--sz-64) - var(--sp-s));
+  inset-inline-end: 0;
+  min-inline-size: 8.625rem;
+  position: absolute;
+  z-index: 10;
+}
+
+.pp-token-item-delete {
+  background: none;
+  border: 0;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  inline-size: 100%;
+  padding: var(--sp-s) var(--sp-l);
+  text-align: start;
+}
+
+.pp-token-item-delete:hover {
+  background: var(--color-background-tertiary);
+}
+
+/* --- copy field --- */
+
+.pp-input-copy {
+  display: flex;
+  position: relative;
+}
+
+.pp-input-copy input {
+  background: var(--color-background-primary);
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-inline-end: 0;
+  border-radius: var(--br-8) 0 0 var(--br-8);
+  color: var(--color-foreground-primary);
+  font: inherit;
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: var(--sp-s) var(--sp-m);
+}
+
+.pp-input-copy-button {
+  align-items: center;
+  background: var(--color-background-tertiary);
+  border: var(--b-1) solid var(--color-background-quaternary);
+  border-radius: 0 var(--br-8) var(--br-8) 0;
+  color: var(--color-foreground-primary);
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--sp-m);
+}
+
+.pp-input-copy-button svg {
+  block-size: var(--sz-16);
+  fill: none;
+  inline-size: var(--sz-16);
+  stroke: currentColor;
+}
+
+/* --- token dialogs --- */
+
+.pp-integration-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-l);
+}
+
+.pp-integration-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  font-size: var(--fs-12);
+}
+
+.pp-integration-field input,
+.pp-integration-field select {
+  background: var(--color-background-primary);
+  border: var(--b-1) solid var(--color-icon-default);
+  border-radius: var(--br-6);
+  color: var(--color-foreground-primary);
+  font: inherit;
+  font-size: var(--fs-14);
+  padding: var(--sp-s);
+}
+
+.pp-integration-field input {
+  min-inline-size: 0;
+}
+
+/* integrations.scss sets $sz-400 on the modal container of the three
+   token dialogs; the shell dialog is shared, so the width follows the
+   content of these flows. */
+.pp-modal:has(.pp-integration-form),
+.pp-modal:has(.pp-input-copy) {
+  inline-size: min(var(--sz-400), calc(100vw - var(--sp-xxl) * 2));
+}

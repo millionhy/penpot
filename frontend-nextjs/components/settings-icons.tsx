@@ -47,6 +47,15 @@ export function InfoIcon() {
   );
 }
 
+// open-link.svg: the MCP help link of the integrations page.
+export function OpenLinkIcon() {
+  return (
+    <Icon>
+      <path d="M4 12l8-8zm8-8H4zm0 0v8z" />
+    </Icon>
+  );
+}
+
 // search.svg.
 export function SearchIcon({ small = false }: { small?: boolean }) {
   return (

@@ -9,6 +9,7 @@
 import { RpcError } from "@/lib/errors";
 import { tr } from "@/lib/i18n";
 import { cmd, cmdUpload } from "@/lib/rpc";
+import { keywordMap } from "@/lib/transit";
 import type { RouteName } from "@/lib/routes";
 import type { Profile, RpcParams } from "@/lib/types";
 
@@ -289,8 +290,12 @@ export function updateProfileNotifications(params: NotificationSettings): Promis
   return cmd("update-profile-notifications", params);
 }
 
+// schema:update-profile-props (profile.clj) takes a closed [:map] of keyword
+// keys, so the props map travels as transit keywords like custom-shortcuts
+// does (see customShortcutsWire); a plain JS object arrives with string keys
+// and the backend answers 400.
 export function updateProfileProps(props: Record<string, unknown>): Promise<Profile> {
-  return cmd<Profile>("update-profile-props", { props });
+  return cmd<Profile>("update-profile-props", { props: keywordMap(props) });
 }
 
 // multipart-upload in repo.cljs: the Blob goes out as FormData, not transit.
