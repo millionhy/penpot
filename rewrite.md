@@ -84,7 +84,7 @@
 | --- | --- | --- | --- |
 | G0 | 口径与盘点 | ✅ | 2026-11-18：确认无 `.cjs`；统计 CLJS 资产；划定 backend `.clj` 与 common 后端分支边界 |
 | G1 | 补齐新端入口（P0） | ✅ | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）、workspace shape 导出入口（7.64）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项 |
-| G2 | exporter TS 重写（P1） | ⬜ | 34 文件 / 3,850 行；独立 Node 进程，保留 RPC/Redis/Playwright 行为 |
+| G2 | exporter TS 重写（P1） | 🔄 | 34 文件 / 3,850 行；新树 `exporter/src-ts/`，旧 CLJS 运行至 G2.7 切换；G2.1 基础层已落地（7.65） |
 | G3 | library TS 重写（P2） | ⬜ | 2 文件 / 505 行；`.penpot` 导出库，金样本回归 |
 | G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
 | G5 | common 前端分支镜像（P4） | ⬜ | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管 |
@@ -427,6 +427,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 
 1. **G1 / P0 补齐新端入口**：先补没有页面或没有入口的洞——`/settings/integrations`（2026-11-18 已补，见 7.61）、`/subscribe-nitrate`（2026-11-18 已补，见 7.62）、应用内 release notes（2026-11-18 已补，见 7.63）、workspace shape 导出入口（2026-11-18 已补，见 7.64）、`/render-sprite/:file-id`（死路由：旧端无页面组件，exporter 走 `render.html`，G4 删除）。这些是新旧功能不对等的最大缺口；补齐后，旧端对应路由才可删除。
 2. **G2 / P1 exporter 全量 TS**：`exporter/src` 34 文件 / 3,850 行，独立 Node 进程，边界清晰，可单测。保留 RPC 共享密钥、Redis 进度、Playwright 渲染、wasm pool 与 bitmap/pdf/svg 三类 renderer 的外部行为；用同一 `.penpot` 金样本对拍。
+   - 分片：G2.1 基础层（config/logging/errors/flags/version/uuid/data/uri/transit/mime/shell/router/exchange，✅ 见 7.65）→ G2.2 http 适配 + `on-error` + auth + handlers 骨架 → G2.3 redis + jobs（store/scheduler/utils）→ G2.4 browser + renderer + resources → G2.5 wasm headless（含 `common/render_wasm` 的 TS 镜像）→ G2.6 export_shapes/export_frames + `.penpot` 金样本对拍 → G2.7 构建与部署切换（`package.json`、esbuild、`target/app.js`）。
 3. **G3 / P2 library TS**：`library/src/lib` 2 文件 / 505 行，`.penpot` 导出实现，依赖 `common` 的类型、schema 与文件构建器。先锁 API 与产物格式，再用金样本回归；不改变插件/库的对外契约。
 4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
 5. **G5 / P4 common 前端分支镜像**：只对前端/Node 用到的 `common` 逻辑做 TS 等价实现（类型、几何、schema、file-change 已部分由 F1.2 完成）；不改 `.cljc` 的 Clojure 分支。等 backend-rust 接管后再整体去掉 Clojure 依赖。
@@ -462,8 +463,8 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
         M0 workspace | M1 transit | M2 errors+config | M3 rpc(axum) | M4 session | M5 storage | M6 worker | M7 ws
-阶段 G  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）
-        G1 入口 4/4（render-sprite 死路由剔除） | G2 exporter | G3 library | G4 frontend | G5 common
+阶段 G  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）；G2.1 基础层落地
+        G1 入口 4/4（render-sprite 死路由剔除） | G2 exporter 1/7 | G3 library | G4 frontend | G5 common
 支撑    ▒▒▒▒▒▒▒▒  S1 RPC 清单 → F1.2 ; S2 OpenAPI ⛔ ; S3 DB schema → B5/B6 ; S4 transit 金样本 → B1 ; S5 JWE 向量 ⛔
 图例： █ 进行中/完成　▒ 可并行　░ 未开始
 ```
@@ -3177,6 +3178,16 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 单测：`lib/workspace-export.test.ts` 11 例（entries 顺序/跳过空 specs/名称回退、resource 名、suffix 只一次、`~:profile-id` 与嵌套 keyword 键、POST 与下载、空 specs 不发请求）。
 - 验证：`tsc` 0；`next lint` 0（仅既有 warning）；全量 `vitest` 104 文件 2,220 例；翻译抽取 en 1,302/1,302。联通验证（真实 docker 栈 + `:3450` 外壳）：登录测试账号 → `clone-template welcome` 建含形状文件 → `POST http://localhost:3450/api/export`（transit body 含 `:profile-id`/`:is-wasm`/`:suffix`）→ 200 `{filename:"shape.png",mtype:"image/png",uri}` → 素材 URL 200 `image/png` 1,913 字节，证明 Next rewrite → nginx → exporter → 后端临时文件全链路可用。未做逐像素 UI 点击冒烟（按钮走同一函数，失败路径为 toast）。
 - 下一步：G1 收口，进入 G2（exporter 全量 TS 重写）。
+
+### 7.65 本轮（2026-11-18，第六十四批：G2.1 exporter TS 基础层）
+
+- 口径：G2 第一片。exporter 共 34 文件 / 3,850 行 CLJS，另有 `common/src/app/common/render_wasm/`（约 1.6k 行）被 `app.wasm` 直接引用。运行契约不变：`node target/app.js`、cwd=`exporter`、`resources/wasm/render-wasm.{js,wasm}` 复制进 `target/`、构建期替换 `%version%`。因此新 TS 树落在 `exporter/src-ts/`，旧 `exporter/src` 继续跑，G2.7 一次性切换入口。
+- 工程：`exporter/tsconfig.json`（ES2022 / ESNext / bundler / strict / noEmit）、`exporter/vitest.config.ts`（`src-ts/**/*.test.ts`）、`types/transit-js.d.ts`；沿用 `media-processor` 的 `.js` 后缀 import + `moduleResolution: bundler`，`tsc` 与 `esbuild` 消费同一份源码。
+- 新增（`exporter/src-ts/app/`）：`logging`（父级阈值回退、`key=value` 记录、与 CLJS 同名 logger，默认阈值 100）、`errors`（`AppError` 携带 `type/code/hint`）、`flags`（`enable-`/`disable-` 左到右）、`version`（复刻正则与 `develop` 分支）、`uuid`（v4、`getU32` 大端四字）、`data`、`uri`（`ensurePathSlash`/`join`/查询串，数组重复 key）、`transit`（reader 把 map 归一成普通对象、uuid 转字符串、instant 转 `Date`、`penpot/pointer`；compact 写 Redis 与 job 记录，json-verbose 写 HTTP 响应体）、`config`（惰性 `getConfig`、默认值、严格整数解码、`managementKey` = 显式 key 或 HKDF-blake2b512/base64url）、`exchange`（`Exchange`/`Handler`）、`router`（`/api/export` 前缀剥离、`/`、`/jobs`、`/jobs/:id`，未知路由 `route-not-found`）、`util/mime`、`util/shell`（`tempfile` + 1h 定时删除 + `runCmd`）。
+- 决策：`createRouter(legacy, jobs)` 把 job 处理器作为参数传入，避免 TS 侧模块环；`getConfig()` 惰性化（CLJS 在加载时读 env 并 `exit`），单测可注入 env；`uuid.parse` 保持抛错（CLJS 也抛，`parse*` 才返回 nil）；`config.flags` 只来自 `PENPOT_FLAGS`，与 CLJS `app.config/flags`（不含 defaults）一致；整数解码拒绝 `12abc` 与负数，对齐 malli 的 string-transformer。
+- 单测：11 文件 71 例——路由前缀与未知路由、transit 双 writer 及嵌套 keyword/uuid/instant 往返、config env 映射/默认值/整数与 uri 校验/HKDF key、uri 查询串、uuid quartet、version 正则、flags 顺序、shell 临时文件/定时删除/`runCmd`。
+- 验证：`tsc -p exporter/tsconfig.json` 0；`vitest run` 11 文件 71 例全过。本机 exporter 无 `node_modules`，暂用 `frontend-nextjs` 的 `typescript`/`vitest`（临时链接，不入库）；真实依赖与 `build`/`test` 脚本在 G2.7 落。
+- 下一步：G2.2——HTTP 适配（`raw-body` 60mb + `inflation`、content-type 精确匹配 `application/transit+json`、query/params 合并、json-verbose 响应 + content-length、空 body + 200 → 204、`auth-token` cookie、`/readyz`）、`on-error` 状态码映射、`app.auth` 会话校验与 handlers 骨架。
 
 ---
 
