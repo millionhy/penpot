@@ -9,7 +9,7 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0 完成、G1 进行中（`/settings/integrations`、`/subscribe-nitrate`、应用内 release notes 已补）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0 完成、G1 已收口（`/settings/integrations`、`/subscribe-nitrate`、应用内 release notes、workspace 导出入口）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
 | 最后更新 | 2026-11-18 |
@@ -83,7 +83,7 @@
 | 编号 | 任务 | 状态 | 交付物 / 说明 |
 | --- | --- | --- | --- |
 | G0 | 口径与盘点 | ✅ | 2026-11-18：确认无 `.cjs`；统计 CLJS 资产；划定 backend `.clj` 与 common 后端分支边界 |
-| G1 | 补齐新端入口（P0） | 🔧 | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项；余导出入口 |
+| G1 | 补齐新端入口（P0） | ✅ | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）、workspace shape 导出入口（7.64）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项 |
 | G2 | exporter TS 重写（P1） | ⬜ | 34 文件 / 3,850 行；独立 Node 进程，保留 RPC/Redis/Playwright 行为 |
 | G3 | library TS 重写（P2） | ⬜ | 2 文件 / 505 行；`.penpot` 导出库，金样本回归 |
 | G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
@@ -425,7 +425,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 
 **执行顺序（对应总表 G1–G5）**
 
-1. **G1 / P0 补齐新端入口**：先补没有页面或没有入口的洞——`/settings/integrations`（2026-11-18 已补，见 7.61）、`/subscribe-nitrate`（2026-11-18 已补，见 7.62）、应用内 release notes（2026-11-18 已补，见 7.63）、`/render-sprite/:file-id`（死路由：旧端无页面组件，exporter 走 `render.html`，G4 删除）、图片/PDF 导出入口（`api/export` 与 export jobs 未接，workspace 导出按钮禁用）。这些是新旧功能不对等的最大缺口；补齐后，旧端对应路由才可删除。
+1. **G1 / P0 补齐新端入口**：先补没有页面或没有入口的洞——`/settings/integrations`（2026-11-18 已补，见 7.61）、`/subscribe-nitrate`（2026-11-18 已补，见 7.62）、应用内 release notes（2026-11-18 已补，见 7.63）、workspace shape 导出入口（2026-11-18 已补，见 7.64）、`/render-sprite/:file-id`（死路由：旧端无页面组件，exporter 走 `render.html`，G4 删除）。这些是新旧功能不对等的最大缺口；补齐后，旧端对应路由才可删除。
 2. **G2 / P1 exporter 全量 TS**：`exporter/src` 34 文件 / 3,850 行，独立 Node 进程，边界清晰，可单测。保留 RPC 共享密钥、Redis 进度、Playwright 渲染、wasm pool 与 bitmap/pdf/svg 三类 renderer 的外部行为；用同一 `.penpot` 金样本对拍。
 3. **G3 / P2 library TS**：`library/src/lib` 2 文件 / 505 行，`.penpot` 导出实现，依赖 `common` 的类型、schema 与文件构建器。先锁 API 与产物格式，再用金样本回归；不改变插件/库的对外契约。
 4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
@@ -462,8 +462,8 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
         M0 workspace | M1 transit | M2 errors+config | M3 rpc(axum) | M4 session | M5 storage | M6 worker | M7 ws
-阶段 G  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 进行中（integrations、subscribe-nitrate、release notes）
-        G1 入口 3/5（render-sprite 死路由剔除，余导出入口） | G2 exporter | G3 library | G4 frontend | G5 common
+阶段 G  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）
+        G1 入口 4/4（render-sprite 死路由剔除） | G2 exporter | G3 library | G4 frontend | G5 common
 支撑    ▒▒▒▒▒▒▒▒  S1 RPC 清单 → F1.2 ; S2 OpenAPI ⛔ ; S3 DB schema → B5/B6 ; S4 transit 金样本 → B1 ; S5 JWE 向量 ⛔
 图例： █ 进行中/完成　▒ 可并行　░ 未开始
 ```
@@ -3165,6 +3165,18 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`tsc` 0；`next lint` 0（仅既有 warning）；翻译抽取 en 1,300/1,300（新增 `labels.version-notes`）。docker + `:3450` 冒烟（Edge，`NEXT_PUBLIC_PENPOT_VERSION=2.18.0`）：新注册用户不自动弹 → 关于菜单条目 "Version 2.18.0 notes" → 弹窗 888×500、intro 与版本标签、6 圆点、末页 "Let's go" → 关闭；DB 写入 `release-notes-viewed "2.18"` 与 `onboarding-viewed true`；刷新不再弹；清掉 DB 戳记后刷新自动弹出。错误仅既有模板缩略图 404。
 - 死路由登记：`/render-sprite/:file-id` 从 G1 余项剔除。旧端 `routes.cljs` 有登记，但 `ui.cljs` 没有 `:render-sprite` section 组件；exporter 走 `render.html?route=objects`（`frontend/scripts/_helpers.js` 生成，renderer 三处引用），全仓库无其它消费者；F6.6 已登记不做，G4 删旧路由时一并清理。
 - 下一步：G1 余项导出入口（`api/export` 与 export jobs 未接，workspace 导出按钮禁用），随后 G1 收口进入 G2。
+
+### 7.64 本轮（2026-11-18，第六十三批：G1 第四片 workspace 导出入口，G1 收口）
+
+- 口径：G1 第四片。旧端导出有两条路：浏览器 render-wasm（`data/exports/wasm.cljs` → `render_wasm/api` 的 `render-shape-pixels/pdf/svg`）与服务端 exporter（`data/exports/assets.cljs` 的 `request-simple-export`：`POST ${public-uri}/api/export`，`:wait true` 返回 `{filename,mtype,uri}`，再由 `dom/trigger-download-uri` 下载）。外壳编译产物 `public/js/shared.js` 未把 wasm 导出函数暴露到 `$APP`（37 个 `$app$render_wasm$api$*` key 中无 `render_shape_pixels/pdf/svg`），故只能走服务端。
+- 新增：`lib/workspace-export.ts`——`buildExportEntries`（每个 spec 一条、空 specs 跳过、空名字回退 object id）、`exportResourceName`、`exportParams`、`exportWireBody`（导出条目用 `keywordMap` 包 keyword 键，否则 exporter 的 `clojure.spec` 拒绝字符串键）、`exportShapes`（POST 后 `triggerDownloadUri`）；`lib/rpc.ts` 增加 `postTransit`；`lib/dom.ts` 的 mtype→扩展名补齐 png/jpeg/webp/svg/pdf/zip。
+- 接线：`components/workspace-exports.tsx` 下载按钮改为真实导出（本地 `exporting` 态、`Exporting…` 文案、失败 toast `workspace.options.exporting-object-error`）；`components/workspace-main-menu.tsx` 文件→导出在选中形状含 specs 时启用，直接导出选中形状（多选/多 spec 由 exporter 打 zip）。
+- 偏差（已登记）：无 export-state 进度 widget（`:wait true` 等到成品）；suffix 只在 `:suffix` 传一次（CLJS 侧栏把 suffix 预拼进 `:name`，exporter 再拼一次 → 双后缀）；`:is-wasm` 恒 true；文件→导出不移植 export-shapes 对话框的逐行 include 开关。
+- 路由：dev 在 `next.config.mjs` 增加 `/api/export/:path*` → `PENPOT_EXPORTER_ORIGIN ?? PENPOT_ASSETS_ORIGIN`，排在 `/api/:path*` 之前；生产由 nginx 的 `location /api/export` 先路由到 exporter，Next 收不到。
+- 联调修正：exporter 的 `::params` 要求 `:profile-id`，而 legacy `POST /api/export` 处理器先 conform、再挂会话 profile（`exporter/src/app/handlers.cljs`）；首版漏传时 400 `spec-validation`（`should contain key: :profile-id`）。现由 `useSession()` 取 `profile.id` 传入。
+- 单测：`lib/workspace-export.test.ts` 11 例（entries 顺序/跳过空 specs/名称回退、resource 名、suffix 只一次、`~:profile-id` 与嵌套 keyword 键、POST 与下载、空 specs 不发请求）。
+- 验证：`tsc` 0；`next lint` 0（仅既有 warning）；全量 `vitest` 104 文件 2,220 例；翻译抽取 en 1,302/1,302。联通验证（真实 docker 栈 + `:3450` 外壳）：登录测试账号 → `clone-template welcome` 建含形状文件 → `POST http://localhost:3450/api/export`（transit body 含 `:profile-id`/`:is-wasm`/`:suffix`）→ 200 `{filename:"shape.png",mtype:"image/png",uri}` → 素材 URL 200 `image/png` 1,913 字节，证明 Next rewrite → nginx → exporter → 后端临时文件全链路可用。未做逐像素 UI 点击冒烟（按钮走同一函数，失败路径为 toast）。
+- 下一步：G1 收口，进入 G2（exporter 全量 TS 重写）。
 
 ---
 
