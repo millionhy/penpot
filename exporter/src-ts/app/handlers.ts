@@ -1,13 +1,14 @@
-// app.handlers, the error side only.
+// app.handlers: the error mapper and the legacy export entry point.
 //
 // Every handler in the exporter raises `AppError`s carrying type/code/hint and
 // the router sits behind this mapper, so a failure keeps the status the old
-// CLJS service answered with. The legacy `POST /api/export` entry point lives
-// in the export command module and is wired in when the job layer lands.
+// CLJS service answered with.
 
+import { resolveProfileId } from "./auth.js";
 import { withoutNils } from "./data.js";
 import { errorMessage, isAppError, type ErrorData } from "./errors.js";
-import type { Exchange } from "./exchange.js";
+import type { Exchange, Handler } from "./exchange.js";
+import type { ExportService } from "./handlers/export.js";
 import { createLogger, setLevel } from "./logging.js";
 import { encodeVerbose, keywordMap } from "./transit.js";
 
@@ -79,4 +80,31 @@ export function onError(cause: unknown, exchange: Exchange): Exchange {
     500,
     withoutNils({ type: "server-error", code, hint, data: isAppError(cause) ? data : undefined }),
   );
+}
+
+// The original `POST /api/export` entry point, and the one the browser backend
+// still goes through. The export runs as soon as it is asked for, and the
+// contract is unchanged: `:wait` answers with the finished resource, otherwise
+// with the resource handle while the work runs.
+export function createLegacyHandler(service: ExportService): Handler {
+  return async (exchange) => {
+    const params = service.conformParams(exchange.request.params);
+    log.debug({ hint: "process-request", cmd: params.cmd });
+
+    // The session wins when there is one; the body value stays the fallback so
+    // nothing that used to work stops working.
+    const profileId = await resolveProfileId(exchange.request.authToken);
+    const effective = profileId === undefined ? params : { ...params, "profile-id": profileId };
+
+    const created = await service.exportNow(exchange.request.authToken, effective);
+
+    if (params.wait === true) {
+      const resource = await created.pending;
+      return { ...exchange, response: { ...exchange.response, body: resource } };
+    }
+
+    void created.pending.catch(() => undefined);
+    const { path: _path, ...handle } = created.resource;
+    return { ...exchange, response: { ...exchange.response, body: handle } };
+  };
 }
