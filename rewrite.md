@@ -83,7 +83,7 @@
 | 编号 | 任务 | 状态 | 交付物 / 说明 |
 | --- | --- | --- | --- |
 | G0 | 口径与盘点 | ✅ | 2026-11-18：确认无 `.cjs`；统计 CLJS 资产；划定 backend `.clj` 与 common 后端分支边界 |
-| G1 | 补齐新端入口（P0） | 🔧 | 2026-11-18：`/settings/integrations` 已补（MCP 服务器 + 个人访问令牌，见 7.61）；余 `/render-sprite/:file-id`、`/subscribe-nitrate`、应用内 release notes、导出入口 |
+| G1 | 补齐新端入口（P0） | 🔧 | 2026-11-18：`/settings/integrations`（见 7.61）与 `/subscribe-nitrate`（见 7.62）已补；余 `/render-sprite/:file-id`、应用内 release notes、导出入口 |
 | G2 | exporter TS 重写（P1） | ⬜ | 34 文件 / 3,850 行；独立 Node 进程，保留 RPC/Redis/Playwright 行为 |
 | G3 | library TS 重写（P2） | ⬜ | 2 文件 / 505 行；`.penpot` 导出库，金样本回归 |
 | G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
@@ -425,7 +425,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 
 **执行顺序（对应总表 G1–G5）**
 
-1. **G1 / P0 补齐新端入口**：先补没有页面或没有入口的洞——`/settings/integrations`（2026-11-18 已补，见 7.61）、`/render-sprite/:file-id`（F6.6 曾登记不做）、`/subscribe-nitrate`、应用内 release notes（当前为外链）、图片/PDF 导出入口（`api/export` 与 export jobs 未接，workspace 导出按钮禁用）。这些是新旧功能不对等的最大缺口；补齐后，旧端对应路由才可删除。
+1. **G1 / P0 补齐新端入口**：先补没有页面或没有入口的洞——`/settings/integrations`（2026-11-18 已补，见 7.61）、`/subscribe-nitrate`（2026-11-18 已补，见 7.62）、`/render-sprite/:file-id`（F6.6 曾登记不做）、应用内 release notes（当前为外链）、图片/PDF 导出入口（`api/export` 与 export jobs 未接，workspace 导出按钮禁用）。这些是新旧功能不对等的最大缺口；补齐后，旧端对应路由才可删除。
 2. **G2 / P1 exporter 全量 TS**：`exporter/src` 34 文件 / 3,850 行，独立 Node 进程，边界清晰，可单测。保留 RPC 共享密钥、Redis 进度、Playwright 渲染、wasm pool 与 bitmap/pdf/svg 三类 renderer 的外部行为；用同一 `.penpot` 金样本对拍。
 3. **G3 / P2 library TS**：`library/src/lib` 2 文件 / 505 行，`.penpot` 导出实现，依赖 `common` 的类型、schema 与文件构建器。先锁 API 与产物格式，再用金样本回归；不改变插件/库的对外契约。
 4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
@@ -462,8 +462,8 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
         M0 workspace | M1 transit | M2 errors+config | M3 rpc(axum) | M4 session | M5 storage | M6 worker | M7 ws
-阶段 G  █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 进行中（首片 integrations）
-        G1 入口 1/5 | G2 exporter | G3 library | G4 frontend | G5 common
+阶段 G  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 进行中（integrations、subscribe-nitrate）
+        G1 入口 2/5 | G2 exporter | G3 library | G4 frontend | G5 common
 支撑    ▒▒▒▒▒▒▒▒  S1 RPC 清单 → F1.2 ; S2 OpenAPI ⛔ ; S3 DB schema → B5/B6 ; S4 transit 金样本 → B1 ; S5 JWE 向量 ⛔
 图例： █ 进行中/完成　▒ 可并行　░ 未开始
 ```
@@ -3146,6 +3146,15 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 翻译：抽取脚本只认静态调用点；本轮把弹窗标题、开关文案与成功通知从数据表/三元参数改成字面量调用，en 目录 1,299/1,299。
 - 验证：`tsc` 0；`next lint` 0（仅既有 warning）；全量 `vitest` 102 文件 2,190 例全过。docker 后端 + `:3450` 外壳冒烟（Edge）：注册 → 两区块渲染 → 生成 MCP key（354 字符）→ 开关转 `aria-checked="true"`、URL 为 `mcp/stream?userToken=` → 创建个人令牌（720h）→ 过期文案 → 菜单删除 → 空态恢复；无 400（仅 favicon 404）。
 - 下一步：G1 余项 `/render-sprite/:file-id`、`/subscribe-nitrate`、应用内 release notes、导出入口。
+
+### 7.62 本轮（2026-11-18，第六十一批：G1 第二片 `/subscribe-nitrate`）
+
+- 口径：G1 第二片。旧端把该路由登记在 `:admin-console` flag 下，页面本身不渲染内容：先把共享 storage 的 `::nitrate-entry-pending-popup` 置 true，登录用户转 `/dashboard-recent?team-id=`，否则转注册页（`frontend/src/app/main/ui/nitrate/entry.cljs`）。
+- 新增：`app/subscribe-nitrate/page.tsx`（等 `get-profile` 落定后置位并 `router.replace`；与 `rt/nav` 的差别是 replace，后退不会重放）；`lib/storage.ts` 增加共享 `penpot` storage（键 `penpot:<ns>/<name>`，与 CLJS `encode-key` 同形，值为 `with-meta` transit）；`lib/nitrate.ts` 增加置位/查询/消费与 `nitrateEntryProps`（移植 `use-nitrate-entry-popup` 的 `cond->`）。
+- 接线：`app/dashboard/layout.tsx` 挂 `useNitrateEntryPopup`——flag 存在时消费，写 `onboarding-viewed`/`release-notes-viewed`（`NEXT_PUBLIC_PENPOT_VERSION`）并按需写 `nitrate-onboarding-viewed false`，随后打开 `NitrateFormModal`（复用 F5.7）。
+- 单测：`lib/nitrate.test.ts` 新增 5 例（CLJS 键名与 `["~#'",true]` 编码、非 true 值、三段 props 分支），该文件 36 例。
+- 验证：`tsc` 0；`next lint` 0；全量 `vitest` 102 文件 2,195 例。docker + `:3450` 冒烟（Edge，`air-gapped-conf` 下走离线 connectivity）：匿名访问转注册页且 flag 为 `["~#'",true]`；注册后落 `/dashboard/recent`，企业表单打开、flag 清空、刷新不再弹；DB 中 `profile.props` 为 `onboarding-viewed true`、`release-notes-viewed "2.18"`、`nitrate-onboarding-viewed false`。错误仅 dashboard 模板缩略图 404（既有）。
+- 下一步：G1 余项 `/render-sprite/:file-id`、应用内 release notes、导出入口。
 
 ---
 
