@@ -9,7 +9,7 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G3 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换），G4 进行中（路线为「先移植渲染引擎」，G4.1 引擎核心见 7.84、G4.2 画布与视口见 7.85）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G3 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换），G4 进行中（路线为「先移植渲染引擎」，G4.1 引擎核心见 7.84、G4.2 画布与视口见 7.85、G4.3 形状上传与 modifiers 见 7.86）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
 | 最后更新 | 2026-11-19 |
@@ -86,7 +86,7 @@
 | G1 | 补齐新端入口（P0） | ✅ | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）、workspace shape 导出入口（7.64）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项 |
 | G2 | exporter TS 重写（P1） | ✅ | 2026-11-19：`exporter/src-ts/` 全量取代 CLJS，CLJS 树与 shadow-cljs 已删（G2.1–G2.10，7.65–7.78）；本机联调对拍 svg/png/pdf |
 | G3 | library TS 重写（P2） | ✅ | 2026-11-19：G3.1 基础层、G3.2 导出、G3.3a tokens、G3.3b bool、G3.4 构建切换全部完成（7.79–7.83）。`library/src-ts/` 21 文件全量取代 CLJS，esbuild 产出 `target/library/penpot.js`（版本由 `package.json` 注入），72 例通过；`out`/`out2` 与 tokens 金样本逐文档一致，四种布尔与 1.2.0-RC1 对拍（difference 只差两段零长曲线）；CLJS 源码、shadow-cljs 与 cljfmt 管线已删 |
-| G4 | frontend 旧端收尾（P3） | 🔄 | 2026-11-19：新端画布仍跑未入库的 CLJS 产物 `public/js/main.js` + `shared.js`（`$APP` 上的 `app.render_wasm.api/*`），删 `frontend/src` 前必须先把渲染引擎 TS 化；G4.1 引擎核心完成（7.84）、G4.2 画布与视口原语完成（7.85），下一步 G4.3 形状上传与 modifiers |
+| G4 | frontend 旧端收尾（P3） | 🔄 | 2026-11-19：新端画布仍跑未入库的 CLJS 产物 `public/js/main.js` + `shared.js`（`$APP` 上的 `app.render_wasm.api/*`），删 `frontend/src` 前必须先把渲染引擎 TS 化；G4.1 引擎核心完成（7.84）、G4.2 画布与视口原语完成（7.85）、G4.3 形状上传与 modifiers 完成（7.86），下一步 G4.4 字体/文本/图片与 svg-derived |
 | G5 | common 前端分支镜像（P4） | ⬜ | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管 |
 
 ### 支撑任务（阶段 B 契约前置，只读后端，可与阶段 F 并行）
@@ -431,7 +431,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 3. **G3 / P2 library TS**：`library/src/lib` 2 文件 / 505 行，`.penpot` 导出实现，依赖 `common` 的类型、schema 与文件构建器。先锁 API 与产物格式，再用金样本回归；不改变插件/库的对外契约。
 4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
    - 前置结论（2026-11-19）：新端 viewer/workspace/缩略图 worker 经 `lib/render-wasm/bridge.ts` 加载未入库的 `public/js/main.js` 与 `shared.js`，并通过 `$APP` 调用 `app.render_wasm.api/*`；直接删 `frontend/src` 会失去可重建的运行时。因此先移植渲染引擎到 `frontend-nextjs/lib/render-wasm/engine/`，再删 CLJS。
-   - 分片：G4.1 引擎核心（模块生命周期/内存/调用/枚举，✅ 见 7.84）→ G4.2 画布与视口（`init-canvas-context`、`initialize-viewport`、`resize-canvas`、`clear-canvas`、`set-view-box`、渲染循环与 rulers，✅ 见 7.85）→ G4.3 形状上传与 modifiers（`set-objects`、结构/几何 modifier）→ G4.4 字体/文本/图片与缩略图 worker → G4.5 删 `frontend/src`/shadow-cljs，改 `render-wasm/_build_env` 的前端产物目标与 `scripts/check-fmt-clj`、`scripts/ci`、CI workflow。
+   - 分片：G4.1 引擎核心（模块生命周期/内存/调用/枚举，✅ 见 7.84）→ G4.2 画布与视口（`init-canvas-context`、`initialize-viewport`、`resize-canvas`、`clear-canvas`、`set-view-box`、渲染循环与 rulers，✅ 见 7.85）→ G4.3 形状上传与 modifiers（`set-objects` 批量上传、结构/几何 modifier，✅ 见 7.86）→ G4.4 字体/文本/图片与 svg-derived → G4.5 删 `frontend/src`/shadow-cljs，改 `render-wasm/_build_env` 的前端产物目标与 `scripts/check-fmt-clj`、`scripts/ci`、CI workflow。
 5. **G5 / P4 common 前端分支镜像**：只对前端/Node 用到的 `common` 逻辑做 TS 等价实现（类型、几何、schema、file-change 已部分由 F1.2 完成）；不改 `.cljc` 的 Clojure 分支。等 backend-rust 接管后再整体去掉 Clojure 依赖。
 
 **范围边界**
@@ -3371,6 +3371,15 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 决策与偏差：① 快照监听、页面过渡 overlay、context-loss toast 属应用外壳，引擎改为 `onContextLost`/`onContextRestored` 回调；`reload-renderer!` 也不进引擎，由回调重新调 `initCanvasContext`。② `initialize-viewport` 末尾的 `set-objects` 以 `setObjects` 回调注入，G4.3 接上传实现时调用顺序不变（stop → 背景 → `_set_view` → `_init_shapes_pool` → 上传）。③ 分散的 `defonce` 原子收进 `RenderLoop` 类，状态转移显式可测；渲染异常经 `onError` 上报而不在 rAF 回调里重抛（无人能接）。④ `hexToArgbU32` 修正了 CLJS 对短写的错误：原实现把 `#fff` 解析成 `0x00000FFF`，TS 版展开 3/4 位并额外接受 `#rrggbbaa`。⑤ `_init` 失败不吞：会话保留注册，让 `clearCanvas` 仍能释放 GL 上下文。
 - 验证：`pnpm exec vitest run lib/render-wasm/engine` 0（9 文件 94 例，本轮新增 65 例：colors 6、canvas 20、viewport 15、render-loop 15、rulers 9）；`pnpm test` 0（113 文件 2314 例）；`pnpm run typecheck` 0。测试用假 module 记录导出调用与参数，GL/canvas 用桩，不需要 DOM/WebGL。
 - 下一步：G4.3 形状上传与 modifiers——`set-objects`（含 `ASYNC_THRESHOLD` 分批与 `on-shapes-ready`）、结构/几何 modifier、`set-modifiers`/`clean-modifiers`，把 `initializeViewport` 的 `setObjects` 接上真实上传；接上后整片切到 TS 引擎，再在浏览器对 viewer/workspace 冒烟。
+
+### 7.86 本轮（2026-11-19，第八十五批：G4.3 形状上传与 modifiers）
+
+- 口径：G4 第三片，交付冷加载的形状批量上传与交互期 modifier 的 TS 实现；仍不切 `$APP` 启动路径（双实例各约 270 MB 堆，必须整片切换）。
+- 新增：`frontend-nextjs/lib/render-wasm/engine/` 八个源文件 + 七个测试。`uuid.ts`（33 行）：`ZERO_UUID`、严格 `isUuid`、`uuidToU32`（大端四字）、`u32ToUuid`（回到 8-4-4-4-12）。`serializers.ts`（186 行）：36 张枚举表之上的 translator 层（缺失值走表内默认，shape-type→rect、blend-mode→normal、stroke-cap→none），加 `translateStructureModifierType`（remove-children 1、add-children 2、scale-content 3）。`fills.ts`（246 行）：solid 4 字节、gradient 156（16 个 8 字节色标）、image 36（uuid + keep-aspect/transform 标志）、fill 记录 160、描边头 36。`props.ts`（296 行）：blur/背景 blur、shadow、masked、svg-attrs、svg-raw、path content（256 KiB 分块）、fills/strokes setter。`upload.ts`（491 行）：104 字节 base props、section mask（CHILDREN/BLUR/SHADOWS/MASKED/BOOL/GROW/LAYOUT-ITEM/FLEX/FILLS/STROKES）、`[u32 payload_len][payload]` 记录与 `_set_shapes_batch`。`select.ts`（25 行）：`useShape`/`hasShape`。`objects.ts`（291 行）：树序、tail（svg attrs 与 path/bool 内容经 `_use_shape`）、`setObject`、`setObjects`。`modifiers.ts`（249 行）：`setModifiers`（40 字节/条）、`setStructureModifiers`（44）、`propagateModifiers`（44 输入 → count + 10×u32 输出）、`setModifiersStart/End`、`cleanModifiers`、`pixelPrecision`。`render-loop.ts` 补 `resetViewInteraction()`。
+- 关键语义：FLEX 段必须先于 LAYOUT-ITEM（Rust 在读 flex 时清 layout）；记录容量由 `payloadByteSize` 与写入游标交叉校验，不等即抛 `wasm-critical`；`_set_shapes_batch` 一次调用把整块交给 Rust，缓冲由 Rust 接管，不能再 `_free_bytes`。树序先找零 uuid 根做前序深度优先，找不到则以「父不在 map 中」的形状为顶层，visited 集合防环。同步路径 `< ASYNC_THRESHOLD(100)` 或 `forceSync`；异步按 `BATCH_MAX_SHAPES(512)` 分块、块间 yield，顺序为 beginShapesLoading → `_begin_loading` → 分块上传 + `onShape` → `onShapesReady` → `_end_loading` → endShapesLoading → `_set_view_end` → `resetViewInteraction` → `requestRender("set-objects-complete")`。
+- 决策与偏差：① 宿主属性（文本、图片、grid、svg-raw 的应用）不进引擎，经 `setObjects` 的 `onShape` 钩子交给调用方；本片只保证结构与样式位，G4.4 填钩子。② CLJS 在描边无 paint 时会留下 pending allocation（`_add_shape_*_stroke` 不消费 BUFFERU8，只有 `_add_shape_stroke_fill` 消费），下一次 alloc 会撞上 "Bytes already allocated"；TS 版显式 `_free_bytes`。③ 未知 structure modifier type 在 CLJS 里写成 0，让 Rust 的 `unreachable!` 直接陷；TS 在分配前抛 `wasm-critical`，并把原因写进消息。④ `propagateModifiers` 的 `kind` 缺省为 child（传播根），与已验收的 `lib/render-wasm/propagate.ts` 的 `propagate ?? true` 一致；未知 kind 走表默认 parent。⑤ 异步分块抛错只清 loading 并 `console.error`，不向上 reject：调用方在 await 之前已替换模型，没人接收这个异常。⑥ `initializeViewport` 仍以回调注入上传，本片加了一条接线用例，调用顺序保持 stop → background → `_set_view` → `_init_shapes_pool` → 上传。
+- 验证：`pnpm exec vitest run lib/render-wasm/engine` 0（16 文件 172 例，本轮新增 78 例：uuid 6、serializers 4、fills 11、props 13、upload 12、objects 18、modifiers 13，另有一条 `initializeViewport → setObjects` 接线）；`pnpm test` 0（120 文件 2392 例）；`pnpm run typecheck` 0。测试用真实 `Uint8Array` 堆的假 module 记录调用并逐字节断言偏移。
+- 下一步：G4.4 字体/文本/图片与 svg-derived——`text-content`（段落/span/位置数据）、`svg-derived`（defs 展开）、font/image 宿主数据，把 `onShape` 钩子填满；之后整片切 TS 引擎并在浏览器对 viewer/workspace 冒烟。
 
 ---
 
