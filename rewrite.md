@@ -3265,6 +3265,16 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`tsc -p exporter/tsconfig.json` 0；`vitest run` 51 文件 476 例全过。依赖仍借用 `frontend-nextjs` 的 `typescript`/`vitest`（临时链接，不入库）。
 - 下一步：G2.7——进程入口、`pool.init` 与资源打包，把 `createExportCommands`、`createLegacyHandler`、`setHeadlessRenderer` 接到同一处；部署切换时用 `.penpot` 金样本对拍 bitmap/pdf/svg 三类产物。
 
+### 7.74 本轮（2026-11-19，第七十三批：G2.7 exporter 进程入口与打包）
+
+- 口径：G2 第七片。旧链 `app.core/start` 按线程分流：主线程依次初始化 browser、redis、jobs、job-utils、wasm pool，最后起 http；worker 线程只跑 `wasm.worker/main`。`app.core/stop` 按同样顺序收尾，每步限 3 秒。本片把 TS 树的入口与这组接线落地，并把 `createExportCommands`、`createLegacyHandler`、`setHeadlessRenderer` 接到一处。部署切换（`exporter/scripts/build`、`scripts/run`、Dockerfile 指向新 bundle）留到 7.75，旧 CLJS 树仍可构建。
+- 新增：`app/core.ts`（`CoreDeps`、`start`/`main`、`stop`、`installProcessHandlers`）、`app/app.ts`（bundle 入口，先装进程处理器再启动）；`esbuild.config.mjs`（bundle 到 `target-ts/app.js`，复制 `resources/wasm`、字体目录与 package 文件，生成 `setup`）。
+- 扩展：`package.json` 增 `build:ts` 脚本与 `esbuild` 开发依赖。
+- 决策与偏差：① 同一份 bundle 服务主线程与 worker，靠 `worker_threads.isMainThread` 分流，与 CLJS 一致；`pool.workerScript` 取 `process.argv[1]`，所以 worker 重新执行同一文件；② service 在 `start` 只建一次，scheduler 随之只建一次——队列归 scheduler 所有，建两次会重复准入；③ 日志字段照抄 `initializing` 与 `headless wasm export available`，`wasm-dir` 取 `wasm.artifact-dir`；④ shutdown 顺序是 browser→pool→redis→http，每步用 `Promise.race` 限 3 秒，超时或失败只 warn 并继续（对应 CLJS 的 `shutdown-step`），`done` 最后调用；worker 线程不走任何一步，直接 `done`；⑤ `installProcessHandlers` 由入口显式调用，不在模块顶层注册，避免单测导入时占用信号监听；⑥ `renderer/wasm.js` 只在 `core.ts` import 一次，靠副作用完成 `setHeadlessRenderer`，等价于 CLJS `app.renderer` require wasm 兄弟模块；⑦ 构建输出 `target-ts/` 而非 `target/`，两棵树可并存；wasm 产物缺失按硬错误处理并提示先 `build:wasm`，字体 JSON 缺失只 warn；⑧ 依赖注入覆盖全部 I/O（browser/redis/jobs/pool/http/worker/log/config/service），shutdown 超时可注入，单测不碰网络、磁盘或子进程；⑨ `exporter/pnpm-lock.yaml` 尚未写入 esbuild：本机 `exporter/node_modules` 是指向 `frontend-nextjs/node_modules` 的临时 junction，在 exporter 跑 `pnpm install` 会破坏前端依赖，所以本地没有安装 esbuild，`build:ts` 未实跑，lock 待首次真实安装补齐。
+- 单测：52 文件 485 例（G2.6 的 51/476 + 本轮 9 例）——`core` 9（worker 只跑 worker、启动顺序、两条日志、handler 装配、service 只建一次、stop 顺序与 `done`、worker stop、失败步骤继续、超时放弃）。
+- 验证：`tsc -p exporter/tsconfig.json` 0；`vitest run` 52 文件 485 例全过；用 rolldown 把 `app.ts` 打成临时 bundle 后 `node` 启动，输出两条启动日志并停在本地缺失的 redis 连接（browser 池已初始化），确认入口、装配与顺序可用；esbuild 版本未本地执行。
+- 下一步：G2.7b——把 `exporter/scripts/build`、`scripts/run`、Dockerfile 与 devenv 指向 `target-ts`，`pnpm install` 补齐 lock，并用 `.penpot` 金样本对拍 bitmap/pdf/svg 三类产物。
+
 ---
 
 ## 8. 开发环境备注（本机）
