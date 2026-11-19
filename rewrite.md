@@ -3255,6 +3255,16 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`tsc -p exporter/tsconfig.json` 0；`vitest run` 48 文件 442 例全过。依赖仍借用 `frontend-nextjs` 的 `typescript`/`vitest`（临时链接，不入库）。
 - 下一步：G2.6——transit 的 `penpot/path-data`/图片处理与命令表；G2.7——进程入口、`pool.init` 与资源打包，补 `setHeadlessRenderer` 之外的启动接线。
 
+### 7.73 本轮（2026-11-19，第七十二批：G2.6 exporter 导出命令与 path-data）
+
+- 口径：G2 第六片。旧链的 `POST /api/export` 按 `cmd` 多路复用：`export-shapes` 出单文件或 zip，`export-frames` 逐帧出 PDF 再用 `pdfunite` 合并。本片移植这两个命令与命令表，并补上 `penpot/path-data` 的 transit 解码——wasm 的 `setShapePathContent` 要字节，而 transit reader 此前不认这个标签。图片下载/缓存已在 G2.5b 的 `wasm/render.ts` 完成（按 file-media id 拉取、`_store_image`、公开 URL 供 SVG 引用），本轮不重复实现。
+- 新增：`app/handlers/export-shapes.ts`（`conformShapesParams`、`prepareExports`、`countObjects`、`headlessExports`、`prepare`，含单文件 rename 与多文件 zip 两条 run 路径）；`app/handlers/export-frames.ts`（`conformFramesParams`、`prepare`、`pdfunite` 合并、`stat` 合并）；`app/handlers/commands.ts`（`createExportCommands`：`export-shapes`/`export-frames`）。
+- 扩展：`app/transit.ts` 增 `penpot/path-data` 读取处理器与 `pathDataBytes`（Buffer/Uint8Array/ArrayBuffer/DataView/binary string 统一成 `Uint8Array` 拷贝，非法值抛错）；`app/renderer.ts` 的 `headless` 参数接受可选的 `type`，保持与 `rd/headless?` 相同的调用形状（判定仍只看 `is-wasm`）。
+- 决策与偏差：① 命令表由 `createExportCommands` 显式登记，服务在进程入口组装（G2.7），等价于 CLJS 的 `defmulti command-spec`/`case`；② `conform` 失败仍走 `type: validation` + `code: spec-validation` + `problems:[{path,pred}]`，不复制 expound 文本，`handlers.prettyExplain` 已按 path 渲染；③ 单文件条件是「未设 `force-multiple`、只有一组、该组只有一个对象」，其余一律 zip；④ 文件名按 `name + suffix + (-n) + 扩展名` 去重，`used` 集合的作用域是一次 `prepareExports`（与 CLJS 的 transducer 一致）；⑤ 导出按 `(scale, type)` 分组，浏览器路径每 50 个对象一个 render，headless 整组一个；`process-group` 判定只看 `is-wasm`，所以 `headless` 的 `type` 参数不改变结果；⑥ 单文件的 rename 在 `on-object` 里发起，promise 收集后统一 await（CLJS 是 fire-and-forget），失败不会被吞；zip 的 `addToZip` 同步，写入名先按 `[\\/:*?"<>|]` 替换为 `_`；⑦ frames 给每项补 `type: pdf`、`scale: 1`、`suffix: ""`，`pdfunite` 参数是「所有页路径 + 输出路径」，临时文件前缀 `penpot.pdfunite.<file-id>.`，上传后把 `stat` 的 `size`/`created-at` 合并进资源；⑧ transit 的 `~b` 在 Node 里解成 Buffer、浏览器里解成 Uint8Array，统一拷贝避免 Buffer 池共享；旧 reader 的 binary string 按每字符一字节还原；⑨ 未做在线 `.penpot` 金样本对拍：需要后端、wasm 与真实文件，留到 G2.7 部署切换时跑；本轮以 CLJS 逐行对照 + 注入式单测固定行为。
+- 单测：51 文件 476 例（G2.5d 的 48/442 + 本轮 3 文件 34 例）——`handlers/export-shapes` 18（conform 5、prepareExports 4、prepare 4、run 4、count 1）、`handlers/export-frames` 9（conform 3、prepare 2、run 4）、`handlers/commands` 4、`transit` +3（path-data 字节、binary string、非法值）。
+- 验证：`tsc -p exporter/tsconfig.json` 0；`vitest run` 51 文件 476 例全过。依赖仍借用 `frontend-nextjs` 的 `typescript`/`vitest`（临时链接，不入库）。
+- 下一步：G2.7——进程入口、`pool.init` 与资源打包，把 `createExportCommands`、`createLegacyHandler`、`setHeadlessRenderer` 接到同一处；部署切换时用 `.penpot` 金样本对拍 bitmap/pdf/svg 三类产物。
+
 ---
 
 ## 8. 开发环境备注（本机）
