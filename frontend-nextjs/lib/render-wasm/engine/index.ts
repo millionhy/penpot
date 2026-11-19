@@ -256,6 +256,8 @@ export {
   payloadByteSize,
   setShapeUpload,
   writeShapePayload,
+  type GridCell,
+  type GridTrack,
   type Shape,
   type SvgNode,
   type SvgViewBox,
@@ -278,6 +280,34 @@ export {
   type ShapeObjects,
   type ShapesLoadingSink,
 } from "./objects";
+export {
+  GRID_CELL_U8_SIZE,
+  GRID_TRACK_U8_SIZE,
+  clearLayout,
+  isFlexLayout,
+  isGridLayout,
+  setFlexLayoutData,
+  setGridCells,
+  setGridColumns,
+  setGridLayout,
+  setGridLayoutData,
+  setGridRows,
+  setLayoutData,
+  setShapeLayout,
+} from "./layouts";
+export {
+  IMAGE_HEADER_U8_SIZE,
+  isImageCached,
+  loadImage,
+  loadShapeImages,
+  loadTextImages,
+  shapeImageIds,
+  storeImage,
+  storeImageUrl,
+  textImageIds,
+  type ImageHost,
+} from "./image";
+export { writeHostAttrs, type HostAttrsOptions, type HostAttrsResult } from "./host";
 export {
   CUSTOM_PREFIX,
   DEFAULT_FONT_WEIGHT,

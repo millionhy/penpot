@@ -22,6 +22,7 @@ import { ASYNC_THRESHOLD } from "./render-loop";
 import { live, type RenderWasmModule } from "./module";
 import { setShapePathContent, setShapeSvgAttrs, type PathContent } from "./props";
 import { useShape } from "./select";
+import { applySvgDerived } from "./svg-derived";
 import {
   flushShapesBatch,
   setShapeUpload,
@@ -126,28 +127,33 @@ export function writeShapeTail(module: RenderWasmModule, shape: Shape): void {
 }
 
 // serialize-shape!: the structural upload plus the tail, for one shape whose
-// record is not part of a batch (the incremental edit path).
+// record is not part of a batch (the incremental edit path). The svg-derived
+// attrs land first, so the record and the tail carry the fills, blur and
+// shadow the source SVG implies.
 export function serializeShape(module: RenderWasmModule, shape: Shape): Shape {
-  setShapeUpload(module, shape, { includeLayout: false });
-  if (needsShapeTail(shape)) writeShapeTail(module, shape);
-  return shape;
+  const prepared = applySvgDerived(shape);
+  setShapeUpload(module, prepared, { includeLayout: false });
+  if (needsShapeTail(prepared)) writeShapeTail(module, prepared);
+  return prepared;
 }
 
 // serialize-shapes-batch!: one `_set_shapes_batch`, then select and write the
-// tail of every shape that needs it.
+// tail of every shape that needs it. Every shape passes through the svg
+// derivation first, like the compiled serializer.
 export function serializeShapesBatch(
   module: RenderWasmModule,
   shapes: readonly Shape[],
   options: UploadOptions = BATCH_UPLOAD_OPTIONS,
 ): readonly Shape[] {
   if (shapes.length === 0) return shapes;
-  flushShapesBatch(module, shapes, options);
-  for (const shape of shapes) {
+  const prepared = shapes.map((shape) => applySvgDerived(shape));
+  flushShapesBatch(module, prepared, options);
+  for (const shape of prepared) {
     if (!needsShapeTail(shape)) continue;
     useShape(module, shape.id);
     writeShapeTail(module, shape);
   }
-  return shapes;
+  return prepared;
 }
 
 // The shape-loading state the render loop owns (RenderLoop implements it).

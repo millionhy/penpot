@@ -104,6 +104,23 @@ export interface Transform {
   f?: number;
 }
 
+// A grid track and a grid cell travel through their own setters, not the
+// shape record, but they belong to the shape model.
+export interface GridTrack {
+  type?: string;
+  value?: number;
+}
+
+export interface GridCell {
+  row?: number;
+  "row-span"?: number;
+  column?: number;
+  "column-span"?: number;
+  "align-self"?: string;
+  "justify-self"?: string;
+  shapes?: readonly (string | null | undefined)[];
+}
+
 export interface Shape {
   id: string;
   type: string;
@@ -149,6 +166,10 @@ export interface Shape {
   "layout-justify-items"?: string | null;
   "layout-justify-content"?: string | null;
   "layout-wrap-type"?: string | null;
+  "layout-grid-dir"?: string | null;
+  "layout-grid-rows"?: readonly GridTrack[] | null;
+  "layout-grid-columns"?: readonly GridTrack[] | null;
+  "layout-grid-cells"?: Readonly<Record<string, GridCell>> | null;
   "layout-padding"?: { p1?: number; p2?: number; p3?: number; p4?: number } | null;
   "layout-item-margin"?: { m1?: number; m2?: number; m3?: number; m4?: number } | null;
   "layout-item-h-sizing"?: string | null;

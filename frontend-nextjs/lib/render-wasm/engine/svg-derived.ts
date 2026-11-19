@@ -684,16 +684,17 @@ export function applySvgFilters(
 }
 
 // apply-svg-derived: filters first, then the fills, with blur and shadow
-// always present on the result.
-export function applySvgDerived(
-  shape: SvgDerivedShape,
+// always present on the result. Generic over the input so a model shape keeps
+// its own type through the copy.
+export function applySvgDerived<T extends SvgDerivedShape>(
+  shape: T,
   nextId: IdFactory = nextUuid,
-): SvgDerivedResult {
+): T & SvgDerivedResult {
   const filtered = applySvgFilters(shape, nextId);
   return {
     ...filtered,
     fills: resolveShapeFills(filtered),
     blur: filtered.blur ?? undefined,
     shadow: filtered.shadow ?? undefined,
-  };
+  } as unknown as T & SvgDerivedResult;
 }

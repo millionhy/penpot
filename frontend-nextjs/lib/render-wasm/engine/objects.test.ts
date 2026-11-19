@@ -10,6 +10,7 @@ import {
 import {
   BATCH_MAX_SHAPES,
   needsShapeTail,
+  serializeShape,
   serializeShapesBatch,
   setObject,
   setObjects,
@@ -165,6 +166,28 @@ describe("serializeShapesBatch", () => {
   it("does nothing for an empty list", () => {
     expect(serializeShapesBatch(module, [])).toEqual([]);
     expect(recorded).toEqual([]);
+  });
+});
+
+describe("svg-derived attrs", () => {
+  it("derives the fills of a raw svg shape before the upload", () => {
+    const derived = serializeShape(
+      module,
+      shape(A, { type: "svg-raw", "svg-attrs": { fill: "red" } }),
+    );
+    expect(derived.id).toBe(A);
+    expect(derived.fills).toEqual([{ "fill-color": "#ff0000" }]);
+    expect(derived).not.toBe(
+      shape(A, { type: "svg-raw", "svg-attrs": { fill: "red" } }),
+    );
+  });
+
+  it("keeps the model fills when the shape has them", () => {
+    const fills = [{ "fill-color": "#123456" }];
+    const derived = serializeShapesBatch(module, [
+      shape(A, { "svg-attrs": { fill: "red" }, fills }),
+    ])[0];
+    expect(derived.fills).toEqual(fills);
   });
 });
 
