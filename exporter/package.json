@@ -26,6 +26,7 @@
     "xregexp": "^5.1.3"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "ws": "^8.22.0"
   },
   "scripts": {
@@ -34,6 +35,7 @@
     "watch": "pnpm run watch:app",
     "build:app": "clojure -M:dev:shadow-cljs release main",
     "build:wasm": "../render-wasm/build export",
+    "build:ts": "node esbuild.config.mjs",
     "build": "pnpm run clear:shadow-cache && pnpm run build:app",
     "fmt:clj": "cljfmt fix --parallel=true src/ test/",
     "check-fmt:clj": "cljfmt check --parallel=true src/ test/",
