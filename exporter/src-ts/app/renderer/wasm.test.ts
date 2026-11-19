@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 process.env.PENPOT_SECRET_KEY = "test-secret";
 process.env.PENPOT_WASM_WORKER_POOL_MIN = "0";
 
+import type { RenderParams } from "../renderer.js";
 import { decode } from "../transit.js";
 import * as pool from "../wasm/pool.js";
 import { FakeWorker } from "../../test/fake-worker.js";
@@ -75,9 +76,17 @@ describe("withScope", () => {
     const { created } = setup();
     const onObject = vi.fn();
 
+    const params = (scale: number): RenderParams => ({
+      "file-id": "f",
+      "page-id": "p",
+      scale,
+      type: "png",
+      objects: [],
+    });
+
     const scope = withScope(undefined, async (renderShape) => {
-      await renderShape({ n: 1 }, onObject);
-      await renderShape({ n: 2 }, onObject);
+      await renderShape(params(1), onObject);
+      await renderShape(params(2), onObject);
     });
 
     await vi.waitFor(() => expect(created[0]?.posted).toHaveLength(1));
@@ -89,8 +98,8 @@ describe("withScope", () => {
     await scope;
 
     const posted = created[0].posted as Array<{ params: string }>;
-    expect(decode(posted[0].params)).toEqual({ n: 1 });
-    expect(decode(posted[1].params)).toEqual({ n: 2 });
+    expect(decode(posted[0].params)).toEqual(params(1));
+    expect(decode(posted[1].params)).toEqual(params(2));
     expect(created).toHaveLength(1);
   });
 

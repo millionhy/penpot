@@ -90,6 +90,12 @@ export function uuid(value: string): unknown {
   return transit.uuid(value);
 }
 
+// A transit set. The get-page RPC takes `object-id` as a set of uuids, and the
+// backend reads the same tag the CLJS exporter writes.
+export function set(values: readonly unknown[]): unknown {
+  return transit.set([...values]);
+}
+
 // The verbose form of one error/validation body, matching
 // app.util.transit/encode in app.handlers/on-error.
 export function encodeVerbose(value: unknown): string {

@@ -10,7 +10,10 @@ process.env.PENPOT_EXPORTER_QUEUE_MAX = "1";
 
 import type { Job, Resource } from "../jobs.js";
 import * as jobs from "../jobs.js";
+import * as pool from "../wasm/pool.js";
 import { createScheduler, type Scheduler } from "./scheduler.js";
+
+vi.mock("../wasm/pool.js", () => ({ capacity: vi.fn(() => 0) }));
 
 const PROFILE = "11111111-1111-1111-1111-111111111111";
 
@@ -71,6 +74,23 @@ beforeAll(() => {
 
 afterAll(() => {
   vi.restoreAllMocks();
+});
+
+describe("default capacity", () => {
+  it("reads the wasm worker pool cap", async () => {
+    vi.mocked(pool.capacity).mockReturnValue(0);
+
+    const standalone = createScheduler();
+    const blocked = await create("pool-blocked", "wasm");
+    const pending = standalone.submit(blocked.job);
+
+    expect(pool.capacity).toHaveBeenCalled();
+    expect(standalone.state().running.size).toBe(0);
+    expect(standalone.state().queue).toHaveLength(1);
+
+    standalone.dropQueued(blocked.job.id);
+    expect(await pending).toBeUndefined();
+  });
 });
 
 describe("submit", () => {

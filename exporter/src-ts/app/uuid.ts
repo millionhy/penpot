@@ -26,6 +26,13 @@ export function parse(value: string): string {
   return value.toLowerCase();
 }
 
+// uuid/from-unsigned-parts: the inverse of getU32, used when a uuid arrives as
+// the four words the wasm store keys fonts by.
+export function fromUnsignedParts(a: number, b: number, c: number, d: number): string {
+  const hex = [a, b, c, d].map((word) => (word >>> 0).toString(16).padStart(8, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 // uuid/get-u32: four 32-bit words read from the hex text.
 export function getU32(id: string): Uint32Array {
   const hex = id.replace(/-/g, "");

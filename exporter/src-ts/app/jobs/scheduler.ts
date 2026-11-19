@@ -9,6 +9,7 @@ import { raise } from "../errors.js";
 import { createLogger, setLevel } from "../logging.js";
 import * as jobs from "../jobs.js";
 import type { Job, Resource } from "../jobs.js";
+import * as pool from "../wasm/pool.js";
 import * as jobUtils from "./utils.js";
 
 const log = createLogger("app.jobs.scheduler");
@@ -33,9 +34,10 @@ interface State {
 }
 
 export interface SchedulerOptions {
-  // The wasm pool owns the capacity; it is read on every decision because the
-  // pool can still be starting up when the first jobs arrive.
-  capacity: () => number;
+  // How many headless jobs may run at once. The wasm pool owns the capacity and
+  // it is read on every decision, because the pool can still be starting up
+  // when the first jobs arrive. Injectable so tests need no pool.
+  capacity?: () => number;
 }
 
 export interface Scheduler {
@@ -89,7 +91,8 @@ function takeEligible(state: State, capacity: number): { state: State; entry: Qu
   };
 }
 
-export function createScheduler(options: SchedulerOptions): Scheduler {
+export function createScheduler(options: SchedulerOptions = {}): Scheduler {
+  const capacity = options.capacity ?? pool.capacity;
   const state: State = { running: new Map(), queue: [] };
 
   function finish(jobId: string): void {
@@ -138,7 +141,7 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
 
   function pump(): void {
     for (;;) {
-      const taken = takeEligible(state, options.capacity());
+      const taken = takeEligible(state, capacity());
       if (taken === undefined) return;
 
       state.queue = taken.state.queue;
@@ -151,7 +154,7 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
   // resolves when the export actually finishes; callers that only need the
   // handle can ignore it. Raises when the exporter is saturated.
   function submit(job: Job): Promise<Settled> {
-    if (eligible(state, job, options.capacity())) return execute(job);
+    if (eligible(state, job, capacity())) return execute(job);
 
     if (state.queue.length >= maxQueued()) {
       return raise({ type: "validation", code: "queue-full", hint: "too many queued export jobs" });

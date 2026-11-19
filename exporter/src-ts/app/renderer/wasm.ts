@@ -5,10 +5,16 @@
 // its renders, sharing its caches and pool slot.
 
 import * as jobs from "../jobs.js";
+import {
+  setHeadlessRenderer,
+  type HeadlessRenderer,
+  type OnObject,
+  type RenderFn,
+  type RenderParams,
+} from "../renderer.js";
 import * as pool from "../wasm/pool.js";
 
-export type OnObject = (object: unknown) => void;
-export type RenderFn = (params: unknown, onObject: OnObject) => Promise<void>;
+export type { OnObject, RenderFn };
 
 // Chains thunks so a job's renders run one at a time on its worker. A failure
 // is isolated: it doesn't break the chain for the next one.
@@ -50,7 +56,9 @@ export async function withScope<T>(
 
     try {
       return await f((params, onObject) =>
-        chain(() => pool.renderOn(worker, params, onObject, options)),
+        chain(() =>
+          pool.renderOn(worker, params, (object) => onObject(object as never), options),
+        ),
       );
     } finally {
       live = undefined;
@@ -61,6 +69,18 @@ export async function withScope<T>(
 export function render(params: Record<string, unknown>, onObject: OnObject): Promise<void> {
   const jobId = params["job-id"];
   return withScope(typeof jobId === "string" ? jobId : undefined, (renderShape) =>
-    renderShape(params, onObject),
+    renderShape(params as unknown as RenderParams, onObject),
   );
 }
+
+// The backend `app.renderer` dispatches headless requests to. Importing this
+// module installs it, the way `app.renderer` used to require its wasm sibling.
+export function register(): void {
+  const backend: HeadlessRenderer = {
+    render: (params, onObject) => render(params as unknown as Record<string, unknown>, onObject),
+    withScope,
+  };
+  setHeadlessRenderer(backend);
+}
+
+register();
