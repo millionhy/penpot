@@ -17,6 +17,7 @@ import { call } from "./call";
 import { FILL_U8_SIZE, MAX_FILLS, writeFill, type Fill } from "./fills";
 import { alloc, dataView, heapU8, writeBuffer } from "./memory";
 import { live, type RenderWasmModule } from "./module";
+import { parseDouble } from "./numbers";
 import {
   translateFontStyle,
   translateTextAlign,
@@ -99,11 +100,9 @@ export interface WriteTextOptions {
   normalizeSpan?: (span: TextSpan, paragraph: TextParagraph) => TextSpan;
 }
 
-// d/parse-double: js/parseFloat plus the NaN -> default step.
-export function parseDouble(value: unknown): number | undefined {
-  const parsed = Number.parseFloat(String(value));
-  return Number.isNaN(parsed) ? undefined : parsed;
-}
+// d/parse-double lives in `numbers.ts`; re-exported here because the text
+// serializers are its first caller and the barrel exports it with them.
+export { parseDouble };
 
 export function serializeFontSize(fontSize: unknown): number {
   if (typeof fontSize === "number") return fontSize;

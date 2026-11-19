@@ -120,7 +120,34 @@ export {
   type RulerTheme,
   type RulerState,
 } from "./rulers";
-export { ZERO_UUID, isUuid, uuidToU32, u32ToUuid } from "./uuid";
+export { ZERO_UUID, isUuid, nextUuid, uuidToU32, u32ToUuid } from "./uuid";
+export { parseDouble } from "./numbers";
+export {
+  BLACK,
+  IDENTITY_MATRIX,
+  extractIds,
+  isColorString,
+  multiplyMatrix,
+  parseColor,
+  parseNumbers,
+  parseStyle,
+  parseTransform,
+  rgbToHex,
+  rotateMatrix,
+  scaleMatrix,
+  skewMatrix,
+  transformPoint,
+  translateMatrix,
+} from "./svg";
+export {
+  applySvgDerived,
+  applySvgFilters,
+  resolveShapeFills,
+  svgFillToFills,
+  type IdFactory,
+  type SvgDerivedResult,
+  type SvgDerivedShape,
+} from "./svg-derived";
 export {
   nameOf,
   translateAlignSelf,
@@ -276,7 +303,6 @@ export {
   SPAN_ATTR_U8_SIZE,
   paragraphByteSize,
   paragraphText,
-  parseDouble,
   serializeFontSize,
   serializeFontWeight,
   serializeLetterSpacing,

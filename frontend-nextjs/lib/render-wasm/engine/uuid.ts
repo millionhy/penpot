@@ -24,6 +24,17 @@ export function uuidToU32(id: string): Uint32Array {
   return out;
 }
 
+// uuid/next. `crypto.randomUUID` exists in every browser Next 15 targets and
+// in the Node test runner; the fallback keeps the call total in older hosts
+// (it is not a v4 uuid, only a value unique enough for a renderer id).
+export function nextUuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const hex = () => Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
+  return `${hex()}${hex()}-${hex()}-4${hex().slice(1)}-a${hex().slice(1)}-${hex()}${hex()}${hex()}`;
+}
+
 // uuid/from-unsigned-parts: the inverse, for ids the wasm side returns.
 export function u32ToUuid(a: number, b: number, c: number, d: number): string {
   const hex = [a, b, c, d]
