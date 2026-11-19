@@ -16,6 +16,7 @@ import { raise } from "./errors.js";
 import { createLogger, setLevel } from "./logging.js";
 import * as uuid from "./uuid.js";
 import { call } from "./wasm/call.js";
+import { fromShared } from "./wasm/enums.js";
 import { alloc, dataView, free, heapU32, heapU8, offset32, writeBuffer } from "./wasm/memory.js";
 
 const log = createLogger("app.wasm");
@@ -99,11 +100,14 @@ function webassembly(): WebAssemblyApi {
 
 // Loads the artifact under Node and boots it headless. Callers hold the
 // returned module; the shared one is what the serializers read.
+//
+// `dir` defaults to the artifact directory and exists so tests can point the
+// loader at a fixture build.
 export async function init(
   width = defaultViewportWidth,
   height = defaultViewportHeight,
+  dir = artifactDir,
 ): Promise<WasmModule> {
-  const dir = artifactDir;
   const jsPath = path.resolve(dir, "render-wasm.js");
   const wasmPath = path.resolve(dir, "render-wasm.wasm");
   const wasmBytes = readFileSync(wasmPath);
@@ -113,6 +117,14 @@ export async function init(
   const namespace = (await import(pathToFileURL(jsPath).href)) as {
     default: EmscriptenFactory;
   };
+
+  // The enum table ships next to the artifact and the serializers refuse to run
+  // without it, so register it before the module gets any work.
+  const shared = (await import(pathToFileURL(path.resolve(dir, "shared.js")).href)) as Record<
+    string,
+    unknown
+  >;
+  fromShared(shared);
 
   // Bypass the web fetch loader: instantiate from the local bytes.
   const created = await namespace.default({

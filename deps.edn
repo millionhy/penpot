@@ -2,5 +2,4 @@
 {:deps
  {dev/frontend {:local/root "frontend"}
   dev/backend {:local/root "backend"}
-  dev/common {:local/root "common"}
-  dev/exporter {:local/root "exporter"}}}
+  dev/common {:local/root "common"}}}

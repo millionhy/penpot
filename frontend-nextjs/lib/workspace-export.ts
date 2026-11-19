@@ -8,8 +8,8 @@
 // public/js/shared.js), so the shell always takes the server branch: one
 // transit POST to /api/export with :wait true, answered with the finished
 // resource {filename, mtype, uri}. A single object with one spec comes back
-// as that file; anything else comes back as a zip (exporter/handlers/
-// export_shapes.cljs decides, not the client).
+// as that file; anything else comes back as a zip (exporter/src-ts/app/handlers/
+// export-shapes.ts decides, not the client).
 //
 // Deviations from the CLJS original, documented:
 // - No export-state store and no progress widget: the request waits for the
@@ -21,7 +21,7 @@
 //   the flag the CLJS sends when the renderer feature is active.
 // - The body carries :profile-id from the session: the exporter's ::params
 //   requires it and the legacy POST handler conforms the body before it
-//   attaches the profile of the auth cookie (exporter/src/app/handlers.cljs).
+//   attaches the profile of the auth cookie (exporter/src-ts/app/handlers.ts).
 
 import { triggerDownloadUri } from "./dom";
 import { postTransit } from "./rpc";
@@ -57,7 +57,7 @@ export interface ExportParams {
   "is-wasm": true;
   name: string;
   // The exporter's ::params spec requires it, and the legacy POST handler
-  // conforms the body before the session id is attached (handlers.cljs).
+  // conforms the body before the session id is attached (src-ts/app/handlers.ts).
   "profile-id": string;
   exports: ExportEntry[];
 }

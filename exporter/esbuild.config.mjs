@@ -77,6 +77,12 @@ await copyIfPresent(
   path.join(outdir, "resources", "wasm", "render-wasm.wasm"),
   { required: true },
 );
+// `init` imports the enum table from the artifact directory at runtime.
+await copyIfPresent(
+  path.join("resources", "wasm", "shared.js"),
+  path.join(outdir, "resources", "wasm", "shared.js"),
+  { required: true },
+);
 await copyIfPresent(GFONTS_FILE, path.join(outdir, "resources", "fonts", path.basename(GFONTS_FILE)));
 
 // The runtime resolves its dependencies from the copy, exactly like the CLJS

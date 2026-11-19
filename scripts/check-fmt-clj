@@ -9,5 +9,4 @@ cljfmt --parallel=true check \
        frontend/test/ \
        backend/src/ \
        backend/test/ \
-       exporter/src/ \
        library/src;
