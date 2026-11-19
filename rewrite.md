@@ -3291,6 +3291,14 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`bash -n scripts/ci` 0（工作区先转 LF，CRLF 下 bash 报 `{\r` 语法错）；`tsc` 0；`vitest run` 52 文件 485 例；`vitest run --silent=passed-only` 同样 485 例；`pnpm run test:quiet` 在本机因 junction 失败（见④）。
 - 下一步：G2.9——删除 `exporter/src/` 与 shadow-cljs 构建，把 `docs/technical-guide/developer/architecture/exporter.md` 切到 `src-ts/`，再在联调环境跑 bitmap/pdf/svg 金样本对拍。
 
+### 7.77 本轮（2026-11-19，第七十六批：G2.9 删除 CLJS 树并切换文档）
+
+- 口径：G2 第九片。G2.7b/G2.8 之后运行期、构建与测试都走 TypeScript，CLJS 树只剩回退价值。本片删掉 `exporter/src/`、`exporter/vendor/`、`deps.edn`、`shadow-cljs.edn` 与相关脚本，把 `shared.js` 的生成位置改到 `resources/wasm/`，并更新文档与 CI。
+- 改动：删除 34 个 CLJS 源文件与 `vendor/cuerdas` 垫片；删 `exporter/deps.edn`、`exporter/shadow-cljs.edn`；根 `deps.edn` 去掉 `dev/exporter`（只为 clojure-lsp 服务全仓）。`render-wasm/_build_env` 的 `EXPORT_SHARED_DEST` 改到 `../exporter/resources/wasm/shared.js`，`exporter/scripts/build` 的校验路径随之改，`esbuild.config.mjs` 把 `shared.js` 与 wasm 产物一起复制进 `target/resources/wasm/`（必需项）。`wasm.ts` 的 `init()` 新增 `dir` 参数并在启动模块前 `fromShared()` 注册枚举表；新增 `wasm/init.test.ts`（2 例：启动并注册、缺导出时抛 `stale-wasm-enums`）。`package.json` 删 `build:cljs`、`watch:cljs`、`clear:shadow-cache`、`fmt:clj`、`check-fmt:clj`、`lint:clj`；`scripts/ci` 的 exporter lint/fmt/paren-repair 置空；`scripts/check-fmt-clj` 去掉 `exporter/src/`；`.gitignore` 去掉 `.shadow-cljs` 与 `shared.js` 的特例。`tests-exporter.yml` 删掉 CLJ lint 步骤，只留 `./scripts/test`；`docs/technical-guide/developer/architecture/exporter.md` 的路径图与模块说明切到 `src-ts/`，技术栈改为 TypeScript/Node.js 与 Playwright；`frontend-nextjs/lib/workspace-export.ts` 的注释同步。
+- 决策与偏差：① `shared.js` 跟着 wasm 产物走，不再写进源码树，因此被 `/exporter/resources/wasm/` 一并忽略，不需要单独条目；② `init` 在 `default()` 之前注册枚举表，缺项在启动时失败，不等到第一次序列化；③ `dir` 参数只为测试注入，默认值仍是 `artifactDir`；④ 本机 pnpm 仍受 junction 影响，验证用 `node esbuild.config.mjs` 与 `node node_modules/vitest/vitest.mjs run`；⑤ 金样本对拍仍缺后端、真实 wasm 与文件，留到联调环境。
+- 验证：`bash -n scripts/ci`、`scripts/check-fmt-clj`、`exporter/scripts/build` 均 0；`package.json` 可解析；`tsc` 0；`vitest run` 53 文件 487 例；以占位 wasm 跑 `node esbuild.config.mjs 9.9.9`，`target/resources/wasm/` 含 `render-wasm.js`、`render-wasm.wasm`、`shared.js`，`app.js` 379 KB。
+- 下一步：在联调环境跑 bitmap/pdf/svg 金样本对拍，收尾 G2（清理 `rewrite.md` 与记忆中的旧路径）。
+
 ---
 
 ## 8. 开发环境备注（本机）

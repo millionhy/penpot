@@ -5,24 +5,23 @@ desc: Learn about self-hosting, configuration, architecture (backend, frontend),
 
 # Exporter app
 
-When exporting file contents to a file, we want the result to be exactly the
-same as the user sees in screen. To achieve this, we use a headless browser
-installed in the backend host, and controled via puppeteer automation. The
-browser loads the frontend app from the static webserver, and executes it like
-a normal user browser. It visits a special endpoint that renders one shape
-inside a file. Then, if takes a screenshot if we are exporting to a bitmap
-image, or extract the svg from the DOM if we want a vectorial export, and write
-it to a file that the user can download.
+When exporting file contents, we want the result to look the same as the canvas.
+The exporter runs a headless browser installed on the backend host and drives
+it with Playwright. The browser loads the frontend app from the static
+webserver and runs it like a normal user browser, visiting a special endpoint
+that renders one shape inside a file. It takes a screenshot for bitmap exports,
+or extracts the SVG from the DOM for vector exports, and writes the result to a
+file the user can download.
 
 ## Exporter structure
 
-Penpot exporter app code resides under <code class="language-text">exporter/src/app</code> path in the main repository.
+Penpot exporter app code resides under <code class="language-text">exporter/src-ts/app</code> path in the main repository.
 
 @startuml Exporter
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
 !define DEVICONS https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/master/devicons
 !include DEVICONS/react.puml
-!include DEVICONS/clojure.puml
+!include DEVICONS/nodejs.puml
 !include DEVICONS/chrome.puml
 
 HIDE_STEREOTYPE()
@@ -30,7 +29,7 @@ HIDE_STEREOTYPE()
 Container(frontend_app, "Frontend app", "React / ClojureScript", "", "react")
 
 System_Boundary(backend, "Backend") {
-    Container(exporter, "Exporter", "ClojureScript / nodejs", "", "clojure")
+    Container(exporter, "Exporter", "TypeScript / Node.js", "", "nodejs")
     Container(browser, "Headless browser", "Chrome", "", "chrome")
 }
 
@@ -41,28 +40,35 @@ Rel_U(browser, frontend_app, "Uses", "HTTPS")
 @enduml
 
 ```text
-  ▾ exporter/src/app/
-    ▸ http/
+  ▾ exporter/src-ts/app/
+    ▸ handlers/
+    ▸ jobs/
     ▸ renderer/
     ▸ util/
-      core.cljs
-      http.cljs
-      browser.cljs
-      config.cljs
+    ▸ wasm/
+      app.ts
+      browser.ts
+      config.ts
+      core.ts
+      http.ts
+      router.ts
 ```
 
-## Exporter namespaces
+## Exporter modules
 
-* **core** has the setup and run functions of the nodejs app.
+* **core** has the setup and run functions of the Node.js app.
 
-* **http** exposes a basic http server, with endpoints to export a shape or a
-  file.
+* **http** and **router** expose a basic http server, with endpoints to export
+  a shape or a file. The handlers live under **handlers/**.
 
-* **browser** has functions to control a local Chromium browser via
-  [puppeteer](https://puppeteer.github.io/puppeteer).
+* **browser** controls a local Chromium browser via
+  [Playwright](https://playwright.dev).
 
-* **renderer** has functions to tell the browser to render an object and make a
-  screenshot, and then convert it to bitmap, pdf or svg as needed.
+* **renderer** renders an object in the browser and makes a screenshot, then
+  converts it to bitmap, pdf or svg as needed. **wasm/** holds the headless
+  render path, its worker pool and the transit serializers.
+
+* **jobs** admits, stores and schedules exports; the job records live in Redis.
 
 * **config** gets configuration settings from the linux environment.
 

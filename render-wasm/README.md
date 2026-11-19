@@ -81,9 +81,10 @@ Use the target cleanup commands instead of running `cargo clean` on the shared
 ```
 
 Each target writes its own generated `shared.js` (the enum discriminants the
-CLJS side compiles against) next to the code that imports it — respectively
+consumer compiles against) next to the code that imports it — respectively
 `frontend/src/app/render_wasm/api/shared.js` and
-`exporter/src/app/wasm/shared.js`. Neither build writes to the other's paths.
+`exporter/resources/wasm/shared.js`, beside the exporter's artifact. Neither
+build writes to the other's paths.
 
 ![Architecture overview](docs/images/architecture_schema.png)
 

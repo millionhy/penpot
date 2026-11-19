@@ -1,11 +1,11 @@
 # Exporter Architecture and Workflow
 
-`exporter/`: CLJS/Node headless export service. Depends on `common/`; uses Playwright plus export JS/CLJS deps for SVG/PDF/assets.
+`exporter/`: TypeScript/Node headless export service. Depends on `common/`; uses Playwright plus export JS deps for SVG/PDF/assets.
 
 ## Layout and commands
 
-- Source: `exporter/src-ts/` (TypeScript, the runtime since G2.7) and `exporter/src/` (old CLJS tree, still built by `build:cljs`); config: `deps.edn`, `shadow-cljs.edn`, `package.json`, `tsconfig.json`; runtime helpers/assets: `vendor/`, `scripts/`.
-- From `exporter/`: setup `./scripts/setup`; watch `pnpm run watch` or `pnpm run watch:app` (esbuild into `target/app.js`); production build `pnpm run build`; tests `pnpm run test` / `pnpm run test:quiet` / `pnpm run test:watch` (vitest over `src-ts/**/*.test.ts`); lint `pnpm run lint:clj`; format check/fix `pnpm run check-fmt:clj` / `pnpm run fmt:clj`. The CLJS fallback builds with `pnpm run build:cljs` / `watch:cljs`.
+- Source: `exporter/src-ts/` (TypeScript; the CLJS tree and its shadow-cljs build were removed in G2.9); config: `package.json`, `tsconfig.json`, `vitest.config.ts`; runtime helpers/assets: `scripts/`.
+- From `exporter/`: setup `./scripts/setup`; watch `pnpm run watch` or `pnpm run watch:app` (esbuild into `target/app.js`); production build `pnpm run build`; tests `pnpm run test` / `pnpm run test:quiet` / `pnpm run test:watch` (vitest over `src-ts/**/*.test.ts`). No CLJ lint or format step: the exporter owns no Clojure sources.
 - Because exporter consumes `common/`, shared file/shape/model changes may need exporter verification even when the immediate change is not under `exporter/`.
 - Cross-cutting testing principles and anti-patterns: `mem:testing`.
 - Exporter test conventions and CI: `mem:exporter/testing`.

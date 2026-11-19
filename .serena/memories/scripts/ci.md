@@ -53,8 +53,9 @@ Flags:
 
 ## Notes
 
-- `mcp` has no lint task (shows as skipped). `render-wasm` uses `./lint`,
-  `./test`, and `cargo fmt`.
+- `mcp` and `exporter` have no lint, format or paren-repair task (shows
+  as skipped; the exporter owns no Clojure sources). `render-wasm` uses
+  `./lint`, `./test`, and `cargo fmt`.
 - Test tasks are long-running (backend: `clojure -M:dev:test`); use a
   generous timeout when calling it from an agent shell.
 - Skill entry point: `.agents/skills/local-ci/SKILL.md`.

@@ -24,6 +24,7 @@ There are some additional components, explained in subsections.
 !include DEVICONS/react.puml
 !include DEVICONS/java.puml
 !include DEVICONS/clojure.puml
+!include DEVICONS/nodejs.puml
 !include DEVICONS/postgresql.puml
 !include DEVICONS/redis.puml
 !include DEVICONS/chrome.puml
@@ -40,7 +41,7 @@ System_Boundary(backend, "Backend") {
     Container(backend_app, "Backend app", "Clojure / JVM", "", "clojure")
     ContainerDb(db, "Database", "PostgreSQL", "", "postgresql")
     ContainerDb(redis, "Broker", "Redis", "", "redis")
-    Container(exporter, "Exporter", "ClojureScript / nodejs", "", "clojure")
+    Container(exporter, "Exporter", "TypeScript / Node.js", "", "nodejs")
     Container(browser, "Headless browser", "Chrome", "", "chrome")
 }
 
@@ -52,7 +53,7 @@ Rel(backend_app, db, "Uses", "SQL")
 Rel(redis, backend_app, "Subscribes", "pub/sub")
 Rel(backend_app, redis, "Notifies", "pub/sub")
 Rel(frontend_app, exporter, "Uses", "HTTPS")
-Rel(exporter, browser, "Uses", "puppeteer")
+Rel(exporter, browser, "Uses", "Playwright")
 Rel(browser, frontend_app, "Uses", "HTTPS")
 
 @enduml
