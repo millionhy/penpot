@@ -30,6 +30,7 @@ You are working on the GitHub project `penpot/penpot`, a monorepo.
 This is a monorepo. Principles that apply to one module do *not* generally apply to others. Do not make assumptions.
 
 - `frontend/`: ClojureScript + SCSS SPA/design editor; core conventions: `mem:frontend/core`.
+- `frontend-nextjs/`: Next.js 15 shell replacing `frontend/` route by route, plus its own TS render-wasm engine; core conventions: `mem:frontend-nextjs/core`.
 - `backend/`: JVM Clojure HTTP/RPC server with PostgreSQL, Redis, storage, mail, and workers; core conventions: `mem:backend/core`. Runtime services and the task-queue vs Pub/Sub topology that constrains horizontal scaling: `mem:prod-infra/core`.
 - `common/`: shared CLJC data types, geometry, schemas, file/change logic, and utilities; core conventions: `mem:common/core`.
 - `render-wasm/`: Rust -> WebAssembly Skia renderer consumed by frontend; core conventions: `mem:render-wasm/core`.

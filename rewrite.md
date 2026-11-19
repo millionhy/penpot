@@ -9,7 +9,7 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G3 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换），下一步 G4（frontend 旧端收尾）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G3 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换），G4 进行中（路线为「先移植渲染引擎」，G4.1 引擎核心见 7.84）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
 | 最后更新 | 2026-11-19 |
@@ -86,7 +86,7 @@
 | G1 | 补齐新端入口（P0） | ✅ | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）、workspace shape 导出入口（7.64）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项 |
 | G2 | exporter TS 重写（P1） | ✅ | 2026-11-19：`exporter/src-ts/` 全量取代 CLJS，CLJS 树与 shadow-cljs 已删（G2.1–G2.10，7.65–7.78）；本机联调对拍 svg/png/pdf |
 | G3 | library TS 重写（P2） | ✅ | 2026-11-19：G3.1 基础层、G3.2 导出、G3.3a tokens、G3.3b bool、G3.4 构建切换全部完成（7.79–7.83）。`library/src-ts/` 21 文件全量取代 CLJS，esbuild 产出 `target/library/penpot.js`（版本由 `package.json` 注入），72 例通过；`out`/`out2` 与 tokens 金样本逐文档一致，四种布尔与 1.2.0-RC1 对拍（difference 只差两段零长曲线）；CLJS 源码、shadow-cljs 与 cljfmt 管线已删 |
-| G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
+| G4 | frontend 旧端收尾（P3） | 🔄 | 2026-11-19：新端画布仍跑未入库的 CLJS 产物 `public/js/main.js` + `shared.js`（`$APP` 上的 `app.render_wasm.api/*`），删 `frontend/src` 前必须先把渲染引擎 TS 化；G4.1 引擎核心完成（7.84），下一步 G4.2 画布/视口 |
 | G5 | common 前端分支镜像（P4） | ⬜ | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管 |
 
 ### 支撑任务（阶段 B 契约前置，只读后端，可与阶段 F 并行）
@@ -430,6 +430,8 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
    - 分片：G2.1 基础层（config/logging/errors/flags/version/uuid/data/uri/transit/mime/shell/router/exchange，✅ 见 7.65）→ G2.2 http 适配 + `on-error` + auth（✅ 见 7.66）→ G2.3 redis + jobs（store/scheduler/utils）+ legacy export 入口与 `/jobs` 处理器接线（✅ 见 7.67）→ G2.4 browser + renderer + resources（✅ 见 7.68）→ G2.5 wasm headless（G2.5a 驱动/池/作用域 ✅ 见 7.69；G2.5b 序列化镜像与场景渲染、G2.5c 启动接线）→ G2.6 export_shapes/export_frames + `.penpot` 金样本对拍 → G2.7 构建与部署切换（`package.json`、esbuild、`target/app.js`，✅ 见 7.75）→ G2.8 测试入口切 vitest（✅ 见 7.76）→ G2.9 删 CLJS 树与文档切换（✅ 见 7.77）→ G2.10 联调金样本对拍与 stroke 修复（✅ 见 7.78）。
 3. **G3 / P2 library TS**：`library/src/lib` 2 文件 / 505 行，`.penpot` 导出实现，依赖 `common` 的类型、schema 与文件构建器。先锁 API 与产物格式，再用金样本回归；不改变插件/库的对外契约。
 4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
+   - 前置结论（2026-11-19）：新端 viewer/workspace/缩略图 worker 经 `lib/render-wasm/bridge.ts` 加载未入库的 `public/js/main.js` 与 `shared.js`，并通过 `$APP` 调用 `app.render_wasm.api/*`；直接删 `frontend/src` 会失去可重建的运行时。因此先移植渲染引擎到 `frontend-nextjs/lib/render-wasm/engine/`，再删 CLJS。
+   - 分片：G4.1 引擎核心（模块生命周期/内存/调用/枚举，✅ 见 7.84）→ G4.2 画布与视口（`init-canvas-context`、`initialize-viewport`、`resize-canvas`、`clear-canvas`、`set-view-box`、渲染循环与 rulers）→ G4.3 形状上传与 modifiers（`set-objects`、结构/几何 modifier）→ G4.4 字体/文本/图片与缩略图 worker → G4.5 删 `frontend/src`/shadow-cljs，改 `render-wasm/_build_env` 的前端产物目标与 `scripts/check-fmt-clj`、`scripts/ci`、CI workflow。
 5. **G5 / P4 common 前端分支镜像**：只对前端/Node 用到的 `common` 逻辑做 TS 等价实现（类型、几何、schema、file-change 已部分由 F1.2 完成）；不改 `.cljc` 的 Clojure 分支。等 backend-rust 接管后再整体去掉 Clojure 依赖。
 
 **范围边界**
@@ -3351,6 +3353,15 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 决策与偏差：① 版本单一来源是 `package.json`，构建期经 `define` 注入；esbuild 不折叠 `typeof` 的死分支，产物里留 `false ? "0.0.0-test" : "1.2.0-RC1"`，值正确且无 `%version%` 占位。② 单测直接跑 `test-ts/*.test.ts`（Node 24 type stripping），产物契约测试留在 `test/builder.test.js`，不再编译一份 TS 到 `target/ts`；后者起初被 `node --test` 重复发现，用例数从 72 虚增到 135，删除后恢复。③ `platform: neutral` 配 `conditions`/`mainFields` 让 `@zip.js/zip.js` 走浏览器入口，与 `app.util.zip` 一致。④ `rm -rf` 在 Windows cmd 下不可用，清理交给 esbuild 配置里的 `rm(outdir)`。⑤ 删 `scripts/build`：版本不再靠 sed，`pnpm run build` 即成，`build:bundle` 无调用者。
 - 验证：`pnpm install` 0（`allowBuilds` 放行 esbuild 0.28.2）；`pnpm run build` 0，产物 362,599 字节 + map，导出 7 个名字（`BuilderError`/`createBuildContext`/`createState`/`exportAsBlob`/`exportAsBytes`/`exportStream`/`toInternalState`）；`pnpm run test` 0，72 例全过（63 个 TS 单测 + 9 个产物级测试）。
 - 下一步：G4——frontend 旧端逐命名空间迁移，最终删 `frontend/src` 与 shadow-cljs。
+
+### 7.84 本轮（2026-11-19，第八十三批：G4.1 render-wasm 引擎核心）
+
+- 口径：G4 第一片。G4 的前置结论是「先移植渲染引擎」：新端的 viewer/workspace/缩略图 worker 仍经 `lib/render-wasm/bridge.ts` 加载未入库的 CLJS 产物 `public/js/main.js` + `shared.js`（约 22 MB），经 `$APP` 调用 `app.render_wasm.api/*` 的 40 余个键；直接删 `frontend/src` 会失去可重建的运行时。
+- 新增：`frontend-nextjs/lib/render-wasm/engine/` 六个文件。`module.ts`：emscripten 产物生命周期——`loadModule` 幂等加载并缓存 in-flight promise、`locateFile` 固定到传入的 wasm URL（含 `?version=` 缓存键）、`moduleReady`/`live`/`ready` 三级就绪、`resetModule` 测试与重载缝。`call.ts`：`app.common.render-wasm.helpers/call` 的 TS 版，wasm 抛出后读 `_read_error_code`，1→`wasm-non-blocking`、2→`wasm-panic`、其余 `wasm-critical`，原始 throwable 留在 `cause`。`memory.ts`：`offset32`、`HEAPU8/32/F32` 视图、`_alloc_bytes`/`_free_bytes`、`writeBuffer`/`slice`/`readString`。`enums.ts`：36 个序列化枚举表。`errors.ts`：`EngineError(code)`；`index.ts` 汇总。
+- 事实依据：前端产物按 `-sENVIRONMENT=web,worker,node` 构建，Node 下可直接实例化并 `_init_headless(1920,1080)`（实测 176 个 `_` 导出、`HEAPU8` 270,336,000 字节、`_alloc_bytes`/`_free_bytes` 往返正常），因此引擎核心能用真实产物做集成测试，不必等浏览器。
+- 决策与偏差：① 引擎放 `frontend-nextjs/lib/render-wasm/engine/`，不新建跨模块共享包；exporter 的 `src-ts/app/wasm/*` 是同一套移植的另一份（G2 产物），两者服务的运行时不同（Node headless 与浏览器 GL），来历写在文件头，统一留到 G5 之后评估。② 枚举表内联而不是运行时读 `shared.js`：前端构建目前只把 `render_wasm_shared.js` 拷到 `frontend/src/app/render_wasm/api/`（未入库），`public/js` 里没有；测试在本机存在 Rust 构建产物时逐键对拍，没有则跳过。③ 本轮不改 `lib/render-wasm/module.ts` 的 `$APP` 启动路径：CLJS 的 `wasm/internal-module` 是 `defonce` 值，TS 另起实例会多占 270 MB 堆，切换必须整片进行；G4.1 只交付可验证的底座。
+- 验证：`pnpm exec vitest run lib/render-wasm/engine` 0（4 文件 29 例：call 7、memory 9、module 9、enums 4，含真实产物集成用例）；`pnpm test` 0（108 文件 2249 例）；`pnpm run typecheck` 0。
+- 下一步：G4.2 画布与视口——按 `api.cljs` 顺序移植 `init-canvas-context`、`initialize-viewport`、`resize-canvas`、`clear-canvas`、`set-view-box` 与渲染循环，并在浏览器对 viewer/workspace 冒烟。
 
 ---
 
