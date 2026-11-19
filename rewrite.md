@@ -3275,6 +3275,14 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`tsc -p exporter/tsconfig.json` 0；`vitest run` 52 文件 485 例全过；用 rolldown 把 `app.ts` 打成临时 bundle 后 `node` 启动，输出两条启动日志并停在本地缺失的 redis 连接（browser 池已初始化），确认入口、装配与顺序可用；esbuild 版本未本地执行。
 - 下一步：G2.7b——把 `exporter/scripts/build`、`scripts/run`、Dockerfile 与 devenv 指向 `target-ts`，`pnpm install` 补齐 lock，并用 `.penpot` 金样本对拍 bitmap/pdf/svg 三类产物。
 
+### 7.75 本轮（2026-11-19，第七十四批：G2.7b exporter 构建与部署切换）
+
+- 口径：G2 第七片 B 段。上一片把入口与接线落地，但构建仍走 shadow-cljs，产物仍是 `target/app.js` 的 CLJS 包。本片把默认构建/监听切到 esbuild，输出路径保持 `target`，因此 `scripts/run`、`scripts/wait-and-start.sh`、Dockerfile 的 `CMD ["node","app.js"]`、`manage.sh` 的 `mv ./exporter/target`、devenv 的 `rm -f target/app.js*` 都不用改。旧 CLJS 构建保留为 `build:cljs`/`watch:cljs`。
+- 改动：`esbuild.config.mjs` 默认输出 `target`，支持 `--watch`（watch 不做版本替换，占位符解析为 develop）与位置参数/`PENPOT_VERSION` 两条版本来源，并独占产物装配——清空输出目录、复制 wasm 两份、字体 JSON、`package.json`/`pnpm-lock.yaml`/`pnpm-workspace.yaml`、写出 `setup` 并置 0755；`package.json` 的 `build`/`watch:app`/`build:app` 切到 esbuild，新增 `clean`、`build:cljs`、`watch:cljs`，移除上片的 `build:ts`；`pnpm-lock.yaml` 补 esbuild 0.28.2；`exporter/scripts/build` 只留 `pnpm install`、`build:wasm`、产物校验与 `node esbuild.config.mjs "$CURRENT_VERSION"`，删掉重复的复制段、setup heredoc 与末尾 sed。
+- 决策与偏差：① esbuild 版本与 media-processor 一致（`^0.28.2`），lock 用 `pnpm install --lockfile-only` 在线补齐（离线缺 xregexp 元数据）；② 默认输出回到 `target` 而不是 `target-ts`，部署脚本零改动，`PENPOT_EXPORTER_OUTDIR` 仍可覆盖；③ 版本只由构建脚本注入，watch 保留 `%version%`；④ 产物装配单一来源：复制与 setup 只写在 esbuild 配置里，`scripts/build` 不再重复，避免两处漂移；⑤ setup 的 shebang 由 `#/usr/bin/env bash` 修成 `#!/usr/bin/env bash`——旧 heredoc 的拼写让 Dockerfile 的 `RUN ./setup` 只能靠 `/bin/sh` 的 ENOEXEC 回退执行；⑥ `test` 仍跑 CLJS 测试树，切到 vitest 留到 G2.8；⑦ 本机 `exporter/node_modules` 是指向 `frontend-nextjs/node_modules` 的 junction，`pnpm run build` 会触发 pnpm 的依赖自检并尝试重装而失败；生产 `scripts/build` 先 `pnpm install`，不会走到这条路，验证时用 `node esbuild.config.mjs` 直接调用。
+- 验证：`bash -n exporter/scripts/build` 0（改动时工作区一度是 CRLF，`bash -n` 报 if 未闭合，转回 LF 后通过）；`tsc` 0；`vitest run` 52 文件 485 例；`node esbuild.config.mjs 9.9.9`（以及 `PENPOT_VERSION=1.2.3`）生成 `target/app.js`（377 KB，含 transit-js）、sourcemap、package/lock/workspace、`setup`、字体 JSON 与 wasm 资源；`target/app.js` 启动后输出 `version="9.9.9"`，browser 池初始化，随后停在本地缺失的 redis；`--watch` 分支未在沙箱内跑通（Start-Process 无输出），留到 devenv 首次启动验证；`.penpot` 金样本对拍需要后端、真实 wasm 与文件，本轮未做。
+- 下一步：G2.8——把 `test`/`test:quiet` 切到 vitest，删除或归档旧 CLJS 树，再在联调环境跑 bitmap/pdf/svg 金样本对拍。
+
 ---
 
 ## 8. 开发环境备注（本机）
