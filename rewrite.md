@@ -9,10 +9,10 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0 完成、G1 已收口（`/settings/integrations`、`/subscribe-nitrate`、应用内 release notes、workspace 导出入口）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G3 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换），下一步 G4（frontend 旧端收尾）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
-| 最后更新 | 2026-11-18 |
+| 最后更新 | 2026-11-19 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -85,7 +85,7 @@
 | G0 | 口径与盘点 | ✅ | 2026-11-18：确认无 `.cjs`；统计 CLJS 资产；划定 backend `.clj` 与 common 后端分支边界 |
 | G1 | 补齐新端入口（P0） | ✅ | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）、workspace shape 导出入口（7.64）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项 |
 | G2 | exporter TS 重写（P1） | ✅ | 2026-11-19：`exporter/src-ts/` 全量取代 CLJS，CLJS 树与 shadow-cljs 已删（G2.1–G2.10，7.65–7.78）；本机联调对拍 svg/png/pdf |
-| G3 | library TS 重写（P2） | 🟡 | G3.1 基础层、G3.2 导出、G3.3a tokens、G3.3b bool 已落：`library/src-ts/` 21 文件 / 6,242 行 + 7 测试文件 / 1,699 行，63 例通过，`out`/`out2` 与 tokens 金样本逐文档一致，四种布尔与 1.2.0-RC1 对拍（difference 只差两段零长曲线）；构建切换（G3.4）未做 |
+| G3 | library TS 重写（P2） | ✅ | 2026-11-19：G3.1 基础层、G3.2 导出、G3.3a tokens、G3.3b bool、G3.4 构建切换全部完成（7.79–7.83）。`library/src-ts/` 21 文件全量取代 CLJS，esbuild 产出 `target/library/penpot.js`（版本由 `package.json` 注入），72 例通过；`out`/`out2` 与 tokens 金样本逐文档一致，四种布尔与 1.2.0-RC1 对拍（difference 只差两段零长曲线）；CLJS 源码、shadow-cljs 与 cljfmt 管线已删 |
 | G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
 | G5 | common 前端分支镜像（P4） | ⬜ | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管 |
 
@@ -117,7 +117,7 @@
 | 媒体处理 | TypeScript/Node（sharp + FontForge） | `media-processor/` | 保留 |
 | MCP | TypeScript（WS :4402） | `mcp/` | 保留 |
 | 插件 | TypeScript 运行时 + Plugin API | `plugins/` | 保留；前端侧复用 SES 运行时 |
-| 设计库 | `@penpot/library`（CLJS） | `library/` | G3 TS 重写，保持 API 与产物格式 |
+| 设计库 | `@penpot/library`（TS） | `library/` | G3 完成：`src-ts/` 取代 CLJS，esbuild 产出 `target/library/penpot.js`，API 与产物格式不变 |
 
 依赖图：`frontend → common`、`backend → common`、`exporter → common`、`frontend → render-wasm`。
 
@@ -216,8 +216,8 @@ penpot/
 │   └── crates/        transit / errors / config / session / db / storage / worker / ws / rpc
 ├── common/            (CLJC 共享, 保留)
 ├── render-wasm/       (Rust→WASM, 保留, 前后端共用)
-├── exporter/          (CLJS+Node, 运行保留；G2 TS 重写)
-├── library/           (CLJS, G3 TS 重写)
+├── exporter/          (TS, G2 完成：src-ts/ → target/exporter.js)
+├── library/           (TS, G3 完成：src-ts/ → target/library/penpot.js)
 ├── media-processor/  mcp/  plugins/  docs/   (保留)
 └── api/               (契约产物, S1/S2/S3 生成后落地) —— 未建 ⬜
 ```
@@ -3341,6 +3341,16 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 决策与偏差：① `removeDuplicatedSegments` 用线性扫描。参考实现把段四元组放进 `sorted-set-by`，比较器带 0.001 容差，这个序不传递，`contains?` 会漏命中，于是一段本该去掉的零长曲线留了下来（difference 有两条重复）。TS 只留一条，`selrect`/`points` 与另外三种布尔逐字段一致；零长段不改变几何。② 曾试过把 `|t| < 1e-9` 的根吸到 0/1 来消掉零长段，但参考正是靠这些退化段留在路径里，吸附后 intersection/exclude 也不再逐字节一致，已回退。③ `lineCurveCrossing` 用 `translate(rotateMatrix(-theta), -from)` 组合矩阵，沿用参考的浮点运算顺序；手写 dx/dy 解会把边界根算成 `1.0000000000000007`，被 `[0,1]` 过滤，union 会缺一段。④ `updateGeometry` 只写 `content`/`points`/`selrect`，`x/y/width/height` 由 `addBool` 的 mod-obj 单独设置，与参考一致。⑤ 参数校验失败统一 `assertion`/`data-validation`/`check error`（对应参考的 schema 校验），空组为 `validation`/`empty-children`。
 - 验证：`tsc -p library/tsconfig.json` 0；`tsc -p library/tsconfig.build.json` 0；`node --test "library/target/ts/test-ts/*.test.js"` 63 例全过（57 + 6）。对拍：同一组形状（rect 100×100 与 circle 100×100）分别走发布包与 TS 的 `addBool`，union/intersection/exclude 的 `content`/`selrect`/`points`/`fills`/`strokes` 全部一致，difference 只差两条零长曲线。对拍脚本与临时文件已删。
 - 下一步：G3.4——切 `package.json`/`exports` 到 TS 构建，删 CLJS 源码与 shadow-cljs；之后进 G4。
+
+### 7.83 本轮（2026-11-19，第八十二批：G3.4 library 构建切换）
+
+- 口径：G3 最后一片。把 `@penpot/library` 的构建切到 TS：新增 esbuild 配置，`package.json` 的入口与脚本改指 `target/library/penpot.js`，删掉 CLJS 源码、shadow-cljs/deps.edn 与 cljfmt/lint 管线。对外 API 与 `.penpot` 产物格式不变。
+- 新增：`esbuild.config.mjs`（`src-ts/index.ts` → `target/library/penpot.js`，ESM、`platform: neutral`、`target: es2020`、sourcemap，`define` 注入 `__PENPOT_LIBRARY_VERSION__`；`--watch` 走 `context().watch()`，一次性构建前先清 `outdir`）。
+- 删除：`src/lib/builder.cljs`、`src/lib/export.cljs`（`src/` 清空）、`shadow-cljs.edn`、`deps.edn`、`scripts/repl`、`scripts/build`（sed 替换版本的包装脚本）、`tsconfig.build.json`。
+- 改动：`package.json` 的 scripts 改为 `build`/`watch`/`test`（`test` = `pnpm run build && node --test`），devDependencies 只留 `@types/node`、`@zip.js/zip.js`、`esbuild`；`version.ts` 从 esbuild 的 define 取版本，源码直跑时回退 `0.0.0-test`；`test/builder.test.js` 通过 `#self` 读产物并解压检查 manifest 的 `generatedBy`、文件条目与 ZipReader 可读性；`test-ts/export.test.ts` 删去「源码常量等于 `package.json`」的测试，由产物级测试接管；`scripts/test` 去掉 `build:bundle`；`.github/workflows/tests-library.yml` 去掉 m2/gitlibs 卷与 Lint 步骤；`scripts/ci` 的 library lint/fmt/paren-repair 置空。
+- 决策与偏差：① 版本单一来源是 `package.json`，构建期经 `define` 注入；esbuild 不折叠 `typeof` 的死分支，产物里留 `false ? "0.0.0-test" : "1.2.0-RC1"`，值正确且无 `%version%` 占位。② 单测直接跑 `test-ts/*.test.ts`（Node 24 type stripping），产物契约测试留在 `test/builder.test.js`，不再编译一份 TS 到 `target/ts`；后者起初被 `node --test` 重复发现，用例数从 72 虚增到 135，删除后恢复。③ `platform: neutral` 配 `conditions`/`mainFields` 让 `@zip.js/zip.js` 走浏览器入口，与 `app.util.zip` 一致。④ `rm -rf` 在 Windows cmd 下不可用，清理交给 esbuild 配置里的 `rm(outdir)`。⑤ 删 `scripts/build`：版本不再靠 sed，`pnpm run build` 即成，`build:bundle` 无调用者。
+- 验证：`pnpm install` 0（`allowBuilds` 放行 esbuild 0.28.2）；`pnpm run build` 0，产物 362,599 字节 + map，导出 7 个名字（`BuilderError`/`createBuildContext`/`createState`/`exportAsBlob`/`exportAsBytes`/`exportStream`/`toInternalState`）；`pnpm run test` 0，72 例全过（63 个 TS 单测 + 9 个产物级测试）。
+- 下一步：G4——frontend 旧端逐命名空间迁移，最终删 `frontend/src` 与 shadow-cljs。
 
 ---
 
