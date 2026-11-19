@@ -443,7 +443,7 @@ test("updateShape applies the changed attributes", () => {
   assert.equal(page0(state, pageId).objects[rectId].name, "Renamed");
 });
 
-test("unsupported builder operations raise a BuilderError", () => {
+test("surfaces builder failures as a BuilderError", () => {
   const context = createBuildContext();
   context.addFile({ name: "file 1" });
   context.addPage({ name: "page 1" });
@@ -459,6 +459,8 @@ test("unsupported builder operations raise a BuilderError", () => {
   assert.throws(
     () => context.addTokensLib("{}"),
     (error: unknown) =>
-      error instanceof BuilderError && error.code === "not-implemented",
+      error instanceof BuilderError &&
+      error.code === "unknown" &&
+      error.hint === "the file doesn't contain any tokens",
   );
 });

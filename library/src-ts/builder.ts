@@ -38,6 +38,7 @@ import { applyChange } from "./changes.ts";
 import type { Change } from "./changes.ts";
 import { updateGroupSelrect } from "./geometry.ts";
 import { serializePath } from "./path.ts";
+import { readMultiSetDtcg } from "./tokens.ts";
 import { isValid, next, parse } from "./uuid.ts";
 import { isNil, withoutNils } from "./data.ts";
 import { fail } from "./errors.ts";
@@ -457,15 +458,9 @@ export function addBool(
   );
 }
 
-export function addTokensLib(
-  _state: BuilderState,
-  _tokensLib: unknown,
-): BuilderState {
-  fail(
-    "validation",
-    "not-implemented",
-    "addTokensLib is not implemented yet",
-  );
+export function addTokensLib(state: BuilderState, data: unknown): BuilderState {
+  const tokensLib = readMultiSetDtcg(data);
+  return commitChange(state, { type: "set-tokens-lib", tokensLib });
 }
 
 export function deleteShape(state: BuilderState, id: Uuid): BuilderState {

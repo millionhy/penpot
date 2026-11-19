@@ -34,6 +34,8 @@ import type {
   Uuid,
 } from "./model.ts";
 import { RAW_STATE } from "./state.ts";
+import { exportDtcgJson } from "./tokens.ts";
+import type { TokensLib } from "./tokens.ts";
 import { LIBRARY_VERSION } from "./version.ts";
 
 /** The payload of one archive entry, read lazily when the entry is added. */
@@ -192,7 +194,7 @@ function fileEntries(file: PenpotFile): ExportEntry[] {
   if (data.tokensLib != null) {
     entries.push({
       path: `files/${id}/tokens.json`,
-      read: () => encodeJson(data.tokensLib),
+      read: () => encodeJson(exportDtcgJson(data.tokensLib as TokensLib)),
     });
   }
 
