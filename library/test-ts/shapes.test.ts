@@ -144,19 +144,19 @@ test("setupShape derives the path selrect from its content", () => {
   });
 });
 
-test("an empty path gets a zero selrect", () => {
+test("an empty path gets the default rect", () => {
   const shape = setupShape({ type: "path" });
 
   assert.deepEqual(shape.content, []);
   assert.deepEqual(shape.selrect, {
     x: 0,
     y: 0,
-    width: 0,
-    height: 0,
+    width: 0.01,
+    height: 0.01,
     x1: 0,
     y1: 0,
-    x2: 0,
-    y2: 0,
+    x2: 0.01,
+    y2: 0.01,
   });
 });
 

@@ -38,6 +38,9 @@ import { applyChange } from "./changes.ts";
 import type { Change } from "./changes.ts";
 import { updateGroupSelrect } from "./geometry.ts";
 import { serializePath } from "./path.ts";
+import type { BoolType } from "./path-bool.ts";
+import { getDefaultFills } from "./path-bool.ts";
+import { updateBoolShape } from "./shape-to-path.ts";
 import { readMultiSetDtcg } from "./tokens.ts";
 import { isValid, next, parse } from "./uuid.ts";
 import { isNil, withoutNils } from "./data.ts";
@@ -447,15 +450,116 @@ export function addComponent(
   return commitChange(commitChange(state, change1), change2);
 }
 
+const BOOL_TYPES: ReadonlySet<string> = new Set([
+  "union",
+  "difference",
+  "intersection",
+  "exclude",
+]);
+
+interface AddBoolParams {
+  groupId: Uuid;
+  type: BoolType;
+}
+
+function checkAddBool(params: Record<string, unknown>): AddBoolParams {
+  const groupId = params.groupId ?? params["group-id"];
+  const type = params.type;
+
+  if (!isValid(groupId)) {
+    fail("assertion", "data-validation", "check error");
+  }
+
+  if (typeof type !== "string" || !BOOL_TYPES.has(type)) {
+    fail("assertion", "data-validation", "check error");
+  }
+
+  return { groupId: groupId as Uuid, type: type as BoolType };
+}
+
+/**
+ * Pick the fills and strokes for the bool from its head child: the first
+ * one for the difference, the last one otherwise. A head that came from
+ * an SVG without paint gets the default bool fills.
+ */
+function updateBoolStyleProperties(
+  boolShape: Shape,
+  objects: Record<Uuid, Shape>,
+): Shape {
+  const children = (boolShape.shapes ?? [])
+    .map((id) => objects[id])
+    .filter((child): child is Shape => child != null)
+    .filter((child) => child.type !== "frame")
+    .filter((child) => child.variantId == null);
+
+  if (children.length === 0) {
+    fail(
+      "validation",
+      "empty-children",
+      "expected a group with at least one shape for creating a bool",
+    );
+  }
+
+  const head =
+    boolShape.boolType === "difference"
+      ? children[0]
+      : children[children.length - 1];
+
+  const fills =
+    "svgAttrs" in head && (head.fills == null || head.fills.length === 0)
+      ? getDefaultFills()
+      : head.fills;
+
+  return { ...boolShape, fills, strokes: head.strokes };
+}
+
 export function addBool(
-  _state: BuilderState,
-  _params: Record<string, unknown>,
+  state: BuilderState,
+  params: Record<string, unknown>,
 ): BuilderState {
-  fail(
-    "validation",
-    "not-implemented",
-    "addBool is not implemented yet",
+  const { groupId, type } = checkAddBool(params);
+
+  const group = getShape(state, groupId);
+  if (group == null) {
+    fail("assertion", "data-validation", "expected valid shape");
+  }
+
+  const objects = getCurrentObjects(state);
+
+  const bool = updateBoolShape(
+    updateBoolStyleProperties({ ...group, type: "bool", boolType: type }, objects),
+    objects,
   );
+
+  const selrect = bool.selrect;
+  if (selrect == null) {
+    fail("assertion", "data-validation", "expected valid shape");
+  }
+
+  return {
+    ...commitChange(
+      state,
+      {
+        type: "mod-obj",
+        id: bool.id,
+        operations: [
+          { type: "set", attr: "content", val: bool.content, ignoreTouched: true },
+          { type: "set", attr: "type", val: "bool", ignoreTouched: true },
+          { type: "set", attr: "boolType", val: type, ignoreTouched: true },
+          { type: "set", attr: "selrect", val: selrect, ignoreTouched: true },
+          { type: "set", attr: "points", val: bool.points, ignoreTouched: true },
+          { type: "set", attr: "x", val: selrect.x, ignoreTouched: true },
+          { type: "set", attr: "y", val: selrect.y, ignoreTouched: true },
+          { type: "set", attr: "width", val: selrect.width, ignoreTouched: true },
+          { type: "set", attr: "height", val: selrect.height, ignoreTouched: true },
+          { type: "set", attr: "fills", val: bool.fills, ignoreTouched: true },
+          { type: "set", attr: "strokes", val: bool.strokes, ignoreTouched: true },
+        ],
+      } as Change,
+      true,
+    ),
+    lastId: groupId,
+  };
 }
 
 export function addTokensLib(state: BuilderState, data: unknown): BuilderState {

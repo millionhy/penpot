@@ -452,7 +452,16 @@ test("surfaces builder failures as a BuilderError", () => {
     () => context.addBool({ groupId: context.genId(), type: "union" }),
     (error: unknown) =>
       error instanceof BuilderError &&
-      error.code === "not-implemented" &&
+      error.code === "data-validation" &&
+      error.type === "assertion",
+  );
+
+  const groupId = context.addGroup({});
+  assert.throws(
+    () => context.addBool({ groupId, type: "union" }),
+    (error: unknown) =>
+      error instanceof BuilderError &&
+      error.code === "empty-children" &&
       error.type === "validation",
   );
 

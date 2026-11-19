@@ -8,8 +8,20 @@
 // serializes as an SVG path string for `getInternalState` and as a vector of
 // segments for the export. Both views are derived from this module.
 
-import type { PathSegment, Point, Rect } from "./model.ts";
-import { makeRect, pointsToRect } from "./geometry.ts";
+import type { Matrix, PathSegment, Point, Rect, Shape } from "./model.ts";
+import {
+  IDENTITY,
+  applyMatrix,
+  multiply,
+  pointsToCenter,
+  pointsToRect,
+  rectToCenter,
+  rectToPoints,
+  scaleMatrix,
+  transformIn,
+  transformPoints,
+} from "./geometry.ts";
+import { contentCenter, contentToSelrect } from "./path-helpers.ts";
 
 const MAX_SAFE_INT = Number.MAX_SAFE_INTEGER;
 const MIN_SAFE_INT = Number.MIN_SAFE_INTEGER;
@@ -92,118 +104,101 @@ export function serializePath(segments: readonly PathSegment[]): string {
   return result;
 }
 
-function pointOf(segment: PathSegment): Point {
-  return { x: segment.params.x, y: segment.params.y };
-}
+function transformSegment(
+  segment: PathSegment,
+  matrix: Matrix,
+): PathSegment {
+  const params = segment.params;
 
-function evalCubic(
-  p0: number,
-  p1: number,
-  p2: number,
-  p3: number,
-  t: number,
-): number {
-  const mt = 1 - t;
-  return (
-    mt * mt * mt * p0 +
-    3 * mt * mt * t * p1 +
-    3 * mt * t * t * p2 +
-    t * t * t * p3
-  );
-}
-
-function cubicExtremities(
-  p0: number,
-  p1: number,
-  p2: number,
-  p3: number,
-): number[] {
-  const a = -p0 + 3 * p1 - 3 * p2 + p3;
-  const b = 2 * (p0 - 2 * p1 + p2);
-  const c = p1 - p0;
-
-  const roots: number[] = [];
-  const EPSILON = 1e-9;
-
-  if (Math.abs(a) < EPSILON) {
-    if (Math.abs(b) > EPSILON) roots.push(-c / b);
-  } else {
-    const discriminant = b * b - 4 * a * c;
-    if (discriminant >= 0) {
-      const sqrt = Math.sqrt(discriminant);
-      roots.push((-b + sqrt) / (2 * a), (-b - sqrt) / (2 * a));
-    }
+  if (segment.command === "curve-to") {
+    const c1 = applyMatrix({ x: params.c1x, y: params.c1y }, matrix);
+    const c2 = applyMatrix({ x: params.c2x, y: params.c2y }, matrix);
+    const to = applyMatrix({ x: params.x, y: params.y }, matrix);
+    return {
+      command: "curve-to",
+      params: { x: to.x, y: to.y, c1x: c1.x, c1y: c1.y, c2x: c2.x, c2y: c2.y },
+    };
   }
 
-  return roots.filter((t) => t > 0 && t < 1);
+  if (segment.command === "move-to" || segment.command === "line-to") {
+    const to = applyMatrix({ x: params.x, y: params.y }, matrix);
+    return { command: segment.command, params: { x: to.x, y: to.y } };
+  }
+
+  return segment;
 }
 
 /**
- * Bounding box of the path, computing the exact curve extrema like
- * `content->selrect` does.
+ * `segment/transform-content`: applies the matrix and re-quantizes the
+ * result to the float32 path data storage.
+ */
+export function transformContent(
+  content: readonly PathSegment[],
+  matrix: Matrix | null | undefined,
+): PathSegment[] {
+  if (matrix == null) return [...content];
+  return normalizeContent(
+    content.map((segment) => transformSegment(segment, matrix)),
+  );
+}
+
+/**
+ * `path/calc-selrect`: the bounding box with the exact curve extrema.
  */
 export function calcSelrect(segments: readonly PathSegment[]): Rect {
-  const points: Point[] = [];
+  return contentToSelrect(segments);
+}
 
-  let from: Point | null = null;
-  let move: Point | null = null;
+/**
+ * `path/update-geometry`: recompute `points` and `selrect` from the path
+ * content. The content lives in the untransformed coordinate space, so
+ * the shape transform is undone around the old centre and applied back
+ * around the new one.
+ */
+export function updateGeometry(
+  shape: Shape,
+  newContent?: readonly PathSegment[],
+): Shape {
+  const content = normalizeContent(
+    newContent == null ? shape.content : newContent,
+  );
 
-  for (const segment of segments) {
-    switch (segment.command) {
-      case "move-to": {
-        const to = pointOf(segment);
-        points.push(to);
-        from = to;
-        move = to;
-        break;
-      }
+  const flipX = shape.flipX === true;
+  const flipY = shape.flipY === true;
 
-      case "line-to": {
-        const to = pointOf(segment);
-        if (from != null) points.push(from);
-        points.push(to);
-        from = to;
-        break;
-      }
+  let transform = shape.transform ?? IDENTITY;
+  if (flipX) transform = multiply(transform, scaleMatrix(-1, 1));
+  if (flipY) transform = multiply(transform, scaleMatrix(1, -1));
 
-      case "curve-to": {
-        const to = pointOf(segment);
-        const c1: Point = { x: segment.params.c1x, y: segment.params.c1y };
-        const c2: Point = { x: segment.params.c2x, y: segment.params.c2y };
+  let transformInverse = IDENTITY;
+  if (flipX) transformInverse = multiply(transformInverse, scaleMatrix(-1, 1));
+  if (flipY) transformInverse = multiply(transformInverse, scaleMatrix(1, -1));
+  transformInverse = multiply(
+    transformInverse,
+    shape.transformInverse ?? IDENTITY,
+  );
 
-        if (from != null) {
-          points.push(from);
-          points.push(to);
+  const center =
+    shape.selrect != null ? rectToCenter(shape.selrect) : contentCenter(content);
 
-          for (const t of cubicExtremities(from.x, c1.x, c2.x, to.x)) {
-            points.push({
-              x: evalCubic(from.x, c1.x, c2.x, to.x, t),
-              y: evalCubic(from.y, c1.y, c2.y, to.y, t),
-            });
-          }
+  const baseContent = transformContent(
+    content,
+    transformIn(center, transformInverse),
+  );
 
-          for (const t of cubicExtremities(from.y, c1.y, c2.y, to.y)) {
-            points.push({
-              x: evalCubic(from.x, c1.x, c2.x, to.x, t),
-              y: evalCubic(from.y, c1.y, c2.y, to.y, t),
-            });
-          }
-        }
+  const points = transformPoints(
+    rectToPoints(contentToSelrect(baseContent)),
+    center,
+    transform,
+  );
 
-        from = to;
-        break;
-      }
+  const pointsCenter = pointsToCenter(points);
 
-      case "close-path": {
-        if (move != null) points.push(move);
-        from = move;
-        break;
-      }
-    }
-  }
+  const selrect = pointsToRect(
+    transformPoints(points, pointsCenter, transformInverse),
+  );
 
-  if (points.length === 0) return makeRect();
-  return pointsToRect(points);
+  return { ...shape, content, points, selrect };
 }
 
 const NUMBER_RE = /[+-]?(?:\d*\.\d+|\d+\.?)(?:[eE][+-]?\d+)?/y;
