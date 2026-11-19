@@ -109,8 +109,9 @@ export function checkParams(params: unknown): asserts params is RenderParams {
   }
 }
 
-// Whether `params` renders with render-wasm rather than a browser.
-export function headless(params: { "is-wasm"?: boolean }): boolean {
+// Whether `params` renders with render-wasm rather than a browser. The type is
+// accepted so callers can pass the whole render map, as the CLJS version did.
+export function headless(params: { "is-wasm"?: boolean; type?: string }): boolean {
   return Boolean(params["is-wasm"]);
 }
 

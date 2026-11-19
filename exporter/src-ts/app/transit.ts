@@ -30,6 +30,7 @@ const readerOptions = {
       const pair = Array.isArray(rep) ? rep : [];
       return { id: String(pair[0]), metadata: pair[1] };
     },
+    "penpot/path-data": (rep: unknown) => pathDataBytes(rep),
   },
   mapBuilder: {
     init: () => ({}) as Dict,
@@ -40,6 +41,26 @@ const readerOptions = {
     finalize: (map: Dict) => map,
   },
 };
+
+// The CLJS PathData handler writes its raw segment buffer as a transit binary
+// (`~b`): Node's reader hands over a Buffer and the browser one a Uint8Array.
+// The wasm path setter wants the bytes, so every accepted shape becomes a plain
+// copy of them.
+export function pathDataBytes(rep: unknown): Uint8Array {
+  if (rep instanceof Uint8Array) return new Uint8Array(rep);
+  if (rep instanceof ArrayBuffer) return new Uint8Array(rep.slice(0));
+  if (ArrayBuffer.isView(rep)) {
+    const view = rep as ArrayBufferView;
+    const bytes = new Uint8Array(view.byteLength);
+    bytes.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+    return bytes;
+  }
+  // Older readers decode `~b` to a binary string, one char per byte.
+  if (typeof rep === "string") {
+    return Uint8Array.from(rep, (char) => char.charCodeAt(0) & 0xff);
+  }
+  throw new Error("invalid path data");
+}
 
 function pairsToObject(pairs: unknown): Dict {
   const out: Dict = {};

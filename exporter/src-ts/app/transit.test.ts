@@ -1,9 +1,18 @@
 // app.transit: the two writers and the readers that normalize the wire shape.
 
 import { describe, expect, it } from "vitest";
-import { decode, encode, encodeVerbose, keywordMap, uuid } from "./transit.js";
+import { decode, encode, encodeVerbose, keywordMap, pathDataBytes, uuid } from "./transit.js";
 
 const ID = "00000000-0000-0000-0000-000000000001";
+
+// The transit body of the sample path in common-tests.types.path-data-test/
+// path-data-transit-roundtrip: four 28 byte segments (move, line, curve,
+// close).
+const PATH_DATA =
+  '["~#penpot/path-data","~bAQAAAAAAAAAAAAAAAAAAAAAAAAAAAPBDA' +
+  'MBRRAIAAAAAAAAAAAAAAAAAAAAAAAAAAIDbQwCASEQDAAAAAAC4QwBAOEQ' +
+  'AAJtDAEAqRAAAhEMAgB5EBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+  'A=="]';
 
 describe("keywordMap", () => {
   it("round-trips keyword keys through the compact writer", () => {
@@ -46,6 +55,29 @@ describe("verbose writer", () => {
 describe("reader handlers", () => {
   it("normalizes a transit map to a plain object", () => {
     expect(decode('["^ ","~:state","ended","~:n",2]')).toEqual({ state: "ended", n: 2 });
+  });
+
+  it("reads the penpot/path-data binary as bytes", () => {
+    const bytes = decode<Uint8Array>(PATH_DATA);
+
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(bytes.byteLength).toBe(4 * 28);
+
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    expect(view.getInt16(0, true)).toBe(1); // move-to
+    expect(view.getFloat32(20, true)).toBe(480);
+    expect(view.getFloat32(24, true)).toBe(839);
+    expect(view.getInt16(28, true)).toBe(2); // line-to
+    expect(view.getInt16(56, true)).toBe(3); // curve-to
+    expect(view.getInt16(84, true)).toBe(4); // close-path
+  });
+
+  it("copies a binary string one char per byte", () => {
+    expect(Array.from(pathDataBytes("\u0001\u0002\u0003"))).toEqual([1, 2, 3]);
+  });
+
+  it("rejects non binary values", () => {
+    expect(() => pathDataBytes(42)).toThrow(/invalid path data/);
   });
 
   it("reads a uuid and an instant", () => {
