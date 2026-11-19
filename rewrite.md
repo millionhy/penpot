@@ -3245,6 +3245,16 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`tsc -p exporter/tsconfig.json` 0；`vitest run` 44 文件 396 例全过。依赖仍借用 `frontend-nextjs` 的 `typescript`/`vitest`（临时链接，不入库）。
 - 下一步：G2.5d——`svg-derived`（geometry/color/SVG 解析与 `apply-svg-derived`）；G2.6——transit 的 `penpot/path-data`/图片处理与命令表；G2.7——进程入口、`pool.init` 与资源打包，补 `setHeadlessRenderer` 之外的启动接线。
 
+### 7.72 本轮（2026-11-19，第七十一批：G2.5d exporter svg-derived）
+
+- 口径：G2 第五片 D 段。旧链在序列化每个形状前调用 `app.common.render-wasm.svg-derived/apply-svg-derived`，把 SVG 属性与 defs 转成原生 fills/图层模糊/投影，避免导出结果与编辑器不一致。CLJS 版本依赖 geometry、SVG 字符串解析与颜色表，本片把这些支撑件按需移植到 Node 侧，并让 `serializeShape` 默认使用派生（G2.5b 时默认恒等）。只做导出需要的子集；浏览器专用部分（React props、path 构建、HSV/HSL）不搬。
+- 新增：`app/geom.ts`（`Point`/`Matrix`/`Rect`、`point`/`transform`/`distance`、`matrix`/`multiply`/`translateMatrix`/`scaleMatrix`/`rotateMatrix`/`skewMatrix`、`makeRect`）；`app/svg.ts`（`parseNumbers`、`parseStyle`、`parseTransform`、`extractIds`）；`app/color.ts`（CSS 146 色名表、`validHexColor`/`parseRgb`/`colorString`/`parse`/`rgbToHex`）；`app/wasm/svg-derived.ts`（`svgFillToFills`、`resolveShapeFills`、`applySvgFilters`、`applySvgDerived`，含 href 链、linear/radial、stop、feOffset/feGaussianBlur/feColorMatrix/feFlood/feDropShadow 的推导）。
+- 扩展：`app/wasm/upload.ts` 的 `Shape` 增 `x`/`y`/`width`/`height` 与 selrect 的 `x`/`y`/`width`/`height`，增 `svg-defs`/`svg-viewbox`/`svg-transform`，`Blur` 增 id/type、`Shadow` 增 id，并导出 `SvgNode`/`SvgViewBox`；`app/wasm/props.ts` 的 `ShapeSvgAttrs` 增 `filter`/`fillOpacity`（style 与顶层）；`app/wasm/serialize.ts` 默认 `applySvgDerived`，`SerializeOptions.applySvgDerived` 变为测试覆盖点。
+- 决策与偏差：① 属性键先小写再比较（`gradientUnits`/`gradientunits`、`stdDeviation`/`stddeviation` 都能命中），因为 transit 与手写数据的写法不一致；② `xlink:href` 链按祖先到子节点合并属性，子节点覆盖、内容仅在没有自己的 stops 时继承；③ `userSpaceOnUse` 先叠加 `svg-transform`，再过 `svg-viewbox` 映射到 selrect，最后归一化；`objectBoundingBox` 不做变换；④ 径向渐变以 Y 半径为基准，`width` 表示 X/Y 比；Y 为 0 时退回 X，除零用 `1e-6` 兜底；⑤ 投影颜色只看 `feOffset` 之后最后一个 `feColorMatrix`/`feFlood`，之前的矩阵只塑形；矩阵为 20 个数，RGB 取 4/9/14，透明度取 18+19；⑥ `feOffset` 或 `feDropShadow` 存在时，`feGaussianBlur` 归属投影，不再生成图层模糊；`feDropShadow` 的 dx/dy/stdDeviation 缺省都是 2，投影 blur 是 stdDeviation 的两倍；⑦ 空 fills 且带 svg-attrs 的 `svg-raw`/`group` 回退到 SVG 默认黑色，其它类型回退 `[]`；⑧ `parseStyle` 只 trim 整个声明、不 trim 值，与 CLJS 一致（单测固定）；`clr/parse` 对无 `#` 的 hex 只小写不加前缀，也照抄；⑨ `applySvgDerived` 总是返回新对象并显式给出 `fills`、`blur`、`shadow`（无则为 null），调用方不必再判空；⑩ 派生是纯函数，不碰 wasm、网络或磁盘，单测直接喂数据；⑪ 默认派生替换了原来的恒等注入，`serialize` 的「返回同一对象」断言改为「返回派生对象」。
+- 单测：48 文件 442 例（G2.5c 的 396 + 本轮 46）——`wasm/svg-derived` 20（径向 userSpaceOnUse、椭圆变换、href 继承、纯色/none/currentColor、resolve 四分支、投影链、纯模糊、矩阵色、offset 前矩阵、flood、feDropShadow 与缺省、保留已有滤镜、无定义原样返回、派生结构、组合、transform+viewBox）、`geom` 9、`svg` 9、`color` 8。
+- 验证：`tsc -p exporter/tsconfig.json` 0；`vitest run` 48 文件 442 例全过。依赖仍借用 `frontend-nextjs` 的 `typescript`/`vitest`（临时链接，不入库）。
+- 下一步：G2.6——transit 的 `penpot/path-data`/图片处理与命令表；G2.7——进程入口、`pool.init` 与资源打包，补 `setHeadlessRenderer` 之外的启动接线。
+
 ---
 
 ## 8. 开发环境备注（本机）
