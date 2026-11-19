@@ -71,12 +71,13 @@ describe("serialize", () => {
     expect(needsShapeTail(shape({ type: "text", content: {} }))).toBe(false);
   });
 
-  it("uploads the structural record and returns the prepared shape", () => {
+  it("uploads the structural record and returns the derived shape", () => {
     const target = harness();
     const original = shape();
     const prepared = serializeShape(original, {}, target);
 
-    expect(prepared).toBe(original);
+    expect(prepared).not.toBe(original);
+    expect(prepared).toMatchObject({ id, type: "rect", fills: [], blur: null, shadow: null });
     expect(names(target)).toEqual(["_set_shapes_batch"]);
     expect(target.frees).toBe(0);
   });

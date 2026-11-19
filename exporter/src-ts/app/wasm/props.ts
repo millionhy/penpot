@@ -40,11 +40,15 @@ export interface ShapeSvgAttrs {
     strokeLinecap?: string;
     strokeLinejoin?: string;
     fill?: string;
+    filter?: string;
+    fillOpacity?: string | number;
   };
   fillRule?: string;
   strokeLinecap?: string;
   strokeLinejoin?: string;
   fill?: string;
+  filter?: string;
+  fillOpacity?: string | number;
 }
 
 export interface Stroke extends Fill {

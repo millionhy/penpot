@@ -4,21 +4,21 @@
 // design state. Every byte layout lives in the serializers, so the bytes are
 // the editor's; only the host-specific parts stay here: fills/strokes (image
 // bytes are provisioned separately) and text content (fonts provisioned
-// separately). SVG-derived fills/blur/shadows arrive through `applySvgDerived`
-// because the derivation needs the SVG parser (G2.5d).
+// separately). SVG-derived fills/blur/shadows are applied first, from the same
+// `app.common.render-wasm.svg-derived` port the workspace uses.
 //
 // Mirrors `common/.../serialize_shape.cljs` and `exporter/src/app/wasm/serialize.cljs`.
 
 import { raise } from "../errors.js";
 import { call } from "./call.js";
 import { writeShapeFills, writeShapeStrokes, setShapeSvgAttrs, setShapePath } from "./props.js";
+import { applySvgDerived } from "./svg-derived.js";
 import { setShapeText, type TextContent } from "./text.js";
 import { setShapeUpload, type Shape } from "./upload.js";
 import { module, type WasmModule } from "../wasm.js";
 
 export interface SerializeOptions {
-  // `app.common.render-wasm.svg-derived/apply-svg-derived`. The exporter has
-  // no SVG parser yet, so the default keeps the shape as-is.
+  // Override point for tests; production uses the shared derivation.
   applySvgDerived?: (shape: Shape) => Shape;
 }
 
@@ -53,7 +53,7 @@ export function serializeShape(
   options: SerializeOptions = {},
   target: WasmModule = module(),
 ): Shape {
-  const prepared = options.applySvgDerived?.(shape) ?? shape;
+  const prepared = (options.applySvgDerived ?? applySvgDerived)(shape);
 
   setShapeUpload(prepared, { includeLayout: false }, target);
   if (needsShapeTail(prepared)) writeShapeTail(prepared, target);

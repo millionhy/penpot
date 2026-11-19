@@ -32,6 +32,7 @@ import {
   translateShapeType,
 } from "./serializers.js";
 import { writeStrokeData, type ShapeSvgAttrs, type Stroke } from "./props.js";
+import type { Matrix } from "../geom.js";
 import { module, type WasmModule } from "../wasm.js";
 
 export const BASE_PROPS_U8_SIZE = 104;
@@ -54,6 +55,7 @@ export const SECTION_STROKES = 0x400;
 export const STROKE_HEADER_U8_SIZE = 36;
 
 export interface Shadow {
+  id?: string;
   color?: { color: string; opacity?: number };
   blur?: number;
   spread?: number;
@@ -64,8 +66,25 @@ export interface Shadow {
 }
 
 export interface Blur {
+  id?: string;
+  type?: string;
   hidden?: boolean;
   value?: number;
+}
+
+// One node of a parsed SVG defs tree (`:svg-defs`), as the JSON/transit
+// boundary delivers it: keywords arrive as strings.
+export interface SvgNode {
+  tag?: string;
+  attrs?: Record<string, unknown>;
+  content?: readonly SvgNode[];
+}
+
+export interface SvgViewBox {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface Shape {
@@ -87,7 +106,20 @@ export interface Shape {
     e?: number;
     f?: number;
   };
-  selrect?: { x1?: number; y1?: number; x2?: number; y2?: number };
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  selrect?: {
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    x1?: number;
+    y1?: number;
+    x2?: number;
+    y2?: number;
+  };
   r1?: number;
   r2?: number;
   r3?: number;
@@ -95,7 +127,7 @@ export interface Shape {
   shapes?: readonly string[];
   blur?: Blur | null;
   "background-blur"?: Blur | null;
-  shadow?: readonly Shadow[];
+  shadow?: readonly Shadow[] | null;
   "masked-group"?: boolean;
   "bool-type"?: string | null;
   "grow-type"?: string | null;
@@ -122,6 +154,9 @@ export interface Shape {
   strokes?: readonly Stroke[];
   content?: unknown;
   "svg-attrs"?: ShapeSvgAttrs;
+  "svg-defs"?: Record<string, SvgNode>;
+  "svg-viewbox"?: SvgViewBox | null;
+  "svg-transform"?: Matrix | string | null;
 }
 
 export interface UploadOptions {
