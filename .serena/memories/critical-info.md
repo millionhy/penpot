@@ -33,7 +33,7 @@ This is a monorepo. Principles that apply to one module do *not* generally apply
 - `backend/`: JVM Clojure HTTP/RPC server with PostgreSQL, Redis, storage, mail, and workers; core conventions: `mem:backend/core`. Runtime services and the task-queue vs Pub/Sub topology that constrains horizontal scaling: `mem:prod-infra/core`.
 - `common/`: shared CLJC data types, geometry, schemas, file/change logic, and utilities; core conventions: `mem:common/core`.
 - `render-wasm/`: Rust -> WebAssembly Skia renderer consumed by frontend; core conventions: `mem:render-wasm/core`.
-- `exporter/`: ClojureScript/Node headless Playwright SVG/PDF export; core conventions: `mem:exporter/core`.
+- `exporter/`: TypeScript/Node headless SVG/bitmap/PDF export service (CLJS tree removed in G2); core conventions: `mem:exporter/core`.
 - `mcp/`: TypeScript Model Context Protocol integration; core conventions: `mem:mcp/core`.
 - `plugins/`: TypeScript plugin runtime/examples and Plugin API types; core conventions: `mem:plugins/core`.
 - `library/`: design library workflows; core conventions: `mem:library/core`.

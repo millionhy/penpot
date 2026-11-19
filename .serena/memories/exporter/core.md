@@ -33,3 +33,11 @@
 - SVG export rasterizes text foreignObjects to PNG, converts through PPM/color masks/potrace, and reassembles SVG paths. It also replaces non-breaking spaces for SVG compatibility and drops empty defs/paths.
 - PDF export injects `@page` sizing through raw browser `evaluate` JavaScript; that code cannot rely on CLJS runtime helpers.
 - Temporary resources schedule local deletion, then uploads POST to `/api/management/methods/upload-tempfile` with `X-Shared-Key: exporter <management-key>` and Bearer auth.
+
+## Headless WASM path (TypeScript)
+
+- `PENPOT_INTERNAL_URI` and `PENPOT_PUBLIC_URI` must point at the frontend nginx origin (devenv `http://localhost:9001`), not the backend (`:6060`). Fonts (`/internal/gfonts/font/*`, `/fonts/*`) and assets (`/assets/by-id/*`) are served by nginx; pointing at the backend still returns 200 but silently produces font-less SVG/PDF (no error in the job).
+- wasm memory protocol: every consumer call (`_set_*_fill`, `_add_shape_stroke_fill`, ...) takes the whole `BUFFERU8` via `mem::bytes()`, so one allocation serves exactly one call. Incrementally built lists (stroke fills) need one `FILL_U8_SIZE` allocation per item, like `common/src/app/common/render_wasm/api/props.cljs`; packing several records into one block leaves the buffer `Some` and the next `_alloc_bytes` returns `[Critical] Bytes already allocated`, which aborts the worker (Rust panic that cannot unwind).
+- A stroke without paint writes no fill record and allocates nothing; the renderer keeps its default.
+- Page scenes arrive as tagged Transit records (`~#shape`, `~#matrix`, `~#point`, `~#rect`); `transit.ts` readers unwrap each tag to its plain map.
+- Integration check against the local stack: build with `node esbuild.config.mjs`, run `target/app.js` with the nginx URIs, and export the `my board` frame (`file e5420a7e-43de-81e9-8008-f6ca99c229d1`, 750×485) as svg/png/pdf. Expected residual differences vs the CLJS product: fonts resolve to SourceSansPro + WorkSans only, PDF MediaBox uses points at 1:1, SVG emits fewer `g` wrappers, text rasterisation differs slightly.

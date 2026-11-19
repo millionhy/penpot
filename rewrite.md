@@ -84,7 +84,7 @@
 | --- | --- | --- | --- |
 | G0 | 口径与盘点 | ✅ | 2026-11-18：确认无 `.cjs`；统计 CLJS 资产；划定 backend `.clj` 与 common 后端分支边界 |
 | G1 | 补齐新端入口（P0） | ✅ | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）、workspace shape 导出入口（7.64）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项 |
-| G2 | exporter TS 重写（P1） | 🔄 | 34 文件 / 3,850 行；新树 `exporter/src-ts/`，旧 CLJS 运行至 G2.7 切换；G2.1–G2.4 与 G2.5a 已落地（7.65、7.66、7.67、7.68、7.69） |
+| G2 | exporter TS 重写（P1） | ✅ | 2026-11-19：`exporter/src-ts/` 全量取代 CLJS，CLJS 树与 shadow-cljs 已删（G2.1–G2.10，7.65–7.78）；本机联调对拍 svg/png/pdf |
 | G3 | library TS 重写（P2） | ⬜ | 2 文件 / 505 行；`.penpot` 导出库，金样本回归 |
 | G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
 | G5 | common 前端分支镜像（P4） | ⬜ | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管 |
@@ -427,7 +427,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 
 1. **G1 / P0 补齐新端入口**：先补没有页面或没有入口的洞——`/settings/integrations`（2026-11-18 已补，见 7.61）、`/subscribe-nitrate`（2026-11-18 已补，见 7.62）、应用内 release notes（2026-11-18 已补，见 7.63）、workspace shape 导出入口（2026-11-18 已补，见 7.64）、`/render-sprite/:file-id`（死路由：旧端无页面组件，exporter 走 `render.html`，G4 删除）。这些是新旧功能不对等的最大缺口；补齐后，旧端对应路由才可删除。
 2. **G2 / P1 exporter 全量 TS**：`exporter/src` 34 文件 / 3,850 行，独立 Node 进程，边界清晰，可单测。保留 RPC 共享密钥、Redis 进度、Playwright 渲染、wasm pool 与 bitmap/pdf/svg 三类 renderer 的外部行为；用同一 `.penpot` 金样本对拍。
-   - 分片：G2.1 基础层（config/logging/errors/flags/version/uuid/data/uri/transit/mime/shell/router/exchange，✅ 见 7.65）→ G2.2 http 适配 + `on-error` + auth（✅ 见 7.66）→ G2.3 redis + jobs（store/scheduler/utils）+ legacy export 入口与 `/jobs` 处理器接线（✅ 见 7.67）→ G2.4 browser + renderer + resources（✅ 见 7.68）→ G2.5 wasm headless（G2.5a 驱动/池/作用域 ✅ 见 7.69；G2.5b 序列化镜像与场景渲染、G2.5c 启动接线）→ G2.6 export_shapes/export_frames + `.penpot` 金样本对拍 → G2.7 构建与部署切换（`package.json`、esbuild、`target/app.js`）。
+   - 分片：G2.1 基础层（config/logging/errors/flags/version/uuid/data/uri/transit/mime/shell/router/exchange，✅ 见 7.65）→ G2.2 http 适配 + `on-error` + auth（✅ 见 7.66）→ G2.3 redis + jobs（store/scheduler/utils）+ legacy export 入口与 `/jobs` 处理器接线（✅ 见 7.67）→ G2.4 browser + renderer + resources（✅ 见 7.68）→ G2.5 wasm headless（G2.5a 驱动/池/作用域 ✅ 见 7.69；G2.5b 序列化镜像与场景渲染、G2.5c 启动接线）→ G2.6 export_shapes/export_frames + `.penpot` 金样本对拍 → G2.7 构建与部署切换（`package.json`、esbuild、`target/app.js`，✅ 见 7.75）→ G2.8 测试入口切 vitest（✅ 见 7.76）→ G2.9 删 CLJS 树与文档切换（✅ 见 7.77）→ G2.10 联调金样本对拍与 stroke 修复（✅ 见 7.78）。
 3. **G3 / P2 library TS**：`library/src/lib` 2 文件 / 505 行，`.penpot` 导出实现，依赖 `common` 的类型、schema 与文件构建器。先锁 API 与产物格式，再用金样本回归；不改变插件/库的对外契约。
 4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
 5. **G5 / P4 common 前端分支镜像**：只对前端/Node 用到的 `common` 逻辑做 TS 等价实现（类型、几何、schema、file-change 已部分由 F1.2 完成）；不改 `.cljc` 的 Clojure 分支。等 backend-rust 接管后再整体去掉 Clojure 依赖。
@@ -463,8 +463,8 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
         M0 workspace | M1 transit | M2 errors+config | M3 rpc(axum) | M4 session | M5 storage | M6 worker | M7 ws
-阶段 G  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）；G2.1–G2.4 与 G2.5a 落地
-        G1 入口 4/4（render-sprite 死路由剔除） | G2 exporter 4/7（G2.5a 已落地） | G3 library | G4 frontend | G5 common
+阶段 G  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）；G2 收口（exporter 全量 TypeScript，7.65–7.78）
+        G1 入口 4/4（render-sprite 死路由剔除） | G2 exporter 收口（svg/png/pdf 对拍） | G3 library | G4 frontend | G5 common
 支撑    ▒▒▒▒▒▒▒▒  S1 RPC 清单 → F1.2 ; S2 OpenAPI ⛔ ; S3 DB schema → B5/B6 ; S4 transit 金样本 → B1 ; S5 JWE 向量 ⛔
 图例： █ 进行中/完成　▒ 可并行　░ 未开始
 ```
@@ -3299,6 +3299,14 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`bash -n scripts/ci`、`scripts/check-fmt-clj`、`exporter/scripts/build` 均 0；`package.json` 可解析；`tsc` 0；`vitest run` 53 文件 487 例；以占位 wasm 跑 `node esbuild.config.mjs 9.9.9`，`target/resources/wasm/` 含 `render-wasm.js`、`render-wasm.wasm`、`shared.js`，`app.js` 379 KB。
 - 下一步：在联调环境跑 bitmap/pdf/svg 金样本对拍，收尾 G2（清理 `rewrite.md` 与记忆中的旧路径）。
 
+### 7.78 本轮（2026-11-19，第七十七批：G2.10 联调对拍与 stroke 修复）
+
+- 口径：G2 收尾片。G2.9 之后 exporter 全部走 TypeScript，但只在单测与占位 wasm 上验证过。本片在本机 docker stack（penpot 2.18）上用真实文件 `e5420a7e-43de-81e9-8008-f6ca99c229d1`（`my board` 帧 750×485，20 个 shape）跑通 `/api/export` 全链路，导出 svg/png/pdf 并与 CLJS 版金样本逐项对比，顺手修掉联调暴露的两处协议级问题。
+- 改动：`wasm/props.ts` 的 `writeShapeStrokes` 改为逐条描边「加 stroke → 可选四边宽度 → 写填充分配 → `_add_shape_stroke_fill`」，无 paint 的描边不分配；`writeStrokeData` 只留给 batch 上传的内联记录。`wasm/props.test.ts` 与 `wasm/serialize.test.ts` 的 fake wasm 补 `_add_shape_stroke_fill`，断言改成分配指针列表与 fill 记录首字节。`transit.ts` 的 reader 增 `shape`/`matrix`/`point`/`rect` 四个标签解包：页面 scene 以 `~#shape` tagged record 传输，此前解码后仍是 tagged 包装，`type` 等字段读不到；`transit.test.ts` 补一条解包用例。另给 `transit.ts`、`transit.test.ts` 补上文件末尾换行（`.editorconfig` 要求，此前漏掉）。
+- 决策与偏差：① wasm 的一次分配只能配一个消费端——`_add_shape_stroke_fill` 用 `mem::bytes()` 取走整个 buffer，旧实现把 N 条描边的 36 字节头与填充记录打包进一次 `alloc`，只消费第一条，剩余字节留在 `BUFFERU8` 里，下一次 `_alloc_bytes` 直接 `CriticalError("Bytes already allocated")`，Rust 侧再 `panic in a function that cannot unwind`、worker code=1；修复对齐 CLJS `props.cljs`，每条描边一个 `FILL_U8_SIZE` 分配。② 无 paint 的描边不写 fill，保留渲染器默认值；多写一条空记录会让 Rust 侧 `try_from` 失败。③ `PENPOT_INTERNAL_URI`/`PENPOT_PUBLIC_URI` 必须指 frontend nginx（9001），不是 backend（6060）：`/internal/gfonts/font/*`、`/fonts/*`、`/assets/by-id/*` 都由 nginx 提供，指后端时导出仍回 200，但字体全部 404（SVG `font-face` 0、PDF 只剩一个内置字体），失败只体现在产物里。④ 诊断用的逐 shape 日志、scene dump 与字体探针脚本验证后全部删除，未入库。⑤ 本机 `exporter/node_modules` 是指向 `frontend-nextjs/node_modules` 的 junction，`pnpm exec` 会触发依赖自检失败并尝试重装，验证统一用 `node node_modules/typescript/bin/tsc` 与 `node node_modules/vitest/vitest.mjs run`。
+- 验证：`tsc -p exporter/tsconfig.json` 0；`vitest run` 53 文件 488 例全过。端到端（esbuild 产物 `target/app.js`，`PENPOT_INTERNAL_URI=http://localhost:9001`）三类导出均 200：SVG 750×485，`text` 15（参考 15）、`font-face` 3（参考 7）、`path` 11（参考 13）、`g` 3（参考 135）、`clipPath` 2=2、`fill="none"` 7=7，21.8 KB（参考 42.5 KB）；PNG 750×485，与参考同尺寸，逐像素 mean 通道差 2.483/255、超过 8/255 的像素占 4.3%、最大 255，64×64 tile 图显示差异集中在文字（字体度量与抗锯齿），元素无缺失，52.3 KB（参考 47.7 KB）；PDF 1 页，MediaBox 750×485（参考 563.04×364.08）、字体 SourceSansPro-Regular / WorkSans-Medium / WorkSans-SemiBold（参考另有 LiberationSerif），21.1 KB（参考 22.7 KB）。修复前同一请求在序列化带描边的 path 后 panic，日志为 `WASM error: [Critical] Bytes already allocated`（`src/wasm/mem.rs`）。
+- 下一步：G3 library TS 重写。对拍余项登记为保真项，不阻塞 G3：SVG 的 `g` 结构比参考少（参考每 shape 一层）、PDF MediaBox 基准差、LiberationSerif 回退、文字度量差。
+
 ---
 
 ## 8. 开发环境备注（本机）
@@ -3316,6 +3324,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 行尾/编码：`.editorconfig` 要求 LF + UTF-8 + 末尾换行；本轮所有新文件遵循。
 - `/assets` 反代：`fs` 存储下后端只回空 204 + `x-accel-redirect`，dev 要设
   `PENPOT_ASSETS_ORIGIN=http://localhost:9001`（compose 里的 frontend nginx）才看得到头像与缩略图。
+- exporter 联调：`PENPOT_INTERNAL_URI` 与 `PENPOT_PUBLIC_URI` 都指 `http://localhost:9001`（frontend nginx），字体（`/internal/gfonts/font/*`、`/fonts/*`）与 asset（`/assets/by-id/*`）由它提供；指 `:6060` 后端时导出照旧回 200，但字体全部 404，产物里才会看出来。
 - 本机 docker 端口：backend `:6060`、frontend nginx `:9001`、postgres `:5433`、mailcatch `:1080`；
   外壳 dev server 默认跑在 `:3450`（早期几轮因端口被占自动落到 `:3451`）。
 - `rewrite.md` 已入库（`git ls-files rewrite.md` 可见），随每轮的 `:books:` 文档提交更新。
