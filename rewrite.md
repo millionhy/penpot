@@ -85,7 +85,7 @@
 | G0 | 口径与盘点 | ✅ | 2026-11-18：确认无 `.cjs`；统计 CLJS 资产；划定 backend `.clj` 与 common 后端分支边界 |
 | G1 | 补齐新端入口（P0） | ✅ | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）、workspace shape 导出入口（7.64）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项 |
 | G2 | exporter TS 重写（P1） | ✅ | 2026-11-19：`exporter/src-ts/` 全量取代 CLJS，CLJS 树与 shadow-cljs 已删（G2.1–G2.10，7.65–7.78）；本机联调对拍 svg/png/pdf |
-| G3 | library TS 重写（P2） | 🟡 | G3.1 基础层、G3.2 导出、G3.3a tokens 已落：`library/src-ts/` 17 文件 / 4,069 行 + 6 测试文件 / 1,525 行，57 例通过，`out`/`out2` 与 tokens 金样本逐文档一致；bool（G3.3b）与构建切换（G3.4）未做 |
+| G3 | library TS 重写（P2） | 🟡 | G3.1 基础层、G3.2 导出、G3.3a tokens、G3.3b bool 已落：`library/src-ts/` 21 文件 / 6,242 行 + 7 测试文件 / 1,699 行，63 例通过，`out`/`out2` 与 tokens 金样本逐文档一致，四种布尔与 1.2.0-RC1 对拍（difference 只差两段零长曲线）；构建切换（G3.4）未做 |
 | G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
 | G5 | common 前端分支镜像（P4） | ⬜ | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管 |
 
@@ -3332,6 +3332,15 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 决策与偏差：① 主题 description：CLJS 的 `parse-multi-set-dtcg-json` 构造主题时不传 `:description`，导入后一律为空串，TS 照此丢弃文档里的值（测试覆盖）。② 内部键名：CLJS 的 `clj->js` 产出 kebab-case，TS 用 camelCase；内部状态不是文件契约，对拍时归一后比对。③ 空库：CLJS 抛普通 `ex-info`，经 `handle-exception` 成为 `unknown`/`unknown`，TS 同样用 `unknown` 而不是 `data-validation`。④ 旧包漂移：发布版 1.2.0-RC1 的 schema 拒收 shadow 复合值数组与无 `$type` 的 token，当前源码已接受；对拍输入收敛到两者交集，TS 按当前源码实现。
 - 验证：`tsc -p library/tsconfig.json` 0；`tsc -p library/tsconfig.build.json` 0；`node --test "library/target/ts/test-ts/*.test.js"` 57 例全过（48 + 9）。金样本对拍：同一份 DTCG 分别喂给发布包与 TS，`tokens.json` 与内部状态均一致；另加一组无主题输入，验证默认隐藏主题与 `$metadata` 默认值也一致。对拍脚本与临时文件已删。
 - 下一步：G3.3b——`addBool`（`path/bool` 的并/交/差/异或、`calc-bool-content*`、`update-bool-shape`）；之后 G3.4 切 `package.json`/`exports`、删 CLJS 与 shadow-cljs。
+
+### 7.82 本轮（2026-11-19，第八十一批：G3.3b library bool 布尔运算）
+
+- 口径：G3 第四片，`addBool` 全链路。移植 `types/path/{helpers,subpath,bool}.cljc`（约 2,700 行），加上 `path.cljc` 的 `update-geometry`、`shape_to_path.cljc` 的 `calc-bool-content*`/`update-bool-shape`、`files/builder.cljc` 的 `add-bool`/`update-bool-style-properties`。
+- 新增：`src-ts/path-helpers.ts`（831 行，点/线/三次曲线的求值、分割、包围盒、交点、绕数）、`path-subpath.ts`（237 行，子路径拆合、方向、`close-subpaths`）、`path-bool.ts`（518 行，四种布尔的内容算法与 `remove-duplicated-segments`）、`shape-to-path.ts`（411 行，形状转路径与布尔结果几何）。测试：`test-ts/bool.test.ts` 6 例。
+- 改动：`path.ts` 新增 `transformSegment`/`transformContent`/`updateGeometry`，`calcSelrect` 转由 helpers 的 `contentToSelrect` 计算（含三次曲线极值）；`geometry.ts` 补矩阵组合、点集与中心/矩形互转；`builder.ts` 的 `addBool` 从占位改为完整实现（校验、样式继承、内容计算、几何更新、单条 mod-obj 提交）。
+- 决策与偏差：① `removeDuplicatedSegments` 用线性扫描。参考实现把段四元组放进 `sorted-set-by`，比较器带 0.001 容差，这个序不传递，`contains?` 会漏命中，于是一段本该去掉的零长曲线留了下来（difference 有两条重复）。TS 只留一条，`selrect`/`points` 与另外三种布尔逐字段一致；零长段不改变几何。② 曾试过把 `|t| < 1e-9` 的根吸到 0/1 来消掉零长段，但参考正是靠这些退化段留在路径里，吸附后 intersection/exclude 也不再逐字节一致，已回退。③ `lineCurveCrossing` 用 `translate(rotateMatrix(-theta), -from)` 组合矩阵，沿用参考的浮点运算顺序；手写 dx/dy 解会把边界根算成 `1.0000000000000007`，被 `[0,1]` 过滤，union 会缺一段。④ `updateGeometry` 只写 `content`/`points`/`selrect`，`x/y/width/height` 由 `addBool` 的 mod-obj 单独设置，与参考一致。⑤ 参数校验失败统一 `assertion`/`data-validation`/`check error`（对应参考的 schema 校验），空组为 `validation`/`empty-children`。
+- 验证：`tsc -p library/tsconfig.json` 0；`tsc -p library/tsconfig.build.json` 0；`node --test "library/target/ts/test-ts/*.test.js"` 63 例全过（57 + 6）。对拍：同一组形状（rect 100×100 与 circle 100×100）分别走发布包与 TS 的 `addBool`，union/intersection/exclude 的 `content`/`selrect`/`points`/`fills`/`strokes` 全部一致，difference 只差两条零长曲线。对拍脚本与临时文件已删。
+- 下一步：G3.4——切 `package.json`/`exports` 到 TS 构建，删 CLJS 源码与 shadow-cljs；之后进 G4。
 
 ---
 
