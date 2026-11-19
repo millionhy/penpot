@@ -5,10 +5,7 @@
 // Copyright (c) KALEIDOS SUBSIDIARY SL
 
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
 import {
   BlobReader,
@@ -346,23 +343,4 @@ test("exportStream writes the archive to a writable stream", async () => {
   assert.ok(zip.paths.includes("manifest.json"));
   assert.ok(zip.paths.includes(`files/${fileId}.json`));
   await zip.close();
-});
-
-test("the library version matches package.json", () => {
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-
-  for (;;) {
-    const candidate = path.join(dir, "package.json");
-    if (fs.existsSync(candidate)) {
-      const pkg = JSON.parse(fs.readFileSync(candidate, "utf8"));
-      if (pkg.name === "@penpot/library") {
-        assert.equal(LIBRARY_VERSION, pkg.version);
-        return;
-      }
-    }
-
-    const parent = path.dirname(dir);
-    assert.notEqual(parent, dir, "cannot find the library package.json");
-    dir = parent;
-  }
 });

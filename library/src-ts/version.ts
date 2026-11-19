@@ -4,7 +4,12 @@
 //
 // Copyright (c) KALEIDOS SUBSIDIARY SL
 
-// The shadow-cljs build left a `%version%` placeholder in the bundle and
-// `scripts/build` replaced it after the release. Keep this constant in sync
-// with package.json until the build injects it (G3.4).
-export const LIBRARY_VERSION = "1.2.0-RC1";
+// The build passes the package version through esbuild's define
+// (`__PENPOT_LIBRARY_VERSION__`). Code run straight from the sources, such as
+// the unit tests, falls back to this placeholder version.
+declare const __PENPOT_LIBRARY_VERSION__: string | undefined;
+
+export const LIBRARY_VERSION: string =
+  typeof __PENPOT_LIBRARY_VERSION__ === "undefined"
+    ? "0.0.0-test"
+    : __PENPOT_LIBRARY_VERSION__;

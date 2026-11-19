@@ -3,5 +3,4 @@
 set -ex
 pnpm install;
 
-pnpm run build:bundle;
 pnpm run test;

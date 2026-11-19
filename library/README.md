@@ -52,7 +52,7 @@ await penpot.exportStream(context, writable);
 Build the library:
 
 ```bash
-./scripts/build
+pnpm run build
 ```
 
 Login on npm:

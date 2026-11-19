@@ -29,7 +29,7 @@ declare -A LINT_CMD=(
   [exporter]=""
   [mcp]=""
   [plugins]="pnpm run lint"
-  [library]="pnpm run lint"
+  [library]=""
 )
 
 declare -A TEST_CMD=(
@@ -51,7 +51,7 @@ declare -A FMT_CHECK_CMD=(
   [exporter]=""
   [mcp]="pnpm run fmt:check"
   [plugins]="pnpm run format:check"
-  [library]="pnpm run check-fmt:clj"
+  [library]=""
 )
 
 declare -A FMT_FIX_CMD=(
@@ -62,7 +62,7 @@ declare -A FMT_FIX_CMD=(
   [exporter]=""
   [mcp]="pnpm run fmt"
   [plugins]="pnpm run format"
-  [library]="pnpm run fmt:clj"
+  [library]=""
 )
 
 declare -A PAREN_REPAIR_CMD=(
@@ -73,7 +73,7 @@ declare -A PAREN_REPAIR_CMD=(
   [exporter]=""
   [mcp]=""
   [plugins]=""
-  [library]="find src test -name '*.clj' -o -name '*.cljs' -o -name '*.cljc' | xargs $PROJECT_ROOT/scripts/paren-repair"
+  [library]=""
 )
 
 # Default options

@@ -4,11 +4,17 @@ import * as fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { BlobReader, TextWriter, ZipReader } from "@zip.js/zip.js";
+
 import * as penpot  from "#self";
 
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const PACKAGE = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"),
+);
 
 test("create empty context", () => {
   const context = penpot.createBuildContext();
@@ -217,4 +223,29 @@ test("create context with tokens lib as obj", () => {
 
   assert.ok(file.data);
   assert.ok(file.data.tokensLib)
+});
+
+test("exports an archive stamped with the package version", async () => {
+  const context = penpot.createBuildContext();
+  const fileId = context.addFile({ name: "sample" });
+  context.addPage({ name: "page 1" });
+
+  const bytes = await penpot.exportAsBytes(context);
+
+  const reader = new ZipReader(new BlobReader(new Blob([bytes])), {
+    useWebWorkers: false,
+  });
+  const entries = await reader.getEntries();
+  const manifestEntry = entries.find(
+    (entry) => entry.filename === "manifest.json",
+  );
+  const manifest = JSON.parse(await manifestEntry.getData(new TextWriter()));
+  await reader.close();
+
+  assert.equal(manifest.generatedBy, `penpot-library/${PACKAGE.version}`);
+  assert.deepEqual(
+    manifest.files.map((file) => file.id),
+    [fileId],
+  );
+  assert.ok(entries.some((entry) => entry.filename === `files/${fileId}.json`));
 });

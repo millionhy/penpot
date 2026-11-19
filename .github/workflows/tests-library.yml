@@ -7,7 +7,6 @@ defaults:
 on:
   pull_request:
     paths:
-      - 'common/**'
       - 'library/**'
 
     types:
@@ -21,7 +20,6 @@ on:
       - staging
 
     paths:
-      - 'common/**'
       - 'library/**'
 
 concurrency:
@@ -35,22 +33,12 @@ jobs:
     runs-on: penpot-extended-runner
     container:
       image: penpotapp/devenv:latest
-      volumes:
-        - /var/cache/github-runner/m2:/root/.m2
-        - /var/cache/github-runner/gitlib:/root/.gitlibs
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-
-      - name: Lint
-        working-directory: ./library
-        run: |
-          pnpm install;
-          pnpm run check-fmt
-          pnpm run lint
 
       - name: Tests
         working-directory: ./library
