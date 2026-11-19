@@ -28,6 +28,7 @@ function harness(): FakeWasm {
   record(target, "_add_shape_inner_stroke");
   record(target, "_add_shape_outer_stroke");
   record(target, "_set_shape_stroke_sides");
+  record(target, "_add_shape_stroke_fill");
   record(target, "_set_shape_svg_attrs");
   return target;
 }
@@ -74,7 +75,7 @@ describe("props", () => {
     expect(target.allocs).toEqual([]);
   });
 
-  it("writes a stroke header, calls the aligned setter and appends its fill", () => {
+  it("adds one stroke and one fill record per painted stroke", () => {
     const target = harness();
     const stroke: Stroke = {
       "stroke-width": 2,
@@ -88,21 +89,16 @@ describe("props", () => {
     expect(target.calls.map((call) => call.name)).toEqual([
       "_clear_shape_strokes",
       "_add_shape_inner_stroke",
+      "_add_shape_stroke_fill",
     ]);
     expect(target.calls[1].args).toEqual([2, 1, 1, 0, -1, -1]);
 
+    // The fill record is the whole buffer: no stroke header goes to the Rust
+    // reader, which expects exactly one RawFillData.
+    expect(target.allocs).toEqual([256]);
     const view = viewOf(target);
-    expect(view.getFloat32(256, true)).toBe(2);
-    expect(view.getUint8(260)).toBe(1);
-    expect(view.getUint8(261)).toBe(1);
-    expect(view.getUint8(262)).toBe(1);
-    expect(view.getUint8(263)).toBe(0);
-    expect(view.getFloat32(264, true)).toBe(-1);
-    expect(view.getFloat32(268, true)).toBe(-1);
-    expect(view.getUint8(272)).toBe(0);
-    expect(view.getFloat32(276, true)).toBe(2);
-    expect(view.getUint8(292)).toBe(0x00);
-    expect(view.getUint32(296, true)).toBe(0xffff0000);
+    expect(view.getUint8(256)).toBe(0x00);
+    expect(view.getUint32(260, true)).toBe(0xffff0000);
   });
 
   it("adds the per-side widths only when they differ", () => {
@@ -115,7 +111,8 @@ describe("props", () => {
       "_set_shape_stroke_sides",
     ]);
     expect(target.calls[2].args).toEqual([3, 2, 2, 2]);
-    expect(viewOf(target).getUint8(272)).toBe(1);
+    // A stroke with no paint allocates nothing.
+    expect(target.allocs).toEqual([]);
   });
 
   it("prefers the gradient over the color and returns image ids", () => {
@@ -132,9 +129,10 @@ describe("props", () => {
     );
 
     expect(ids).toEqual([imageId]);
+    expect(target.allocs).toEqual([256, 416]);
     const view = viewOf(target);
-    expect(view.getUint8(256 + 36)).toBe(0x01);
-    expect(view.getUint8(256 + 36 + 160 + 36)).toBe(0x03);
+    expect(view.getUint8(256)).toBe(0x01);
+    expect(view.getUint8(416)).toBe(0x03);
   });
 
   it("translates the SVG attributes with the style block taking precedence", () => {

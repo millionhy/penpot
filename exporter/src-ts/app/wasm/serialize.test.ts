@@ -35,6 +35,7 @@ function harness(): FakeWasm {
     "_set_shape_fills",
     "_clear_shape_strokes",
     "_add_shape_center_stroke",
+    "_add_shape_stroke_fill",
     "_set_shape_svg_attrs",
     "_start_shape_path_buffer",
     "_set_shape_path_chunk_buffer",
@@ -147,12 +148,13 @@ describe("serialize", () => {
       "_set_shape_fills",
       "_clear_shape_strokes",
       "_add_shape_center_stroke",
+      "_add_shape_stroke_fill",
       "_clear_shape_text",
       "_set_shape_vertical_align",
       "_set_shape_text_content",
       "_update_shape_text_layout",
     ]);
-    expect(target.calls[5].args).toEqual([1]);
+    expect(target.calls[6].args).toEqual([1]);
   });
 
   it("never writes strokes for a group", () => {

@@ -86,4 +86,16 @@ describe("reader handlers", () => {
     expect(decoded.id).toBe(ID);
     expect(decoded.at.getTime()).toBe(0);
   });
+
+  it("unwraps a tagged record into its plain map", () => {
+    const text =
+      '["~#shape",["^ ","~:name","Board","~:type","~:frame",' +
+      '"~:selrect",["~#rect",["^ ","~:x",0,"~:y",0,"~:width",10,"~:height",10]]]]';
+
+    expect(decode(text)).toEqual({
+      name: "Board",
+      type: "frame",
+      selrect: { x: 0, y: 0, width: 10, height: 10 },
+    });
+  });
 });

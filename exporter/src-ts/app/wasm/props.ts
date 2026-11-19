@@ -112,8 +112,7 @@ function strokeAlignment(alignment: string | undefined): number {
 }
 
 // Writes one 36-byte stroke header plus its fill record. Pure byte writing:
-// the incremental setter below adds the FFI calls, and the batch upload reuses
-// this for its inline records.
+// only the batch upload uses it, for the strokes it inlines in a shape record.
 export function writeStrokeData(view: DataView, offset: number, stroke: Stroke): number {
   const width = stroke["stroke-width"] ?? 1.0;
   const style = translateStrokeStyle(stroke["stroke-style"]) ?? 0;
@@ -145,14 +144,10 @@ export function writeStrokeData(view: DataView, offset: number, stroke: Stroke):
   return writeStrokeFill(view, offset + 36, stroke);
 }
 
-// The incremental setter: one FFI call sequence per stroke, then the same
-// bytes the batch writer produces.
-function writeStroke(
-  view: DataView,
-  offset: number,
-  stroke: Stroke,
-  target: WasmModule,
-): number {
+// The incremental setter: one FFI call sequence per stroke. The fill record
+// goes in its own allocation because `_add_shape_stroke_fill` takes the whole
+// buffer, so a packed multi-stroke block would strand every record after it.
+function writeStroke(stroke: Stroke, target: WasmModule): void {
   const width = stroke["stroke-width"] ?? 1.0;
   const style = translateStrokeStyle(stroke["stroke-style"]) ?? 0;
   const align = strokeAlignment(stroke["stroke-alignment"]);
@@ -177,7 +172,19 @@ function writeStroke(
     call(target, "_set_shape_stroke_sides", top, right, bottom, left);
   }
 
-  return writeStrokeData(view, offset, stroke);
+  // A stroke without paint keeps the renderer default: no fill record, and so
+  // no allocation either. The reader expects exactly one record per buffer.
+  if (
+    stroke["stroke-color"] === undefined &&
+    stroke["stroke-color-gradient"] === undefined &&
+    stroke["stroke-image"] === undefined
+  ) {
+    return;
+  }
+
+  const offset = alloc(target, FILL_U8_SIZE);
+  writeStrokeFill(dataView(heapU8(target)), offset, stroke);
+  call(target, "_add_shape_stroke_fill");
 }
 
 // Writes the stroke list of the current shape and returns the image ids the
@@ -189,15 +196,10 @@ export function writeShapeStrokes(
   call(target, "_clear_shape_strokes");
 
   const imageIds: string[] = [];
-  const visible = (strokes ?? []).filter((stroke) => !stroke.hidden);
-  if (visible.length === 0) return imageIds;
+  for (const stroke of strokes ?? []) {
+    if (stroke.hidden) continue;
 
-  const offset = alloc(target, visible.length * (36 + FILL_U8_SIZE));
-  const view = dataView(heapU8(target));
-
-  let at = offset;
-  for (const stroke of visible) {
-    at = writeStroke(view, at, stroke, target);
+    writeStroke(stroke, target);
     const image = stroke["stroke-image"];
     if (image !== undefined) imageIds.push(image.id);
   }

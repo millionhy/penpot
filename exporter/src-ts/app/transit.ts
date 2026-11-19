@@ -31,6 +31,13 @@ const readerOptions = {
       return { id: String(pair[0]), metadata: pair[1] };
     },
     "penpot/path-data": (rep: unknown) => pathDataBytes(rep),
+    // Page scenes arrive with the records tagged (`~#shape`, `~#matrix`,
+    // `~#point`, `~#rect`). The CLJS reader revived them as records; every
+    // consumer here reads their plain map, so each tag unwraps to its value.
+    shape: (rep: unknown) => rep,
+    matrix: (rep: unknown) => rep,
+    point: (rep: unknown) => rep,
+    rect: (rep: unknown) => rep,
   },
   mapBuilder: {
     init: () => ({}) as Dict,
