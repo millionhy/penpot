@@ -85,7 +85,7 @@
 | G0 | 口径与盘点 | ✅ | 2026-11-18：确认无 `.cjs`；统计 CLJS 资产；划定 backend `.clj` 与 common 后端分支边界 |
 | G1 | 补齐新端入口（P0） | ✅ | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）、workspace shape 导出入口（7.64）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项 |
 | G2 | exporter TS 重写（P1） | ✅ | 2026-11-19：`exporter/src-ts/` 全量取代 CLJS，CLJS 树与 shadow-cljs 已删（G2.1–G2.10，7.65–7.78）；本机联调对拍 svg/png/pdf |
-| G3 | library TS 重写（P2） | 🟡 | G3.1 基础层已落：`library/src-ts/` 12 文件 / 2,428 行 + 4 测试文件 / 688 行，39 例通过；导出与金样本（G3.2）、tokens/bool（G3.3）、构建切换（G3.4）未做 |
+| G3 | library TS 重写（P2） | 🟡 | G3.1 基础层与 G3.2 导出已落：`library/src-ts/` 16 文件 / 2,738 行 + 5 测试文件 / 996 行，48 例通过，`out`/`out2` 金样本逐文档一致；tokens/bool（G3.3）与构建切换（G3.4）未做 |
 | G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
 | G5 | common 前端分支镜像（P4） | ⬜ | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管 |
 
@@ -3314,6 +3314,15 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 决策与偏差：① 命名去重按设计生效：上游 `unique-name` 读 `[:unames page-id]` 而 `track-used-name` 写 `[::unames page-id]`，键不一致使 CLJS 从不去重（`probe3` 两个 `Rect 1` 都保留）；TS 版统一按页存名并去重，后缀格式沿用 `unique-name` 的连字符（`Rectangle-1`）。这是本片唯一有意偏离已发布行为的地方。② 最小形状与几何逐项对齐 `make-minimal-shape`/`setup-shape`：path/bool 的 `x/y/width/height` 为 `null`，其它为 `0/0/0.01/0.01`；`flipX/flipY` 恒为 `null`；text 不带 fills/strokes/proportion。③ 路径内部用段数组，`getInternalState` 时转 SVG 字符串，导出用的数组视图留到 G3.2。④ 不引 Malli：手写校验抛 `BuilderFailure`，API 边界统一转 `BuilderError`（type/code/hint 与 `handle-exception` 一致，hint 保留 `invalid file`、`expected valid shape`、`expected valid color`、`invalid arguments passed for add-component`）。⑤ `addBool` 与 `addTokensLib` 需要布尔路径运算与 2,100 行 tokens-lib，本片只留入口，调用时抛 `type=validation, code=not-implemented`；G3.3 补齐。⑥ 文件 features 每次复制成数组，避免多文件共享同一引用；`createdAt/modifiedAt` 用 ISO 字符串。⑦ 导出入口（`exportAsBytes`/`exportAsBlob`/`exportStream`）尚未进入 `index.ts`，G3.2 与 zip 一起接。
 - 验证：`tsc -p library/tsconfig.json` 0；`tsc -p library/tsconfig.build.json` 产出 `target/ts`；`node --test "library/target/ts/test-ts/*.test.js"` 39 例全过。对照 `probe2.log` 的 path/text/circle/group/颜色/排版字段与 `probe.log` 的 board/rect 字段，逐项一致（除①的去重）。
 - 下一步：G3.2——`@zip.js/zip.js` 打包与 `export.cljs` 的条目布局/编码，用 `out.penpot`/`out2.penpot` 做金样本对拍。
+
+### 7.80 本轮（2026-11-19，第七十九批：G3.2 library 导出与金样本）
+
+- 口径：G3 第二片。`export.cljs`（279 行）与它依赖的 `app.util.zip` 在本片落到 TS：把构建器状态打成 `.penpot` 压缩包，条目布局与 JSON 文档跟 CLJS 产物一致。`addBool`/`addTokensLib` 仍留空，构建切换留到 G3.4。
+- 新增：`src-ts/export.ts`（`collectEntries`、manifest/file/page/shape/color/typography/media 六个编码器、`exportAsBytes`/`exportAsBlob`/`exportStream`、进度回调）、`src-ts/media.ts`（`mtypeToExtension`）、`src-ts/version.ts`（`LIBRARY_VERSION`）、`src-ts/state.ts`（`RAW_STATE` 符号）。测试：`test-ts/export.test.ts` 9 例。
+- 扩展：`api.ts` 在 `BuildContext` 上加符号键 `[RAW_STATE]()`，对应 CLJS 里 `createBuildContext` 同时实现 `IDeref`；`index.ts` 导出三个导出函数与进度类型，公开面与 shadow-cljs `:exports` 的 5 个名字对齐。
+- 决策与偏差：① 用 `@zip.js/zip.js`（`library/package.json` 早已声明 2.8.34，本机补了一次 `pnpm install`，lock 未变），压缩参数保持默认，与 `app.util.zip` 一致。② 导出直接在原始状态上工作，不经过 `toInternalState`：path/bool 的 `content` 写成段数组（`(update shape :content vec)`），所以内部状态仍是 SVG 字符串，归档里是数组。③ `generatedBy` 取 `LIBRARY_VERSION` 常量；CLJS 是构建后 `sed` 替换 `%version%`，G3.4 改成构建期注入时把常量删掉，测试已读 `package.json` 校验两者一致。④ features 用数组顺序，CLJS 的 `#{}` 迭代顺序是哈希序（gold 里 `plugins/runtime` 打头）；消费端按集合读，视为等价。⑤ 文件与页的遍历顺序取插入序，CLJS 哈希映射的顺序不可复现，单文件场景不可观测。⑥ 颜色去掉 `fileId`，`path` 为空串时删除；file media 去掉 `fileId`；manifest 用 `withoutNils` 去掉未设的 `referer`。
+- 验证：`tsc -p library/tsconfig.json` 0；`tsc -p library/tsconfig.build.json` 0；`node --test "library/target/ts/test-ts/*.test.js"` 48 例全过（39 + 9）。金样本对拍：用同一份探针上下文（`probe.mjs` 的 board 用例与 `probe2.mjs` 的全量用例）跑 TS 导出，与 `out.penpot`（6 条目）和 `out2.penpot`（13 条目）逐文档比对，全部一致。两处已知漂移：gold 的 migrations 是 70 条（发布包早于源码新增的 14 条），TS 按当前源码 84 条；gold 的 path 默认描边是 `inner/2`（早于 `0dd40776f8` 与 `217284b1e1`），TS 按当前源码 `center/1`。名称去重差异同上片。对拍用的临时脚本已删。
+- 下一步：G3.3——`addBool` 的布尔路径运算与 `addTokensLib`（`read-multi-set-dtcg` 与 tokens-lib 编码）；之后 G3.4 切 `package.json`/`exports`、删 CLJS 与 shadow-cljs。
 
 ---
 
