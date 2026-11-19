@@ -1,16 +1,18 @@
 // Builds the TypeScript exporter into a single ESM bundle, the shape
-// `exporter/scripts/build` already ships for the CLJS tree: `target-ts/app.js`
-// plus the wasm artifacts and the package files the runtime installs from.
+// `exporter/scripts/build` already ships for the CLJS tree: `app.js` plus the
+// wasm artifacts and the package files the runtime installs from.
 //
-// `target-ts` rather than `target` so both trees can be built side by side
-// while the switch is being validated.
+// Runs from the exporter directory. Set PENPOT_EXPORTER_OUTDIR to build
+// somewhere else; `--watch` rebuilds on change and skips the version stamp.
 
-import { build } from "esbuild";
+import { build, context } from "esbuild";
 import { access, chmod, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const outdir = process.env.PENPOT_EXPORTER_OUTDIR ?? "target-ts";
-const version = process.argv[2] ?? process.env.PENPOT_VERSION;
+const outdir = process.env.PENPOT_EXPORTER_OUTDIR ?? "target";
+const watch = process.argv.includes("--watch");
+const version =
+  process.env.PENPOT_VERSION ?? process.argv.slice(2).find((arg) => !arg.startsWith("-"));
 
 // Mirrors `gfontsFile` in src-ts/app/fonts.ts. The TS build reads the font
 // catalogue from disk at runtime, where the CLJS build compiled it in.
@@ -40,25 +42,30 @@ async function copyIfPresent(source, target, { required = false } = {}) {
   await copyFile(source, target);
 }
 
-await rm(outdir, { recursive: true, force: true });
-
-await build({
-  entryPoints: ["src-ts/app/app.ts"],
-  bundle: true,
-  platform: "node",
-  target: "node24",
-  format: "esm",
-  outfile: path.join(outdir, "app.js"),
-  sourcemap: true,
-});
+function options() {
+  return {
+    entryPoints: ["src-ts/app/app.ts"],
+    bundle: true,
+    platform: "node",
+    target: "node24",
+    format: "esm",
+    outfile: path.join(outdir, "app.js"),
+    sourcemap: true,
+  };
+}
 
 // The bundle keeps `%version%` until the build stamps it, as the CLJS build
-// did with sed.
-if (version !== undefined) {
+// did with sed. Only release builds get a stamp; a watch build keeps the
+// placeholder, which parses as develop.
+async function stampVersion() {
+  if (version === undefined) return;
+
   const file = path.join(outdir, "app.js");
   const code = await readFile(file, "utf8");
   await writeFile(file, code.replaceAll("%version%", version));
 }
+
+await rm(outdir, { recursive: true, force: true });
 
 await copyIfPresent(
   path.join("resources", "wasm", "render-wasm.js"),
@@ -78,7 +85,7 @@ for (const file of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"]) {
   await copyFile(file, path.join(outdir, file));
 }
 
-const setup = `#/usr/bin/env bash
+const setup = `#!/usr/bin/env bash
 set -e;
 command -v pnpm >/dev/null || { echo "error: pnpm not found in PATH" >&2; exit 1; };
 pnpm install
@@ -88,3 +95,12 @@ pnpm exec playwright install chromium;
 const setupPath = path.join(outdir, "setup");
 await writeFile(setupPath, setup);
 await chmod(setupPath, 0o755);
+
+if (watch) {
+  const ctx = await context(options());
+  await ctx.watch();
+  console.log(`watching src-ts into ${outdir}`);
+} else {
+  await build(options());
+  await stampVersion();
+}

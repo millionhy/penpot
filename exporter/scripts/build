@@ -17,27 +17,6 @@ if [ ! -f "$WASM_SRC/render-wasm.wasm" ] || [ ! -f "$WASM_SHARED" ]; then
     exit 1;
 fi
 
-rm -rf target
-
-# Build the application
-pnpm run build;
-
-cp pnpm-lock.yaml target/;
-cp pnpm-workspace.yaml target/;
-cp package.json target/;
-touch target/pnpm-workspace.yaml;
-
-mkdir -p target/$WASM_SRC;
-cp "$WASM_SRC/render-wasm.js" "$WASM_SRC/render-wasm.wasm" target/$WASM_SRC/;
-
-cat <<EOF | tee target/setup
-#/usr/bin/env bash
-set -e;
-command -v pnpm >/dev/null || { echo "error: pnpm not found in PATH" >&2; exit 1; };
-pnpm install
-pnpm exec playwright install chromium;
-EOF
-
-chmod +x target/setup;
-
-sed -i -re "s/\%version\%/$CURRENT_VERSION/g" ./target/app.js;
+# Build the application; the script clears target and copies the wasm
+# artifacts, package files and setup script into it.
+node esbuild.config.mjs "$CURRENT_VERSION";
