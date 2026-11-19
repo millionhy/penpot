@@ -27,7 +27,8 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
-    "ws": "^8.22.0"
+    "transit-js": "^0.8.874",
+    "vitest": "^5.0.3"
   },
   "scripts": {
     "clear:shadow-cache": "rm -rf .shadow-cljs && rm -rf target",
@@ -39,11 +40,11 @@
     "build:cljs": "clojure -M:dev:shadow-cljs release main",
     "build:wasm": "../render-wasm/build export",
     "build": "pnpm run clean && pnpm run build:app",
-    "fmt:clj": "cljfmt fix --parallel=true src/ test/",
-    "check-fmt:clj": "cljfmt check --parallel=true src/ test/",
-    "lint:clj": "clj-kondo --fail-level error --parallel --lint src/ test/",
-    "build:test": "clojure -M:dev:shadow-cljs compile test",
-    "test": "pnpm run build:test && PENPOT_SECRET_KEY=${PENPOT_SECRET_KEY:-test-secret-key} node target/tests/test.js",
-    "test:quiet": "node ./scripts/test-quiet.js"
+    "fmt:clj": "cljfmt fix --parallel=true src/",
+    "check-fmt:clj": "cljfmt check --parallel=true src/",
+    "lint:clj": "clj-kondo --fail-level error --parallel --lint src/",
+    "test": "vitest run",
+    "test:quiet": "vitest run --silent=passed-only",
+    "test:watch": "vitest"
   }
 }
