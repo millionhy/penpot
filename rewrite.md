@@ -3283,6 +3283,14 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`bash -n exporter/scripts/build` 0（改动时工作区一度是 CRLF，`bash -n` 报 if 未闭合，转回 LF 后通过）；`tsc` 0；`vitest run` 52 文件 485 例；`node esbuild.config.mjs 9.9.9`（以及 `PENPOT_VERSION=1.2.3`）生成 `target/app.js`（377 KB，含 transit-js）、sourcemap、package/lock/workspace、`setup`、字体 JSON 与 wasm 资源；`target/app.js` 启动后输出 `version="9.9.9"`，browser 池初始化，随后停在本地缺失的 redis；`--watch` 分支未在沙箱内跑通（Start-Process 无输出），留到 devenv 首次启动验证；`.penpot` 金样本对拍需要后端、真实 wasm 与文件，本轮未做。
 - 下一步：G2.8——把 `test`/`test:quiet` 切到 vitest，删除或归档旧 CLJS 树，再在联调环境跑 bitmap/pdf/svg 金样本对拍。
 
+### 7.76 本轮（2026-11-19，第七十五批：G2.8 exporter 测试入口切到 vitest）
+
+- 口径：G2 第八片。G2.7b 之后默认构建已是 esbuild，但 `test`/`test:quiet` 仍编译 shadow-cljs 的 `:test` 构建并跑 `target/tests/test.js`，CI 的 `pnpm run test:quiet` 也走这条路。本片把测试入口切到 vitest 并删掉旧 CLJS 测试树；CLJS 源码与 `build:cljs` 暂留作回退。
+- 改动：`package.json` 的 `test` 改为 `vitest run`、`test:quiet` 改为 `vitest run --silent=passed-only`，新增 `test:watch`，删 `build:test`；lint/fmt 目标从 `src/ test/` 收为 `src/`；devDependencies 补 `vitest ^5.0.3` 与 `transit-js ^0.8.874`（`transit.ts` 静态 import，此前靠 junction 里的副本解析），删掉未使用的 `ws`；`pnpm-lock.yaml` 随之更新（新增 vite 8/rolldown/lightningcss 等 685 行，去掉 ws）；删 `exporter/test/`（7 个 cljs 测试与 runner）与 `exporter/scripts/test-quiet.js`；`shadow-cljs.edn` 去掉 `:test` 构建，`deps.edn` 的 `:paths` 去掉 `test`；`scripts/ci` 的 exporter paren-repair 从 `find src test` 改为 `find src`。
+- 决策与偏差：① 测试与源码同目录（`src-ts/app/**/*.test.ts`），不引入 vitest 配置，默认 include 已覆盖；② `test:quiet` 用 `--silent=passed-only` 保留失败日志、隐藏逐文件行，对应旧 test-quiet 的意图；③ `transit-js` 被 esbuild 打进 bundle，`vitest` 只用于测试，两者都进 devDependencies；④ 本机 `exporter/node_modules` 是 junction，`pnpm run test:quiet` 会在依赖自检时因 hoist 目录不是真实目录而失败，验证用 `node node_modules/vitest/vitest.mjs run`；CI/生产是真实目录，不受影响；⑤ `exporter/src/` 与 `build:cljs` 暂留，删除 CLJS 树与 `docs/technical-guide/developer/architecture/exporter.md` 的路径图留给下一片；⑥ 本机 vitest 是 5.0.3，lock 解析到 5.1.0，所用 API 一致。
+- 验证：`bash -n scripts/ci` 0（工作区先转 LF，CRLF 下 bash 报 `{\r` 语法错）；`tsc` 0；`vitest run` 52 文件 485 例；`vitest run --silent=passed-only` 同样 485 例；`pnpm run test:quiet` 在本机因 junction 失败（见④）。
+- 下一步：G2.9——删除 `exporter/src/` 与 shadow-cljs 构建，把 `docs/technical-guide/developer/architecture/exporter.md` 切到 `src-ts/`，再在联调环境跑 bitmap/pdf/svg 金样本对拍。
+
 ---
 
 ## 8. 开发环境备注（本机）

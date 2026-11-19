@@ -1,16 +1,13 @@
 # Exporter Testing
 
 - READ `mem:testing` first.
-- Tests use `cljs.test` and live under `exporter/test/exporter_tests/`.
-- Register every test namespace in `exporter-tests.runner`.
-- From `exporter/`: `pnpm run build:test` builds the Node test bundle without running tests.
-- From `exporter/`: `pnpm run test` builds and runs tests with full output.
-- From `exporter/`: `pnpm run test:quiet` builds and runs tests with reduced build output.
-- After `build:test`, reuse the compiled bundle with `node target/tests/test.js`.
-- For iterative focused runs, build once and reuse the compiled bundle.
-- Focus a test namespace with `node target/tests/test.js --focus exporter-tests.renderer-svg-test`.
-- Focus a test var with `node target/tests/test.js --focus exporter-tests.renderer-svg-test/creates-the-correct-gradient-element`.
-- Set app log level by appending `--log-level warn` (or `trace|debug|info|warn|error`).
-- `test:quiet` accepts forwarded options but rebuilds the bundle; prefer the direct runner after `build:test` for focused runs.
-- From `exporter/`: `pnpm run check-fmt:clj` checks ClojureScript formatting.
-- From `exporter/`: `pnpm run lint:clj` runs ClojureScript linting.
+- Tests use vitest and live beside the sources: `exporter/src-ts/app/**/*.test.ts`.
+- The old CLJS suite (`exporter/test/`, `cljs.test`, `exporter-tests.runner`) was removed in G2.8; `build:test` and `scripts/test-quiet.js` are gone with it.
+- From `exporter/`: `pnpm run test` runs the suite (`vitest run`).
+- From `exporter/`: `pnpm run test:quiet` runs it with `--silent=passed-only`, hiding per-file lines.
+- From `exporter/`: `pnpm run test:watch` stays in watch mode.
+- Focus one file: `pnpm run test -- src-ts/app/core.test.ts`.
+- Focus one test: `pnpm run test -- -t "boots the server in the CLJS order"`.
+- Tests inject their own config and never touch redis, the browser pool or the wasm runtime; keep new tests on the same injected seams (`CoreDeps`, fakes) instead of real I/O.
+- From `exporter/`: `pnpm run check-fmt:clj` checks the CLJS fallback sources under `src/`; `pnpm run lint:clj` lints them.
+- CI runs `pnpm run test:quiet` for this module (`mem:scripts/ci`).
