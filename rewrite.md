@@ -85,7 +85,7 @@
 | G0 | 口径与盘点 | ✅ | 2026-11-18：确认无 `.cjs`；统计 CLJS 资产；划定 backend `.clj` 与 common 后端分支边界 |
 | G1 | 补齐新端入口（P0） | ✅ | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）、workspace shape 导出入口（7.64）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项 |
 | G2 | exporter TS 重写（P1） | ✅ | 2026-11-19：`exporter/src-ts/` 全量取代 CLJS，CLJS 树与 shadow-cljs 已删（G2.1–G2.10，7.65–7.78）；本机联调对拍 svg/png/pdf |
-| G3 | library TS 重写（P2） | 🟡 | G3.1 基础层与 G3.2 导出已落：`library/src-ts/` 16 文件 / 2,738 行 + 5 测试文件 / 996 行，48 例通过，`out`/`out2` 金样本逐文档一致；tokens/bool（G3.3）与构建切换（G3.4）未做 |
+| G3 | library TS 重写（P2） | 🟡 | G3.1 基础层、G3.2 导出、G3.3a tokens 已落：`library/src-ts/` 17 文件 / 4,069 行 + 6 测试文件 / 1,525 行，57 例通过，`out`/`out2` 与 tokens 金样本逐文档一致；bool（G3.3b）与构建切换（G3.4）未做 |
 | G4 | frontend 旧端收尾（P3） | ⬜ | 逐命名空间迁移；删旧文件；停 shadow-cljs；最终删除 `frontend/src` |
 | G5 | common 前端分支镜像（P4） | ⬜ | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管 |
 
@@ -3323,6 +3323,15 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 决策与偏差：① 用 `@zip.js/zip.js`（`library/package.json` 早已声明 2.8.34，本机补了一次 `pnpm install`，lock 未变），压缩参数保持默认，与 `app.util.zip` 一致。② 导出直接在原始状态上工作，不经过 `toInternalState`：path/bool 的 `content` 写成段数组（`(update shape :content vec)`），所以内部状态仍是 SVG 字符串，归档里是数组。③ `generatedBy` 取 `LIBRARY_VERSION` 常量；CLJS 是构建后 `sed` 替换 `%version%`，G3.4 改成构建期注入时把常量删掉，测试已读 `package.json` 校验两者一致。④ features 用数组顺序，CLJS 的 `#{}` 迭代顺序是哈希序（gold 里 `plugins/runtime` 打头）；消费端按集合读，视为等价。⑤ 文件与页的遍历顺序取插入序，CLJS 哈希映射的顺序不可复现，单文件场景不可观测。⑥ 颜色去掉 `fileId`，`path` 为空串时删除；file media 去掉 `fileId`；manifest 用 `withoutNils` 去掉未设的 `referer`。
 - 验证：`tsc -p library/tsconfig.json` 0；`tsc -p library/tsconfig.build.json` 0；`node --test "library/target/ts/test-ts/*.test.js"` 48 例全过（39 + 9）。金样本对拍：用同一份探针上下文（`probe.mjs` 的 board 用例与 `probe2.mjs` 的全量用例）跑 TS 导出，与 `out.penpot`（6 条目）和 `out2.penpot`（13 条目）逐文档比对，全部一致。两处已知漂移：gold 的 migrations 是 70 条（发布包早于源码新增的 14 条），TS 按当前源码 84 条；gold 的 path 默认描边是 `inner/2`（早于 `0dd40776f8` 与 `217284b1e1`），TS 按当前源码 `center/1`。名称去重差异同上片。对拍用的临时脚本已删。
 - 下一步：G3.3——`addBool` 的布尔路径运算与 `addTokensLib`（`read-multi-set-dtcg` 与 tokens-lib 编码）；之后 G3.4 切 `package.json`/`exports`、删 CLJS 与 shadow-cljs。
+
+### 7.81 本轮（2026-11-19，第八十批：G3.3a library tokens 导入导出）
+
+- 口径：G3 第三片拆两半。本片只做 tokens：`addTokensLib`（`read-multi-set-dtcg` 的校验、解析、值转换）与 `tokens.json` 的 DTCG 编码。`addBool` 需要先移植 helpers/segment/subpath/shape_to_path/impl 约 3,400 行 CLJC，留到 G3.3b。
+- 新增：`src-ts/tokens.ts`（898 行）。Token/TokenSet/TokenTheme/TokensLib 模型与构造器，`G-`/`S-` 前缀的集与主题树（`addSet`/`addTheme`/`getSets`/`getThemes`/`getThemeByName`/`updateTheme`），DTCG 类型映射与复合值转换（typography/shadow/font-family），`checkMultiSetDtcg`/`parseMultiSetDtcg`/`readMultiSetDtcg`，`tokensTree`/`tokenToDtcg`/`exportDtcgThemes`/`exportDtcgJson`，以及隐藏主题常量。测试：`test-ts/tokens.test.ts` 9 例。
+- 改动：`builder.ts` 的 `addTokensLib` 由占位改为 `readMultiSetDtcg` + `commitChange({type: "set-tokens-lib"})`；`export.ts` 的 tokens 条目改用 `encodeJson(exportDtcgJson(...))`，所以归档里是 DTCG 多集文档而不是内部树。
+- 决策与偏差：① 主题 description：CLJS 的 `parse-multi-set-dtcg-json` 构造主题时不传 `:description`，导入后一律为空串，TS 照此丢弃文档里的值（测试覆盖）。② 内部键名：CLJS 的 `clj->js` 产出 kebab-case，TS 用 camelCase；内部状态不是文件契约，对拍时归一后比对。③ 空库：CLJS 抛普通 `ex-info`，经 `handle-exception` 成为 `unknown`/`unknown`，TS 同样用 `unknown` 而不是 `data-validation`。④ 旧包漂移：发布版 1.2.0-RC1 的 schema 拒收 shadow 复合值数组与无 `$type` 的 token，当前源码已接受；对拍输入收敛到两者交集，TS 按当前源码实现。
+- 验证：`tsc -p library/tsconfig.json` 0；`tsc -p library/tsconfig.build.json` 0；`node --test "library/target/ts/test-ts/*.test.js"` 57 例全过（48 + 9）。金样本对拍：同一份 DTCG 分别喂给发布包与 TS，`tokens.json` 与内部状态均一致；另加一组无主题输入，验证默认隐藏主题与 `$metadata` 默认值也一致。对拍脚本与临时文件已删。
+- 下一步：G3.3b——`addBool`（`path/bool` 的并/交/差/异或、`calc-bool-content*`、`update-bool-shape`）；之后 G3.4 切 `package.json`/`exports`、删 CLJS 与 shadow-cljs。
 
 ---
 
