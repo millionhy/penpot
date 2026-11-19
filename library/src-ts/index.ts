@@ -10,6 +10,9 @@
 export { BuilderError, createBuildContext } from "./api.ts";
 export type { BuildContext } from "./api.ts";
 
+export { exportAsBlob, exportAsBytes, exportStream } from "./export.ts";
+export type { ExportOptions, ExportProgress } from "./export.ts";
+
 export { createState, toInternalState } from "./builder.ts";
 
 export type {

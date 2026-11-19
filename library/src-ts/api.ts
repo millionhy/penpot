@@ -10,6 +10,7 @@
 import type { BuilderOptions, BuilderState, Shape, Uuid } from "./model.ts";
 import { BuilderFailure } from "./errors.ts";
 import * as core from "./builder.ts";
+import { RAW_STATE } from "./state.ts";
 import { next } from "./uuid.ts";
 
 export class BuilderError extends Error {
@@ -130,6 +131,9 @@ export interface BuildContext {
 
   genId(): string;
   getInternalState(): Record<string, unknown>;
+
+  // The exporter reads the state through this symbol; see `state.ts`.
+  [RAW_STATE](): BuilderState;
 
   deleteShape(id: string): void;
   updateShape(id: string, f: (shape: Shape) => Shape): void;
@@ -342,6 +346,10 @@ export function createBuildContext(options?: unknown): BuildContext {
 
     getInternalState() {
       return core.toInternalState(state);
+    },
+
+    [RAW_STATE]() {
+      return state;
     },
 
     deleteShape(id: Uuid) {
