@@ -315,6 +315,13 @@ export class RenderLoop {
     return true;
   }
 
+  // set-objects: the cold load rebuilds the tile index itself and drops the
+  // interaction flag without the render-finish debounce (`reset!` of the
+  // compiled atom, not `set-view-end`).
+  resetViewInteraction(): void {
+    this.interactionActive = false;
+  }
+
   // finalize-view-interaction!: end the gesture and render one full-quality
   // frame that preserves the presented target. Called on plain clicks too, so
   // the interaction flag is the guard: no gesture, no render.
