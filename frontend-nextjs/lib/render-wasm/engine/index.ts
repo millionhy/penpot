@@ -309,6 +309,17 @@ export {
 } from "./image";
 export { writeHostAttrs, type HostAttrsOptions, type HostAttrsResult } from "./host";
 export {
+  POSITION_DATA_U32_SIZE,
+  POSITION_DATA_U8_SIZE,
+  calculatePositionData,
+  defaultTextAttrs,
+  readPositionEntries,
+  translateDirection,
+  type PositionDataAttrs,
+  type PositionDataShape,
+  type PositionEntry,
+} from "./position-data";
+export {
   CUSTOM_PREFIX,
   DEFAULT_FONT_WEIGHT,
   GFONT_PREFIX,
