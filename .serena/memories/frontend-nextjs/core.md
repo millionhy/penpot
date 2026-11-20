@@ -11,7 +11,8 @@
 
 ## Canvas runtime
 
-- The canvas, viewer and dashboard thumbnails still run on the compiled ClojureScript in `public/js/main.js` + `shared.js` (not committed; built by the `frontend/` container). `lib/render-wasm/bridge.ts` loads both with `webpackIgnore` after defining `shadow$bridge`, `dynamicImport`, the version globals and hidden `#app`/`#modal` hosts.
+- The canvas of `app/` still runs on the compiled ClojureScript in `public/js/main.js` + `shared.js` (not committed; built by the `frontend/` container): the workspace canvas and the thumbnail worker use `lib/render-wasm/bridge.ts`, which loads both with `webpackIgnore` after defining `shadow$bridge`, `dynamicImport`, the version globals and hidden `#app`/`#modal` hosts.
+- Since G4.5b the viewer (viewport, thumbnails panel, one-shot frame renders) runs on `lib/render-wasm/engine/` and never touches `$APP`: `engine-boot.ts` (`loadEngineModule`, one artifact instance), `bundle.ts` (`loadDecodedBundle`, `pageObjects`, `shapeById`), `prepare.ts`, `bounds.ts`, `viewer-shapes.ts`, `sizes.ts` (object-bounds `ignoreMargin: false`).
 - `$APP` is the compiled namespace object; `lib/render-wasm/interop.ts` holds the munged `KEY` table and the CLJS calling conventions (multi-arity extraction, PersistentArrayMap, uuid words). Do not "fix" the `$0` segments in keys.
 - `lib/render-wasm/engine/` (G4) is the TypeScript replacement for `app.render-wasm.api` and `common.render-wasm`: `loadModule` owns the one artifact instance (256 MB heap, never two), `call` maps `_read_error_code` 1/2 to `wasm-non-blocking`/`wasm-panic`, `enums.ts` inlines the serializer discriminants.
 - The artifact is built with `-sENVIRONMENT=web,worker,node`, so node tests may instantiate it and call `_init_headless`; the browser path uses `_init` with a GL canvas.
@@ -27,6 +28,11 @@
 - `engine/image.ts` + `engine/host.ts`: image header 36 bytes (`shape uuid | image uuid | thumbnail u32 | bytes`), `loadImage` registers the url, skips the fetch on a cache hit and never rejects. `writeHostAttrs` replays `set-object-host-attrs` and returns the thumbnail/full promises plus the font handle; `skipLayout`/`skipFillsStrokes` avoid the double write after a cold batch.
 - `engine/modifiers.ts`: modifier entries 40 bytes, structure and propagate inputs 44, propagate output `count + 10×u32` freed after reading. All entry points guard on `ready()`; only `setModifiers` requests the render. An unknown structure modifier type throws instead of letting the Rust `unreachable!` trap.
 - `engine/colors.ts` `hexToArgbU32` expands 3/4-digit shorthand and returns unsigned ARGB; the compiled helper reads `#fff` as `0x00000FFF`.
+- `viewer-render.ts` keeps the module snapshot (`osCanvas`/`pageKey`/size/dpr): it reuses only when the page, the physical size and the dpr match and `ready()`; otherwise `clearCanvas({loseBrowserContext:false})` → `initCanvasContext` → `initializeViewport{backgroundOpacity:0, setObjects(forceSync)}`. Each paint awaits `host.settle()`, turns both rulers off, then `setViewerViewport` → `renderSyncShape` → `drawBitmap`. `frame-render.ts` is the one-shot pass; it ends with `clearCanvas` + `resetViewerSnapshot`.
+- `viewer-host.ts` feeds `writeHostAttrs`: image URLs through `resolveFileMedia`, fonts from the bundle `payload.fonts` variants via `closestVariant`, with in-flight dedupe and a failure cache. Its `settle` mirrors `process-pending` (text layouts, thumbnails then full, relayout + on-complete), because the engine's render callback arrives before the image/font work.
+- `acquireViewerContext`/`releaseViewerContext` count the mounted viewports: the main viewport and every open overlay share one GL context, so only the last release clears and resets it. Closing an overlay must not clear the context behind it; the compiled viewer never clears on unmount.
+- `render-queue.ts` holds the process-wide render chain and the ImageBitmap blit, free of `$APP`; every pass, engine or compiled, has to go through it.
+- Known viewer deviations: no `wasm/disable-request-render?`, no include/clear-fills layer mask, `pageKey` is the page id, and position data runs on the viewport's own model instead of a dedicated context.
 - Slices must not run the CLJS module and the TS engine at the same time: switch a whole subsystem, then remove the old calls.
 
 ## Porting rules

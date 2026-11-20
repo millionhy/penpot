@@ -3391,6 +3391,26 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`pnpm exec vitest run lib/render-wasm/engine` 0（23 文件 272 例，G4.4 新增 100 例：text 13、fonts 13、svg 12、svg-derived 22、layouts 14、image 16、host 8、objects 2）；`pnpm test` 0（127 文件 2492 例）；`pnpm run typecheck` 0。
 - 下一步：G4.5 整片切换——viewer/workspace/缩略图 worker 直接调 `engine/`，删 `frontend/src` 与 shadow-cljs 构建，浏览器对 viewer/workspace 冒烟。
 
+### 7.88 本轮（2026-11-20，第八十七批：G4.5a viewer 准备层）
+
+- 口径：G4.5 前半，纯增量：viewer 需要的几何与准备层先进 `engine/`，viewer 自身仍走 `$APP`，保证同一路由只跑一个 wasm 实例（各约 270 MB 堆）；整片切换留给 G4.5b。
+- 新增：`frontend-nextjs/lib/render-wasm/engine/` 三个源文件 + 三个测试。`bounds.ts`（475 行）：`makeRect`/`pointsRect`/`joinRects`/`rectToPoints`、`calculatePadding`（path 的实心描边额外加一段对角线、cap marker 按 4.25×描边宽）、`shapeFilters`/`calculateFilterBounds`/`getRectFilterBounds`（layer blur 每侧乘 2）、`getShapeFilterBounds`（svg-raw 非 svg 根取 selrect）、`calculateBaseBounds`、`reduceObjects`、`objectBounds`。`path.ts`（228 行）：路径段读取与 `shapeWithOpenPath`（开放路径判定喂给描边 margin）。`transform.ts`（182 行）：`transformMatrix`/`transformMatrixString`/`translateShape`/`shapeCenter`。另新增 `prepare.ts`（92 行，`prepareObjects`/`preparePageObjects`）与 `bundle.ts`（160 行：transit 解码、两轮指针解析、`loadDecodedBundle` 进程内缓存、`pageObjects`/`shapeById`）。
+- 修改：`engine/viewport.ts` 补 `renderSync`/`renderSyncShape`（都走 `ready()` 守卫，后者按 uuid 四字调 `_render_sync_shape`）；`engine/index.ts` 汇总 bounds/path/transform 与两个 render-sync。
+- 关键语义：`objectBounds` 与 CLJS 同序——根形状用调用方的 `ignore-margin`，子形状走 `calculateBaseBounds(child)` 的默认值（子形状的描边不撑大 bounds，只有根自己的 padding 生效），frame 未开 `show-content` 时不遍历、masked group 与 bool 不遍历；这段假设在 sizes 的测试里专门纠过一次。
+- 验证：本轮新增 13 文件 1974 行（测试含 bounds 303 行、bundle 157 行、prepare 91 行、path 87 行、transform 117 行）；与 G4.5b 合并验证：`pnpm test` 0（134 文件 2569 例）、`pnpm run typecheck` 0。
+- 下一步：G4.5b 整片切换——viewer 组件、缩略图与一次性出图改调 `engine/`，去掉 viewer 路径上的 `$APP`。
+
+### 7.89 本轮（2026-11-20，第八十八批：G4.5b viewer 整片切到 TS 引擎）
+
+- 口径：G4.5 后半，viewer 整片切到 TS 引擎：`viewer-wasm-viewport`、`viewer-thumbnails` 与一次性出图不再经 `lib/render-wasm/bridge.ts` 加载 CLJS 产物、不再调 `$APP`；workspace 画布与缩略图 worker 仍走 `$APP`，两者分属不同 wasm 实例但不同路由，不并存。
+- 新增：`engine-boot.ts`（45 行：`<public-uri>/js/render-wasm.js|.wasm?version=<tag>`，空 `publicUri` 落 `/`）；`render-queue.ts`（53 行：进程级串行队列与 `drawBitmap` 的 ImageBitmap blit，不含 `$APP`）；`viewer-host.ts`（图片 URL 经 `resolveFileMedia`，字体取 bundle 的 `payload.fonts` 变体配 `closestVariant`，带 in-flight 去重与失败缓存，`hostAttrs` 包 `writeHostAttrs`，`settle` 复刻 `process-pending`）；`viewer-render.test.ts`。
+- 修改：`viewer-render.ts` 重写为引擎版（snapshot 复用 + fresh 重建 + 排队 pass）；`frame-render.ts` 重写为一次性引擎 pass；`sizes.ts`、`viewer-shapes.ts`、`position-data.ts` 改读解码后的 bundle 对象；`pass-common.ts` 瘦身成 `$APP` 剩余的 `renderSync`/`renderSyncShape`/`readDpr`；`engine/objects.ts` 的 `pathBytes` 接受解码后的 PathData（`{ bytes }`）；两个组件改接新入口；`frame-render.test.ts` 重写、`sizes.test.ts` 修正断言。
+- 关键语义：`renderViewerFrame` 先看 snapshot（osCanvas/pageKey/尺寸/dpr，且 `ready()`），同页同尺寸直接复用，否则 `clearCanvas({loseBrowserContext:false})` → `initCanvasContext` → `initializeViewport{backgroundOpacity:0, forceSync}`；`setObjects` 的 `onShape` 交给 host 写文本/图片，`render` 回调里先 `await host.settle()`（图片与字体落盘并重排文本），再 rulers 全关 → `setViewerViewport` → `renderSyncShape` → `drawBitmap`。一次性出图末尾 `clearCanvas` + `resetViewerSnapshot`，所以 viewport 下一趟必然重建。
+- 挂载计数：主 viewport 与每个打开的 overlay 共用同一个 GL 上下文，卸载只在最后一个释放者才 clear + reset（`acquireViewerContext`/`releaseViewerContext`），关闭 overlay 不会清掉背后 viewport 的场景；CLJS 卸载从不清，计数是更窄的等价做法。
+- 决策与偏差：① 引擎不暴露 `wasm/disable-request-render?`，pass 无法翻这个开关；所有 pass 走同一队列，零散的 scheduled render 只会重画同一视图、不再 blit。② 固定滚动层的 include/clear-fills 掩码没有引擎 API，viewer 暂时整页一面。③ `pageKey` 就是 page id（CLJS 调用点传的也是 page id）。④ position-data 在 viewport 自己的模型上算，CLJS 用的是专用离屏上下文。⑤ 同步 pass 的 `on-render` 早于图片/字体，`host.settle()` 补上这段等待。
+- 验证：`pnpm exec vitest run lib/render-wasm` 0；`pnpm test` 0（134 文件 2569 例）；`pnpm run typecheck` 0。新增 viewer-render 4 例（fresh 顺序含 clear 在 init 前、snapshot 复用/换页重建/尺寸 resize、init 失败仍 finish、挂载计数），frame-render 3 例（完整顺序含 host.settle 在 set-objects 之后、init 失败 reject、队列串行）；引擎 barrel 用 mock，断言的是调用顺序。
+- 下一步：G4.6 把 workspace 画布与缩略图 worker 也切到 `engine/`（`viewport_wasm.cljs` 的 `$APP` 调用面），之后删 `frontend/src` 与 shadow-cljs 构建，浏览器对 viewer/workspace 冒烟。
+
 ---
 
 ## 8. 开发环境备注（本机）
