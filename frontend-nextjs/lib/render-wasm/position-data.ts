@@ -1,93 +1,113 @@
-// update-page-position-data (F6.4): computes the position-data of the text
-// shapes that lack it, the port of update-page-position-data in
-// app.main.data.viewer. The CLJS runs it after bundle-fetched through a
-// dedicated 64x64 offscreen pass: init-canvas-context, then set-objects
-// callback (a per-shape serializer this bundle does not export), then
-// calculate-position-data per shape, then clear-canvas. The bundle is a
-// fixed artifact older than that callback export, so the pass reuses the
-// model the viewport already loaded instead: the viewport calls this from
-// its on-render callback, after set-objects serialized the page and the
-// font pass ran, which is the earliest point calculate-position-data is
-// meaningful. The calculation itself is not ported: the compiled
-// calculate_position_data does use-shape, calls into Rust and deserializes
-// the result into a CLJS vector of plain maps, which is exactly what the
-// CLJS wrapper consumes.
+// update-page-position-data (F6.4, engine port of G4.5b): computes the
+// position-data of the text shapes that lack it, the port of
+// update-page-position-data in app.main.data.viewer.
 //
-// calculate-position-data answers nil when the wasm context is not
-// initialized (a thumbnail render may have torn it down). A pass that hits
-// nil is not cached, so the next viewport run (after its re-init) retries.
+// The CLJS runs a dedicated 64x64 offscreen pass: init-canvas-context, then
+// set-objects-callback over the shapes, then calculate-position-data per
+// shape, then clear-canvas. The engine viewer already uploaded the whole page
+// to the shared context, so this module reuses that model instead: the
+// viewport calls it from its on-render callback, after the set-objects pass
+// serialized the page and the font pass ran, which is the earliest point
+// calculate-position-data is meaningful.
+//
+// calculate-position-data answers undefined when the wasm context is not
+// ready (a thumbnail render may have torn it down). A pass that hits
+// undefined is not cached, so the next viewport run (after its re-init)
+// retries.
+//
+// Deviations from the CLJS original, documented:
+// - The CLJS feeds the calculations through a throwaway context holding only
+//   the text shapes; this port asks the shared viewer context, which holds
+//   the whole page. The returned value is the same attrs vector.
+// - The CLJS applies the result as :mod-obj changes so the viewer model
+//   carries the position-data; the port returns the updated map and the
+//   viewport only records the pass state. The hotspot layer never reads
+//   position-data, so the model stays untouched until a consumer needs it.
 
-import { KEY, call, get, keyword, type RendererApp } from "./interop";
+import { calculatePositionData, type PositionDataAttrs } from "./engine/position-data";
+import type { PositionDataShape } from "./engine/position-data";
+import type { RenderWasmModule } from "./engine";
 
 export interface PositionDataResult {
-  // The objects map with :position-data assoc'ed into the shapes that got
-  // a fresh computation; the same reference when nothing changed.
-  objects: unknown;
+  // The objects map with position-data assoc'ed into the shapes that got a
+  // fresh computation; the same reference when nothing changed.
+  objects: Readonly<Record<string, unknown>>;
   // How many shapes were computed in this call (0 when the cache answered
   // or when every text shape already had position-data).
   computed: number;
   // True when the pass ran to completion (every missing shape computed, or
   // none missing) and its result is cached; false when a computation
-  // answered nil and the pass must retry later.
+  // answered undefined and the pass must retry later.
   complete: boolean;
 }
 
-// One finished pass per app and page: later viewport runs (zoom changes,
-// re-inits after a thumbnail render) answer from here. Only completed
-// passes are cached, so a torn-down wasm context cannot freeze a partial
-// result.
-const positionCaches = new WeakMap<RendererApp, Map<string, unknown>>();
+// One finished pass per module and page: later viewport runs (zoom changes,
+// re-inits after a thumbnail render) answer from here. Only completed passes
+// are cached, so a torn-down wasm context cannot freeze a partial result.
+const positionCaches = new WeakMap<
+  RenderWasmModule,
+  Map<string, Readonly<Record<string, unknown>>>
+>();
 
-function isTextShape(app: RendererApp, shape: unknown): boolean {
-  return call(app, KEY.textShapeQmark, shape) === true;
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 export function updatePagePositionData(
-  app: RendererApp,
-  objects: unknown,
+  module: RenderWasmModule,
+  objects: Readonly<Record<string, unknown>>,
   pageId: string,
 ): PositionDataResult {
-  let cache = positionCaches.get(app);
+  let cache = positionCaches.get(module);
   if (cache !== undefined) {
     const cached = cache.get(pageId);
     if (cached !== undefined) return { objects: cached, computed: 0, complete: true };
   }
 
-  const positionDataKey = keyword(app, "position-data");
-  let out = objects;
+  let out: Readonly<Record<string, unknown>> = objects;
   let computed = 0;
   let complete = true;
 
-  // The CLJS keeps the objects map unchanged and assocs per shape; the
-  // walk here rebuilds nothing until a shape actually gets an entry.
-  let s = call(app, KEY.seq, objects);
-  while (s !== null && s !== undefined) {
-    const entry = call(app, KEY.first, s);
-    const shape = call(app, KEY.val, entry);
-    const hasData = get(app, shape, positionDataKey);
-    if (hasData === null && isTextShape(app, shape)) {
-      const data = call(app, KEY.calculatePositionData, shape);
-      if (data === null || data === undefined) {
-        // The wasm context is not live (or the shape vanished): retry on
-        // the next run instead of caching a half-done pass.
-        complete = false;
-      } else {
-        const key = call(app, KEY.first, entry);
-        const next = call(app, KEY.assoc, shape, positionDataKey, data);
-        out = call(app, KEY.assoc, out, key, next);
-        computed += 1;
-      }
+  // The walk rebuilds the map only when a shape actually gets an entry, and
+  // then copies once: the shape loop runs on the original values.
+  const updates = new Map<string, PositionDataAttrs[]>();
+  for (const [id, shape] of Object.entries(objects)) {
+    if (!isObject(shape)) continue;
+    if (shape.type !== "text") continue;
+    if (shape["position-data"] !== undefined && shape["position-data"] !== null) continue;
+    // A text shape always carries both fields on decoded objects.
+    const data = calculatePositionData(module, shape as unknown as PositionDataShape);
+    if (data === undefined) {
+      // The wasm context is not ready (or the shape vanished): retry on the
+      // next run instead of caching a half-done pass.
+      complete = false;
+      continue;
     }
-    s = call(app, KEY.next, s);
+    updates.set(id, data);
+    computed += 1;
+  }
+
+  if (updates.size > 0) {
+    const next: Record<string, unknown> = { ...objects };
+    for (const [id, data] of updates) {
+      next[id] = { ...(objects[id] as Record<string, unknown>), "position-data": data };
+    }
+    out = next;
   }
 
   if (complete) {
     if (cache === undefined) {
       cache = new Map();
-      positionCaches.set(app, cache);
+      positionCaches.set(module, cache);
     }
     cache.set(pageId, out);
   }
 
   return { objects: out, computed, complete };
+}
+
+// Test seam: drop the cached passes of one module (the module singleton
+// outlives a page switch between tests).
+export function resetPositionDataCache(module: RenderWasmModule): void {
+  positionCaches.delete(module);
 }

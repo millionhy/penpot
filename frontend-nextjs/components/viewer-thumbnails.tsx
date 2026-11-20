@@ -12,9 +12,10 @@
 //   app.main.render-viewer-wasm), not the CLJS frame-svg tree: the shell
 //   has no SVG shape renderer, and the wasm one is the documented path
 //   for thumbnails. The CLJS renders thumbnails lazily per item as the
-//   panel opens; so does this one (gated by show).
+//   panel opens; so does this one (gated by show). Since G4.5b the pass
+//   runs on the TypeScript engine instead of $APP.
 // - That pass tears down the shared wasm GL context when it finishes
-//   (clear-canvas is its last step), so each finished bitmap announces
+//   (clearCanvas is its last step), so each finished bitmap announces
 //   itself on "penpot:wasm:offscreen-render"; the viewport listens and
 //   rebuilds (see components/viewer-wasm-viewport).
 // - The CLJS selected var (compare-and-set! but never read) is dropped.
@@ -26,11 +27,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowIcon, CloseIcon } from "@/components/viewer-icons";
-import { ensureWasmModule, loadRenderer } from "@/lib/render-wasm/bridge";
+import {
+  loadDecodedBundle,
+  pageObjects as readPageObjects,
+  shapeById,
+} from "@/lib/render-wasm/bundle";
+import { loadEngineModule } from "@/lib/render-wasm/engine-boot";
 import { renderFrameToCanvas } from "@/lib/render-wasm/frame-render";
-import { get, keyword, uuid } from "@/lib/render-wasm/interop";
 import { calculateSize } from "@/lib/render-wasm/sizes";
-import { loadDecodedBundle } from "@/lib/render-wasm/values";
+import { createViewerHost } from "@/lib/render-wasm/viewer-host";
 import { tr } from "@/lib/i18n";
 import {
   THUMBNAIL_ITEM_WIDTH,
@@ -76,40 +81,39 @@ function ThumbnailBitmap({ fileId, shareId, pageId, frameId, show }: ThumbnailBi
 
     void (async () => {
       try {
-        const app = await loadRenderer();
-        if (!alive()) return;
-        await ensureWasmModule(app);
+        const module = await loadEngineModule();
         if (!alive()) return;
 
-        const bundle = await loadDecodedBundle(app, { fileId, shareId });
+        const bundle = await loadDecodedBundle({ fileId, shareId });
         if (!alive()) return;
-        const pagesIndex = get(app, bundle.fileData, keyword(app, "pages-index"));
-        const page = get(app, pagesIndex, uuid(app, pageId));
-        if (page === null || page === undefined) {
-          throw new Error(`render-wasm: page ${pageId} not found in the bundle`);
-        }
-        const objects = get(app, page, keyword(app, "objects"));
-        if (objects === null || objects === undefined) {
+        const objects = readPageObjects(bundle.fileData, pageId);
+        if (objects === undefined) {
           throw new Error(`render-wasm: page ${pageId} has no objects`);
         }
-        const frame = get(app, objects, uuid(app, frameId));
-        if (frame === null || frame === undefined) {
+        const frame = shapeById(objects, frameId);
+        if (frame === undefined) {
           throw new Error(`render-wasm: frame ${frameId} not on page ${pageId}`);
         }
 
         // The padded bounds at 1:1 (calculate-size); the canvas physical
         // size keeps the aspect ratio inside the square preview box.
-        const size = calculateSize(app, objects, frame, 1);
+        const size = calculateSize(objects, frame, 1);
         const scale = BITMAP_SIZE_PX / Math.max(size.baseWidth, size.baseHeight, 1);
         canvas.width = Math.max(1, Math.round(size.baseWidth * scale));
         canvas.height = Math.max(1, Math.round(size.baseHeight * scale));
         if (!alive()) return;
 
+        // The image/font half of the upload: media URLs and the custom
+        // fonts of the bundle, the same host the viewport uses.
+        const host = createViewerHost({ module, bundle, shareId });
+
         // The render is fire-and-forget: the promise settles once the
         // bitmap landed on the canvas (and the shared context was torn
         // down). Both state writes are unconditional: the runs race on a
         // canvas that stays mounted, and the last paint is the truth.
-        void renderFrameToCanvas(app, objects, frameId, canvas, { x: size.x, y: size.y }, scale)
+        void renderFrameToCanvas(module, objects, frameId, canvas, { x: size.x, y: size.y }, scale, {
+          host,
+        })
           .then(() => {
             canvas.dataset.rendered = "true";
             renderedRef.current = true;

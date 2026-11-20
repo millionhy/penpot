@@ -1,17 +1,18 @@
 // calculate-size (F6.4): the viewer's padded frame bounds, the port of the
-// private calculate-size in app.main.ui.viewer. The bounds come from the
-// compiled bounds module instead of a TypeScript port:
+// private calculate-size in app.main.ui.viewer. Since G4.5b the bounds come
+// from the TypeScript port of gsb/get-object-bounds rather than the compiled
+// export:
 //
 //   (gsb/get-object-bounds objects frame {:ignore-margin? false})
 //
 // The padding depends on strokes (including open-path cap markers), shadows
-// and blurs, and the compiled get_object_bounds already owns every rule
-// (stroke-margin-multiplier, drop-shadow margin, blur doubling...), so the
-// bridge calls the export and only multiplies by the zoom afterwards. The
-// zoomed width/height size the canvas; x/y are the design-space top-left
-// that feeds the wasm _set_view origin.
+// and blurs, and engine/bounds already owns every rule
+// (stroke-margin-multiplier, drop-shadow margin, blur doubling...), so this
+// module only multiplies by the zoom afterwards. The zoomed width/height size
+// the canvas; x/y are the design-space top-left that feeds the wasm
+// _set_view origin.
 
-import { KEY, arrayMap, call, get, keyword, type RendererApp } from "./interop";
+import { objectBounds } from "./engine";
 
 // The shape of the CLJS calculate-size output the viewer passes around
 // (base-* are zoom-free, width/height already carry the zoom).
@@ -27,7 +28,7 @@ export interface ViewerSize {
 function asNumber(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new Error(
-      `render-wasm: get-object-bounds ${label} is not a number ` +
+      `render-wasm: object-bounds ${label} is not a number ` +
         `(${JSON.stringify(value)}) — did the frame lookup fail?`,
     );
   }
@@ -38,17 +39,15 @@ function asNumber(value: unknown, label: string): number {
 // map is the same one the CLJS passes (ignore-margin? false: the frame
 // margin reserves room for its own strokes and shadows).
 export function calculateSize(
-  app: RendererApp,
-  objects: unknown,
-  frame: unknown,
+  objects: Readonly<Record<string, unknown>>,
+  frame: Record<string, unknown>,
   zoom: number,
 ): ViewerSize {
-  const options = arrayMap(app, [[keyword(app, "ignore-margin?"), false]]);
-  const bounds = call(app, KEY.getObjectBounds, objects, frame, options);
-  const width = asNumber(get(app, bounds, keyword(app, "width")), "width");
-  const height = asNumber(get(app, bounds, keyword(app, "height")), "height");
-  const x = asNumber(get(app, bounds, keyword(app, "x")), "x");
-  const y = asNumber(get(app, bounds, keyword(app, "y")), "y");
+  const bounds = objectBounds(objects, frame, { ignoreMargin: false });
+  const width = asNumber(bounds.width, "width");
+  const height = asNumber(bounds.height, "height");
+  const x = asNumber(bounds.x, "x");
+  const y = asNumber(bounds.y, "y");
   return {
     baseWidth: width,
     baseHeight: height,

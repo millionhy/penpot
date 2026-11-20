@@ -103,6 +103,13 @@ export function shapesInTreeOrder(objects: ShapeObjects): Shape[] {
 function pathBytes(content: unknown): Uint8Array | undefined {
   if (content instanceof Uint8Array) return content;
   if (content instanceof ArrayBuffer) return new Uint8Array(content);
+  // A decoded `penpot/path-data` value (lib/transit PathData) carries the
+  // packed segments in `bytes`; the bundle of the viewer decodes to that
+  // shape, so the tail reads them without the engine importing the model.
+  if (content !== null && typeof content === "object") {
+    const bytes = (content as { bytes?: unknown }).bytes;
+    if (bytes instanceof Uint8Array) return bytes;
+  }
   return undefined;
 }
 

@@ -139,6 +139,14 @@ describe("needsShapeTail", () => {
     expect(needsShapeTail(shape(A, { type: "path", content: "not bytes" }))).toBe(false);
     expect(needsShapeTail(shape(A, { type: "rect", content: new Uint8Array(4) }))).toBe(false);
   });
+
+  it("reads the packed bytes of a decoded PathData value", () => {
+    // lib/transit PathData: the segment bytes live on `bytes`, not on the
+    // value itself (the bundle of the viewer decodes to this shape).
+    const pathData = { bytes: new Uint8Array(28), count: 1 };
+    expect(needsShapeTail(shape(A, { type: "path", content: pathData }))).toBe(true);
+    expect(needsShapeTail(shape(A, { type: "path", content: { bytes: null } }))).toBe(false);
+  });
 });
 
 describe("serializeShapesBatch", () => {

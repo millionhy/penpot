@@ -1,39 +1,25 @@
-// The CLJS-to-plain bridge for the viewer hotspot layer (F6.5): the hot
-// path of viewport-wasm* runs on the compiled objects, but the interaction
-// math of lib/viewer-interactions.ts speaks plain decoded values, so this
-// module converts the prepared shapes the compiled side produces
-// (viewport_common/prepare-objects) into the plain shape slice and collects
-// the hotspot entries the SVG layer draws (frame-hotspots* + hotspot*).
+// The plain-data bridge for the viewer hotspot layer (F6.5, engine port of
+// G4.5b): the interaction math of lib/viewer-interactions.ts speaks plain
+// decoded values, and so does the viewer bundle since lib/render-wasm/bundle
+// (keywords and uuids decode to strings, objects-map/v2 to a plain record).
+// This module therefore reads the shapes directly, with no $APP in between:
 //
-// Everything here crosses into $APP through interop.ts; the pure logic it
-// feeds stays unit-tested in vitest (lib/viewer-interactions.test.ts).
+// - the prepared map (preparePageObjects) shifted into vbox space,
+// - the plain shape slice the interaction math reads,
+// - the hotspot entries the SVG layer draws (frame-hotspots* + hotspot*).
 //
 // Deviations from the CLJS original, documented:
-// - prepare-page-objects was inlined by the optimizer and is not on $APP
-//   (runtime-probed undefined); prepareAllObjects rebuilds the same shift by
-//   chaining prepare-objects over every top-level frame subtree (subtree
-//   shifts do not overlap, so the result matches the single full-map pass
-//   for every shape inside a frame; shapes loose on the page root stay
-//   unshifted, an edge the viewer interactions never read).
-// - transform-str is a multi-arity dispatcher whose arity properties carry
-//   the $ wrapping of this build; interop.call falls back to the direct
-//   call, which the dispatcher routes by arguments.length (runtime-probed).
-// - A hotspot without a selrect is skipped instead of drawing a rect of
-//   null attributes, and a non-string transform falls back to "" (both
-//   cannot happen on the prepared data).
+// - prepare-page-objects is ported in lib/render-wasm/prepare.ts over the
+//   decoded map; the views of the overlay path (an alignment delta) stay for
+//   a later slice, so the main viewport passes a (0, 0) delta.
+// - A hotspot without a selrect is skipped instead of drawing a rect of null
+//   attributes (cannot happen on decoded objects).
+// - transform-str is the engine port transformMatrixString, which prints the
+//   same matrix(a, b, c, d, e, f) with six decimals.
 
 import {
-  KEY,
-  arrayMap,
-  call,
-  get,
-  keyword,
-  uuid,
-  type RendererApp,
-} from "./interop";
-import {
-  actionable,
   hotspotShapes,
+  actionable,
   type InteractionAnimation,
   type InteractionShape,
   type Point,
@@ -41,68 +27,61 @@ import {
   type ViewerInteraction,
 } from "../viewer-interactions";
 import type { ViewerShape } from "../viewer";
-import { ZERO_UUID } from "../viewer";
+import { transformMatrixString } from "./engine";
+import { preparePageObjects } from "./prepare";
 
 type Selrect = NonNullable<ViewerShape["selrect"]>;
 
-// get() answers CLJS nil as null; these readers normalize to undefined for
-// missing values so callers use plain ?? / !== undefined checks.
-function readRaw(app: RendererApp, m: unknown, key: string): unknown {
-  return get(app, m, keyword(app, key));
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
-function readNumber(app: RendererApp, m: unknown, key: string): number | undefined {
-  const v = readRaw(app, m, key);
-  return typeof v === "number" ? v : undefined;
+function readRaw(m: unknown, key: string): unknown {
+  return record(m)?.[key];
 }
 
-function readBool(app: RendererApp, m: unknown, key: string): boolean | undefined {
-  const v = readRaw(app, m, key);
-  return typeof v === "boolean" ? v : undefined;
+function readNumber(m: unknown, key: string): number | undefined {
+  const value = readRaw(m, key);
+  return typeof value === "number" ? value : undefined;
 }
 
-function readString(app: RendererApp, m: unknown, key: string): string | undefined {
-  const v = readRaw(app, m, key);
-  return typeof v === "string" ? v : undefined;
+function readBool(m: unknown, key: string): boolean | undefined {
+  const value = readRaw(m, key);
+  return typeof value === "boolean" ? value : undefined;
 }
 
-function readKeyword(app: RendererApp, m: unknown, key: string): string | undefined {
-  const v = readRaw(app, m, key);
-  if (typeof v === "string") return v;
-  if (v === null || v === undefined) return undefined;
-  const n = call(app, KEY.name, v);
-  return typeof n === "string" ? n : undefined;
+function readString(m: unknown, key: string): string | undefined {
+  const value = readRaw(m, key);
+  return typeof value === "string" ? value : undefined;
 }
 
-// A uuid value as the plain string; nil answers null (the ?? null shape of
-// the decoded side).
-function readId(app: RendererApp, m: unknown, key: string): string | null {
-  const v = readRaw(app, m, key);
-  if (v === null || v === undefined) return null;
-  const s = call(app, KEY.str, v);
-  return typeof s === "string" ? s : null;
+// Keywords decode to their name string; a missing value answers undefined.
+function readKeyword(m: unknown, key: string): string | undefined {
+  return readString(m, key);
 }
 
-function readIdVector(app: RendererApp, v: unknown): string[] | undefined {
-  if (v === null || v === undefined) return undefined;
-  const out: string[] = [];
-  let s = call(app, KEY.seq, v);
-  while (s !== null && s !== undefined) {
-    const item = call(app, KEY.first, s);
-    const str = item === null || item === undefined ? null : call(app, KEY.str, item);
-    if (typeof str === "string") out.push(str);
-    s = call(app, KEY.next, s);
-  }
-  return out;
+// A uuid decodes to its string form; nil answers null (the shape of the
+// decoded side).
+function readId(m: unknown, key: string): string | null {
+  const value = readRaw(m, key);
+  return typeof value === "string" ? value : null;
 }
 
-// The compiled shape's selrect as the plain slice (the delta of an overlay
-// viewport keeps this raw value: calculate-size and calculate-delta work on
-// the unprepared frame, like the CLJS viewer-overlay).
-export function readSelrect(app: RendererApp, v: unknown): Selrect | undefined {
-  if (v === null || v === undefined) return undefined;
+function readIdVector(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+// The frame's selrect as the plain slice (the delta of an overlay viewport
+// keeps this raw value: calculate-size and calculate-delta work on the
+// unprepared frame, like the CLJS viewer-overlay).
+export function readSelrect(value: unknown): Selrect | undefined {
+  const v = record(value);
+  if (v === undefined) return undefined;
   const num = (key: string): number | undefined => {
-    const n = get(app, v, keyword(app, key));
+    const n = v[key];
     return typeof n === "number" ? n : undefined;
   };
   const x = num("x");
@@ -115,140 +94,107 @@ export function readSelrect(app: RendererApp, v: unknown): Selrect | undefined {
   return { x, y, width, height, x1: num("x1"), y1: num("y1"), x2: num("x2"), y2: num("y2") };
 }
 
-function readPoint(app: RendererApp, v: unknown): Point | null {
-  if (v === null || v === undefined) return null;
-  const x = get(app, v, keyword(app, "x"));
-  const y = get(app, v, keyword(app, "y"));
-  return { x: typeof x === "number" ? x : 0, y: typeof y === "number" ? y : 0 };
+function readPoint(value: unknown): Point | null {
+  const v = record(value);
+  if (v === undefined) return null;
+  return {
+    x: typeof v.x === "number" ? v.x : 0,
+    y: typeof v.y === "number" ? v.y : 0,
+  };
 }
 
-function readAnimation(app: RendererApp, v: unknown): InteractionAnimation | null {
-  if (v === null || v === undefined) return null;
-  const animationType = readKeyword(app, v, "animation-type");
+function readAnimation(value: unknown): InteractionAnimation | null {
+  const v = record(value);
+  if (v === undefined) return null;
+  const animationType = readKeyword(v, "animation-type");
   if (animationType !== "dissolve" && animationType !== "slide" && animationType !== "push") {
     return null;
   }
-  const way = readKeyword(app, v, "way");
-  const direction = readKeyword(app, v, "direction");
+  const way = readKeyword(v, "way");
+  const direction = readKeyword(v, "direction");
   return {
     "animation-type": animationType,
-    duration: readNumber(app, v, "duration"),
-    easing: readString(app, v, "easing"),
+    duration: readNumber(v, "duration"),
+    easing: readString(v, "easing"),
     way: way === "in" || way === "out" ? way : undefined,
     direction:
       direction === "right" || direction === "left" || direction === "up" || direction === "down"
         ? direction
         : undefined,
-    "offset-effect": readBool(app, v, "offset-effect"),
+    "offset-effect": readBool(v, "offset-effect"),
   };
 }
 
-function convertInteraction(app: RendererApp, m: unknown): ViewerInteraction {
+function convertInteraction(m: unknown): ViewerInteraction {
   return {
-    "action-type": readKeyword(app, m, "action-type"),
-    "event-type": readKeyword(app, m, "event-type"),
-    destination: readId(app, m, "destination"),
-    url: readString(app, m, "url"),
-    "preserve-scroll": readBool(app, m, "preserve-scroll"),
-    "overlay-pos-type": readKeyword(app, m, "overlay-pos-type"),
-    "position-relative-to": readId(app, m, "position-relative-to"),
-    "close-click-outside": readBool(app, m, "close-click-outside"),
-    "background-overlay": readBool(app, m, "background-overlay"),
-    "overlay-position": readPoint(app, readRaw(app, m, "overlay-position")),
-    animation: readAnimation(app, readRaw(app, m, "animation")),
-    delay: readNumber(app, m, "delay"),
+    "action-type": readKeyword(m, "action-type"),
+    "event-type": readKeyword(m, "event-type"),
+    destination: readId(m, "destination"),
+    url: readString(m, "url"),
+    "preserve-scroll": readBool(m, "preserve-scroll"),
+    "overlay-pos-type": readKeyword(m, "overlay-pos-type"),
+    "position-relative-to": readId(m, "position-relative-to"),
+    "close-click-outside": readBool(m, "close-click-outside"),
+    "background-overlay": readBool(m, "background-overlay"),
+    "overlay-position": readPoint(readRaw(m, "overlay-position")),
+    animation: readAnimation(readRaw(m, "animation")),
+    delay: readNumber(m, "delay"),
   };
 }
 
-function convertInteractions(app: RendererApp, v: unknown): ViewerInteraction[] | undefined {
-  if (v === null || v === undefined) return undefined;
+function convertInteractions(value: unknown): ViewerInteraction[] | undefined {
+  if (!Array.isArray(value)) return undefined;
   const out: ViewerInteraction[] = [];
-  let s = call(app, KEY.seq, v);
-  while (s !== null && s !== undefined) {
-    out.push(convertInteraction(app, call(app, KEY.first, s)));
-    s = call(app, KEY.next, s);
+  for (const item of value) {
+    if (record(item) !== undefined) out.push(convertInteraction(item));
   }
   return out;
 }
 
-// One prepared CLJS shape as the plain InteractionShape slice. Empty only
-// when the value carries no id (cannot happen on decoded objects).
-export function convertShape(app: RendererApp, raw: unknown): InteractionShape {
+// One prepared shape as the plain InteractionShape slice. Empty only when
+// the value carries no id (cannot happen on decoded objects).
+export function convertShape(raw: unknown): InteractionShape {
   return {
-    id: readId(app, raw, "id") ?? "",
-    type: readKeyword(app, raw, "type"),
-    name: readString(app, raw, "name"),
-    x: readNumber(app, raw, "x"),
-    y: readNumber(app, raw, "y"),
-    shapes: readIdVector(app, readRaw(app, raw, "shapes")),
-    selrect: readSelrect(app, readRaw(app, raw, "selrect")),
-    "frame-id": readId(app, raw, "frame-id"),
-    "parent-id": readId(app, raw, "parent-id"),
-    "fixed-scroll": readBool(app, raw, "fixed-scroll"),
-    interactions: convertInteractions(app, readRaw(app, raw, "interactions")),
-    hidden: readBool(app, raw, "hidden"),
+    id: readId(raw, "id") ?? "",
+    type: readKeyword(raw, "type"),
+    name: readString(raw, "name"),
+    x: readNumber(raw, "x"),
+    y: readNumber(raw, "y"),
+    shapes: readIdVector(readRaw(raw, "shapes")),
+    selrect: readSelrect(readRaw(raw, "selrect")),
+    "frame-id": readId(raw, "frame-id"),
+    "parent-id": readId(raw, "parent-id"),
+    "fixed-scroll": readBool(raw, "fixed-scroll"),
+    interactions: convertInteractions(readRaw(raw, "interactions")),
+    hidden: readBool(raw, "hidden"),
   };
 }
 
 // The ShapeReader over a prepared objects map, with a per-load cache (the
 // interaction math re-reads the same ids several times: children walks,
 // parent walks, frame lookups).
-export function createShapeReader(app: RendererApp, objects: unknown): ShapeReader {
+export function createShapeReader(
+  objects: Readonly<Record<string, unknown>>,
+): ShapeReader {
   const cache = new Map<string, InteractionShape | undefined>();
   return (id) => {
     if (cache.has(id)) return cache.get(id);
-    const raw = get(app, objects, uuid(app, id));
-    const converted = raw === null || raw === undefined ? undefined : convertShape(app, raw);
+    const raw = objects[id];
+    const converted = raw === undefined ? undefined : convertShape(raw);
     cache.set(id, converted);
     return converted;
   };
 }
 
-// vpc/prepare-objects: the frame subtree shifted into vbox space by
-// -(size + delta). The caller passes the padded bounds origin and (0, 0),
-// the delta of the current viewport (viewer.cljs viewer-wrapper).
-export function prepareObjects(
-  app: RendererApp,
-  frame: unknown,
-  size: Point,
-  delta: Point,
-  objects: unknown,
-): unknown {
-  const sizeMap = arrayMap(app, [
-    [keyword(app, "x"), size.x],
-    [keyword(app, "y"), size.y],
-  ]);
-  const deltaMap = arrayMap(app, [
-    [keyword(app, "x"), delta.x],
-    [keyword(app, "y"), delta.y],
-  ]);
-  return call(app, KEY.prepareObjects, frame, sizeMap, deltaMap, objects);
-}
-
-// vpc/prepare-page-objects, rebuilt for this build: the compiled export is
-// inlined, so shift every top-level frame subtree with one prepare-objects
-// call per frame. Top-level subtrees are disjoint, so for every shape inside
-// a frame the chain matches the single full-map pass. Shapes loose on the
-// page root keep their design coordinates (the viewer interactions never
-// read them).
+// vpc/prepare-page-objects for the main viewport, over the decoded map. The
+// delta is the alignment offset of an overlay viewport (0, 0 for the main
+// one); the render origin adds it separately.
 export function prepareAllObjects(
-  app: RendererApp,
-  objects: unknown,
+  objects: Readonly<Record<string, unknown>>,
   size: Point,
   delta: Point,
-): unknown {
-  const root = get(app, objects, uuid(app, ZERO_UUID));
-  if (root === null || root === undefined) return objects;
-  const children = readIdVector(app, readRaw(app, root, "shapes"));
-  if (children === undefined) return objects;
-  let prepared = objects;
-  for (const id of children) {
-    const shape = get(app, prepared, uuid(app, id));
-    if (shape === null || shape === undefined) continue;
-    if (readKeyword(app, shape, "type") !== "frame") continue;
-    prepared = prepareObjects(app, shape, size, delta, prepared);
-  }
-  return prepared;
+): Record<string, unknown> {
+  return preparePageObjects(objects, size, delta);
 }
 
 // One drawable hotspot: the plain shape for the handlers plus the SVG rect
@@ -266,8 +212,7 @@ export interface HotspotEntry {
 // the (cons frame-id children) order. The reader answers the prepared
 // shapes; prepared only supplies the raw shape for transform-str.
 export function collectHotspots(
-  app: RendererApp,
-  prepared: unknown,
+  prepared: Readonly<Record<string, unknown>>,
   reader: ShapeReader,
   frameId: string,
   filter?: (id: string) => boolean,
@@ -276,13 +221,12 @@ export function collectHotspots(
   for (const shape of hotspotShapes(reader, frameId, filter)) {
     const selrect = shape.selrect;
     if (selrect === undefined) continue;
-    const raw = get(app, prepared, uuid(app, shape.id));
-    if (raw === null || raw === undefined) continue;
-    const transform = call(app, KEY.transformStr, raw);
+    const raw = prepared[shape.id];
+    if (raw === undefined) continue;
     out.push({
       id: shape.id,
       rect: { x: selrect.x, y: selrect.y, width: selrect.width, height: selrect.height },
-      transform: typeof transform === "string" ? transform : "",
+      transform: transformMatrixString(raw as Record<string, unknown>),
       pointer: actionable(shape.interactions),
       shape,
     });

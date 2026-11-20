@@ -1,81 +1,26 @@
 import { describe, expect, it } from "vitest";
 
-import { KEY, type RendererApp } from "@/lib/render-wasm/interop";
 import { calculateSize } from "@/lib/render-wasm/sizes";
 
-// sizes.ts talks to the compiled runtime through four helpers (keyword,
-// persistent-array-map, get and one call target); this miniature runtime
-// answers them the way the compiled exports do: interned keywords, maps as
-// JS Map, and a PersistentArrayMap constructor that answers a Map.
-type Kw = { readonly kw: string };
-
-const keywords = new Map<string, Kw>();
-function kw(name: string): Kw {
-  let k = keywords.get(name);
-  if (k === undefined) {
-    k = { kw: name };
-    keywords.set(name, k);
-  }
-  return k;
-}
-
-interface BoundsCall {
-  objects: unknown;
-  frame: unknown;
-  options: unknown;
-}
-
-function makeApp(bounds: Map<unknown, unknown>, calls: BoundsCall[]): RendererApp {
-  class MockPAM {
-    // Same argument list as the compiled PersistentArrayMap constructor
-    // (meta, cnt, arr, hash); cnt counts entries and the backing array
-    // holds two slots per entry, so a mismatch is a constructor bug.
-    constructor(...args: unknown[]) {
-      const cnt = args[1] as number;
-      const arr = args[2] as unknown[];
-      if (cnt * 2 !== arr.length) {
-        throw new Error(`PersistentArrayMap: cnt ${cnt} does not match ${arr.length} slots`);
-      }
-      const m = new Map<unknown, unknown>();
-      for (let i = 0; i < arr.length; i += 2) m.set(arr[i], arr[i + 1]);
-      return m as unknown as MockPAM;
-    }
-  }
+// The engine version reads the decoded page objects directly; these models
+// are the kebab-case maps the transit decoder produces.
+function frame(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    [KEY.keyword]: (name: unknown) => kw(String(name)),
-    [KEY.get]: (coll: unknown, k: unknown) =>
-      coll instanceof Map && coll.has(k) ? coll.get(k) : null,
-    [KEY.persistentArrayMap]: MockPAM,
-    [KEY.getObjectBounds]: (objects: unknown, frame: unknown, options: unknown) => {
-      calls.push({ objects, frame, options });
-      return bounds;
-    },
+    id: "11111111-1111-1111-1111-111111111111",
+    type: "frame",
+    selrect: { x: 10, y: 20, width: 100, height: 50 },
+    ...overrides,
   };
 }
 
-function boundsMap(entries: Record<string, unknown>): Map<unknown, unknown> {
-  const m = new Map<unknown, unknown>();
-  for (const [k, v] of Object.entries(entries)) m.set(kw(k), v);
-  return m;
-}
-
 describe("calculateSize", () => {
-  it("calls get-object-bounds with the frame and :ignore-margin? false", () => {
-    const calls: BoundsCall[] = [];
-    const objects = new Map([["uuid:frame-1", {}]]);
-    const frame = { id: "uuid:frame-1" };
-    const app = makeApp(boundsMap({ width: 100, height: 50, x: 10, y: 20 }), calls);
+  it("reads the padded bounds of the frame and applies the zoom", () => {
+    const frameShape = frame();
 
-    const size = calculateSize(app, objects, frame, 2);
+    const size = calculateSize({ [String(frameShape.id)]: frameShape }, frameShape, 2);
 
-    // The option map is a runtime-built PersistentArrayMap (a Map here), so
-    // the recorded call shows exactly what the compiled code would receive.
-    expect(calls).toHaveLength(1);
-    expect(calls[0].objects).toBe(objects);
-    expect(calls[0].frame).toBe(frame);
-    expect(calls[0].options).toEqual(new Map([[kw("ignore-margin?"), false]]));
-
-    // The bounds carry the zoom while base-* stay zoom-free.
+    // No strokes, shadows or blur: the padding is zero and the bounds are
+    // the selrect. The zoom only scales width/height.
     expect(size).toEqual({
       baseWidth: 100,
       baseHeight: 50,
@@ -86,10 +31,45 @@ describe("calculateSize", () => {
     });
   });
 
-  it("rejects bounds whose width/height are not numbers", () => {
-    const calls: BoundsCall[] = [];
-    const app = makeApp(boundsMap({ x: 0, y: 0 }), calls);
+  it("pads the frame stroke and joins a child box that paints outside", () => {
+    const root = frame({
+      id: "00000000-0000-0000-0000-000000000000",
+      selrect: { x: 0, y: 0, width: 100, height: 100 },
+      "show-content": true,
+      strokes: [{ "stroke-width": 10, "stroke-alignment": "center" }],
+      shapes: ["22222222-2222-2222-2222-222222222222"],
+    });
+    const child = {
+      id: "22222222-2222-2222-2222-222222222222",
+      type: "rect",
+      "parent-id": root.id,
+      selrect: { x: 90, y: 90, width: 20, height: 20 },
+    };
+    const objects = { [String(root.id)]: root, [child.id]: child };
 
-    expect(() => calculateSize(app, new Map(), {}, 1)).toThrow(/width/);
+    // The frame's own 10px centred stroke pads by ceil(sqrt(2 * 5 * 5)) = 8
+    // on every side (-8..108). The child runs to 110 but contributes no
+    // stroke margin of its own: the CLJS get-object-bounds calls
+    // calculate-base-bounds on every child with the default ignore-margin?,
+    // so only the root's padding counts.
+    const size = calculateSize(objects, root, 1);
+
+    expect(size).toEqual({
+      baseWidth: 118,
+      baseHeight: 118,
+      x: -8,
+      y: -8,
+      width: 118,
+      height: 118,
+    });
+  });
+
+  it("answers a degenerate 0.01 box instead of zero", () => {
+    const frameShape = frame({ selrect: { x: 0, y: 0, width: 0, height: 0 } });
+
+    const size = calculateSize({}, frameShape, 1);
+
+    expect(size.baseWidth).toBeCloseTo(0.01);
+    expect(size.baseHeight).toBeCloseTo(0.01);
   });
 });

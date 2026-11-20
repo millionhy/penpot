@@ -1,77 +1,89 @@
-// One-shot frame-to-bitmap render: the shell-side rebuild of the compiled
-// frontend's app.main.render-viewer-wasm/render-to-canvas. Closure inlined
-// that whole namespace (nothing of it lands on $APP, verified against the
-// compiled artifact and at runtime), so this drives the same flow through
-// the public app.render-wasm.api primitives, in the same order the compiled
-// code runs them:
+// One-shot frame-to-bitmap render: the shell-side port of the compiled
+// frontend's app.main.render-viewer-wasm/render-to-canvas. Since G4.5b the
+// pass drives the TypeScript engine directly, in the same order the
+// compiled code runs it:
 //
-//   init-canvas-context(offscreen) → initialize-viewport(force-sync,
-//   on-render) → [on-render] wasm UI overlay off → render-sync-shape
+//   initCanvasContext(offscreen) → initializeViewport(force-sync,
+//   render) → [render] wasm UI overlay off → renderSyncShape
 //   (the actual final render) → blit through createImageBitmap →
-//   clear-canvas → reset-viewer-snapshot!
+//   clearCanvas → resetViewerSnapshot!
 //
-// The queue, the blit and render-sync-shape live in
-// lib/render-wasm/pass-common.ts, shared with the viewer pass
-// (lib/render-wasm/viewer-render.ts). The snapshot reset keeps the compiled
-// contract: after a one-shot render the viewer's shared offscreen canvas is
-// gone, so the next viewer pass rebuilds its context instead of reusing a
-// torn-down one.
+// The queue, the blit and the snapshot live in lib/render-wasm/render-queue
+// and lib/render-wasm/viewer-render, shared with the viewer pass. The
+// snapshot reset keeps the compiled contract: after a one-shot render the
+// viewer's shared offscreen canvas is gone, so the next viewer pass
+// rebuilds its context instead of reusing a torn-down one.
 //
 // Differences from the compiled original, documented:
 // - The original also flips wasm/disable-request-render? around the pass;
-//   that atom is closure-private. The pass is short and runs on the shared
-//   queue, so no interleaved request-render can observe the mid-pass state.
+//   the engine keeps that flag internal. The pass is short and runs on the
+//   shared queue, so no interleaved request-render can observe the mid-pass
+//   state.
+// - The compiled `on-render` reached the pass only after process-pending
+//   awaited the image and font work. The engine calls `render` right after
+//   the upload, so the port awaits ViewerHost#settle first.
 // - The original blits via draw-bitmap! (createImageBitmap + rAF, because
 //   Firefox+NVIDIA cannot drawImage a managed OffscreenCanvas directly);
 //   the same steps live in drawBitmap, including the "#screenshot-<id>"
 //   marker the CLJS original sets on the canvas.
 
-import { arrayMap, call, keyword, KEY, uuidToU32, type RendererApp } from "./interop";
 import {
-  drawBitmap,
-  enqueueRender,
+  clearCanvas,
+  initCanvasContext,
+  initializeViewport,
   renderSyncShape,
-  softClearOptions,
-} from "./pass-common";
+  setObjects,
+  setRulersFrameVisible,
+  setRulersVisible,
+  type Point,
+  type RenderWasmModule,
+  type ShapeObjects,
+} from "./engine";
+import { drawBitmap, enqueueRender } from "./render-queue";
 import { resetViewerSnapshot } from "./viewer-render";
+import type { ViewerHost } from "./viewer-host";
 
-// Kept exported for the unit tests (the F6.4 suite covers the uuid split).
-export { uuidToU32 };
+export interface FrameRenderOptions {
+  // The image/font half of the upload (see ViewerHost).
+  host?: ViewerHost;
+}
 
 async function renderFrame(
-  app: RendererApp,
-  objects: unknown,
+  module: RenderWasmModule,
+  objects: ShapeObjects,
   frameId: string,
   canvas: HTMLCanvasElement,
-  origin: { x: number; y: number },
+  origin: Point,
   scale: number,
+  options: FrameRenderOptions,
 ): Promise<void> {
   const width = canvas.width;
   const height = canvas.height;
   const osCanvas = new OffscreenCanvas(width, height);
-  if (!call(app, KEY.initCanvasContext, osCanvas)) {
+  if (initCanvasContext(module, osCanvas) === undefined) {
     throw new Error("render-wasm: frame render could not create a GL context");
   }
 
   await new Promise<void>((resolve, reject) => {
-    // on-render fires exactly once (set-objects-sync's process-pending
-    // completion callback); the latch guards a double fire all the same.
+    // The render callback fires exactly once (setObjects' completion); the
+    // latch guards a double fire all the same.
     let fired = false;
     const onRender = (): void => {
       if (fired) return;
       fired = true;
       void (async () => {
         try {
-          call(app, KEY.setRulersFrameVisible, false);
-          call(app, KEY.setRulersVisible, false);
-          renderSyncShape(app, frameId);
+          await options.host?.settle();
+          setRulersFrameVisible(module, false);
+          setRulersVisible(module, false);
+          renderSyncShape(module, frameId);
           await new Promise<void>((blitDone) => {
             void drawBitmap(canvas, osCanvas, frameId, width, height, blitDone);
           });
-          // The compiled pass ends with clear-canvas (context kept:
-          // lose-browser-context? false) plus a snapshot reset, handing the
+          // The compiled pass ends with clearCanvas (context kept:
+          // loseBrowserContext false) plus a snapshot reset, handing the
           // shared wasm runtime back; the viewer rebuilds on the next pass.
-          call(app, KEY.clearCanvas, softClearOptions(app));
+          clearCanvas(module, { loseBrowserContext: false });
           resetViewerSnapshot();
           resolve();
         } catch (cause) {
@@ -80,24 +92,19 @@ async function renderFrame(
       })();
     };
 
-    // initialize-viewport reads only :x/:y from the bounds (the padded
-    // origin lands in _set_view).
-    const bounds = arrayMap(app, [
-      [keyword(app, "x"), origin.x],
-      [keyword(app, "y"), origin.y],
-    ]);
-    call(
-      app,
-      KEY.initializeViewport,
-      objects,
-      scale,
-      bounds,
-      arrayMap(app, [
-        [keyword(app, "background-opacity"), 0],
-        [keyword(app, "force-sync"), true],
-        [keyword(app, "on-render"), onRender],
-      ]),
-    );
+    const started = initializeViewport(module, objects, scale, origin, {
+      backgroundOpacity: 0,
+      setObjects: (pageObjects) => {
+        setObjects(module, pageObjects, {
+          forceSync: true,
+          onShape: (shape) => options.host?.hostAttrs(shape),
+          render: onRender,
+        });
+      },
+    });
+    if (!started) {
+      reject(new Error("render-wasm: frame render could not initialize the viewport"));
+    }
   });
 }
 
@@ -105,12 +112,13 @@ async function renderFrame(
 // the caller must set first). Serialized globally; resolves once the
 // bitmap landed and the shared context was torn down.
 export function renderFrameToCanvas(
-  app: RendererApp,
-  objects: unknown,
+  module: RenderWasmModule,
+  objects: ShapeObjects,
   frameId: string,
   canvas: HTMLCanvasElement,
-  origin: { x: number; y: number },
+  origin: Point,
   scale: number,
+  options: FrameRenderOptions = {},
 ): Promise<void> {
-  return enqueueRender(() => renderFrame(app, objects, frameId, canvas, origin, scale));
+  return enqueueRender(() => renderFrame(module, objects, frameId, canvas, origin, scale, options));
 }
