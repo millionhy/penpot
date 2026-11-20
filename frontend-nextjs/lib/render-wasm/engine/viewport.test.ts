@@ -6,6 +6,8 @@ import {
   numericValue,
   objectCount,
   readNumericParam,
+  renderSync,
+  renderSyncShape,
   setCanvasBackground,
   setView,
   setViewerViewport,
@@ -40,6 +42,8 @@ function makeModule(recorded: Recorded[]): RenderWasmModule {
     UTF8ToString: () => "",
     _set_view: record("_set_view"),
     _set_view_end: record("_set_view_end"),
+    _render_sync: record("_render_sync"),
+    _render_sync_shape: record("_render_sync_shape"),
     _resize_viewbox: record("_resize_viewbox"),
     _set_render_options: record("_set_render_options"),
     _set_canvas_background: record("_set_canvas_background"),
@@ -147,6 +151,37 @@ describe("setViewerViewport", () => {
   it("is blocked while a reload is in progress", () => {
     markReloading();
     expect(setViewerViewport(module, 1, { x: 0, y: 0 })).toBe(false);
+    expect(recorded).toEqual([]);
+  });
+});
+
+describe("renderSync", () => {
+  it("paints the whole view synchronously", () => {
+    expect(renderSync(module)).toBe(true);
+    expect(recorded).toEqual([{ name: "_render_sync", args: [] }]);
+  });
+
+  it("is blocked while a reload is in progress", () => {
+    markReloading();
+    expect(renderSync(module)).toBe(false);
+    expect(recorded).toEqual([]);
+  });
+});
+
+describe("renderSyncShape", () => {
+  it("passes the four uuid words of the shape", () => {
+    expect(renderSyncShape(module, "d8cf69c1-e3c8-8159-8008-6f934d0e82aa")).toBe(true);
+    expect(recorded).toEqual([
+      {
+        name: "_render_sync_shape",
+        args: [0xd8cf69c1, 0xe3c88159, 0x80086f93, 0x4d0e82aa],
+      },
+    ]);
+  });
+
+  it("is skipped when the context is lost", () => {
+    markContextLost();
+    expect(renderSyncShape(module, "d8cf69c1-e3c8-8159-8008-6f934d0e82aa")).toBe(false);
     expect(recorded).toEqual([]);
   });
 });

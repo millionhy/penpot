@@ -88,6 +88,8 @@ export {
   applyRouteParams,
   setView,
   setViewerViewport,
+  renderSync,
+  renderSyncShape,
   resizeViewbox,
   setRenderOptions,
   setCanvasBackground,
@@ -308,6 +310,32 @@ export {
   type ImageHost,
 } from "./image";
 export { writeHostAttrs, type HostAttrsOptions, type HostAttrsResult } from "./host";
+export {
+  addPadding,
+  calculateBaseBounds,
+  calculatePadding,
+  getRectFilterBounds,
+  getShapeFilterBounds,
+  joinRects,
+  makeRect,
+  objectBounds,
+  pointsRect,
+  rectToPoints,
+  reduceObjects,
+  shapeFilters,
+  type FilterEntry,
+  type ObjectBoundsOptions,
+  type Padding,
+  type Rect,
+} from "./bounds";
+export { pathSegments, shapeWithOpenPath, type PathSegmentLike } from "./path";
+export {
+  shapeCenter,
+  transformMatrix,
+  transformMatrixString,
+  translateShape,
+  type TransformParams,
+} from "./transform";
 export {
   POSITION_DATA_U32_SIZE,
   POSITION_DATA_U8_SIZE,

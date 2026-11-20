@@ -15,6 +15,7 @@
 import { call } from "./call";
 import { hexToArgbU32 } from "./colors";
 import { live, ready, type RenderWasmModule } from "./module";
+import { uuidToU32 } from "./uuid";
 
 export interface Point {
   x: number;
@@ -37,6 +38,24 @@ export function setViewerViewport(
   if (!ready()) return false;
   setView(module, zoom, vbox);
   call(module, "_set_view_end");
+  return true;
+}
+
+// render-sync: paint the whole view synchronously. `initialized?` of the
+// compiled API is the `ready?` guard here (live and not mid-reload).
+export function renderSync(module: RenderWasmModule): boolean {
+  if (!ready()) return false;
+  call(module, "_render_sync");
+  return true;
+}
+
+// render-sync-shape: paint a single shape over the current view. The
+// compiled body also clears internal-frame-id afterwards; that is bookkeeping
+// for later calls, and the TS port passes the id with every call.
+export function renderSyncShape(module: RenderWasmModule, shapeId: string): boolean {
+  if (!ready()) return false;
+  const words = uuidToU32(shapeId);
+  call(module, "_render_sync_shape", words[0], words[1], words[2], words[3]);
   return true;
 }
 
