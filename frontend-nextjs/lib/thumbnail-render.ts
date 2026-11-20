@@ -1,40 +1,49 @@
-// Worker-side thumbnail render (F9.14): the TypeScript port of
+// Worker-side thumbnail render (F9.14, engine port G4.6a): the port of
 // render-thumbnail-with-wasm in frontend/src/app/worker/thumbnails.cljs.
 //
-// The flow matches the reference step for step:
-//   decode get-file-data-for-thumbnail → pick the use-for-thumbnail frame (or
-//   the page bounds) → OffscreenCanvas + init-canvas-context →
-//   initialize-viewport(zoom, vbox, background, force-sync, on-render) →
-//   render-sync-shape (or render-sync) → convertToBlob → clear-canvas.
+// Since G4.6a the pass drives the TypeScript engine instead of the compiled
+// $APP, in the same order the CLJS worker runs it:
+//   decode get-file-data-for-thumbnail -> pick the use-for-thumbnail frame (or
+//   the page bounds) -> OffscreenCanvas + initCanvasContext ->
+//   initializeViewport(background, force-sync, render) ->
+//   renderSyncShape (or renderSync) -> convertToBlob -> clearCanvas.
 //
-// Two shell-specific pieces:
-// - The response's :objects is an app.common.types.objects-map ObjectsMap,
-//   and its transit read handler lives in app.main (main.js). main.js cannot
-//   load in a worker (its module body needs a document), so the worker
-//   registers the handler itself (registerObjectsMapHandler) with an eager
-//   decoder: uuid -> transit-encoded shape string becomes uuid -> shape map.
+// Two shell-specific pieces remain:
+// - The response's :objects is an app.common.types.objects-map ObjectsMap and
+//   its transit read handler lives in app.main (main.js), which cannot load
+//   in a worker. lib/transit already decodes the objects-map/v2 tag eagerly
+//   into a plain uuid -> shape map, so the worker needs no CLJS handler.
 // - The reference wraps the canvas PNG in an SVG with a background fill and
 //   runs it through the rasterizer iframe, because it must produce a PNG for
 //   create-file-thumbnail. The worker composes the same image directly: draw
 //   the PNG on a 2D OffscreenCanvas painted with the page background and
 //   convert that. No rasterizer round trip.
 //
-// Deviations, documented: the reference flips wasm/disable-request-render?
-// around the pass; that atom is closure-private (same limitation as
-// lib/render-wasm/frame-render.ts). The worker serializes requests and the
-// context is torn down right after the blob, so no scheduled render can
-// interleave with the pass.
+// Deviations, documented:
+// - The CLJS pass flips wasm/disable-request-render? around the render; the
+//   engine keeps that flag internal. The worker serializes requests and tears
+//   the context down right after the blob, so no scheduled render can
+//   interleave with the pass.
+// - Google-backed and custom faces are not uploaded here (the worker has no
+//   font catalog or bundle variants): the text writes the builtin face, the
+//   same documented fallback as the viewer pass.
 
 import {
-  arrayMap,
-  call,
-  get,
-  KEY,
-  keyword,
-  uuid,
-  type RendererApp,
-} from "./render-wasm/interop";
-import { renderSync, renderSyncShape } from "./render-wasm/pass-common";
+  clearCanvas,
+  fontIdToUuid,
+  initCanvasContext,
+  initializeViewport,
+  objectBounds,
+  renderSync,
+  renderSyncShape,
+  setObjects,
+  updateTextLayout,
+  writeHostAttrs,
+  type ImageHost,
+  type RenderWasmModule,
+  type Shape,
+} from "./render-wasm/engine";
+import { resolveFileMedia } from "./viewer";
 import {
   calculateDimensions,
   fixAspectRatio,
@@ -42,71 +51,69 @@ import {
   THUMBNAIL_WIDTH,
   type ThumbnailRect,
 } from "./thumbnail";
+import { decodeTransit } from "./transit";
 
 // common/src/app/common/types/color.cljc cc/canvas: the backdrop the
 // reference uses when the page has no background of its own.
 export const DEFAULT_THUMBNAIL_BACKGROUND = "#E8E9EA";
 
-export const OBJECTS_MAP_TAG = "penpot/objects-map/v2";
-
 const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 
+// The answer decodes to a plain uuid -> shape record: the objects-map transit
+// handler builds a record, never a Map. The engine accepts either, but the
+// bounds walk indexes by id, so the map union would not type.
+export type ThumbnailObjects = Readonly<Record<string, unknown>>;
+
 export interface ThumbnailPage {
-  // CLJS map of uuid -> shape, as the renderer's set-objects expects.
-  objects: unknown;
+  // Plain uuid -> shape map, the same model setObjects uploads.
+  objects: ThumbnailObjects;
   // The frame marked use-for-thumbnail, or null when the page has none.
   frameId: string | null;
   // CSS color painted behind the render.
   background: string;
 }
 
-// The eager replacement for app.common.types.objects-map/from-data. transit
-// calls it with the wire map (uuid -> transit-encoded shape string); every
-// value is decoded now so the renderer sees plain CLJS shape maps. The
-// ObjectsMap type itself would decode lazily on lookup, but it lives in
-// app.main, which the worker cannot evaluate.
-export function decodeObjectsMap(app: RendererApp, rep: unknown): unknown {
-  let result = arrayMap(app, []);
-  for (let s = call(app, KEY.seq, rep); s !== null && s !== undefined; s = call(app, KEY.next, s)) {
-    const entry = call(app, KEY.first, s);
-    const key = call(app, KEY.first, entry);
-    const encoded = call(app, KEY.val, entry);
-    result = call(app, KEY.assoc, result, key, call(app, KEY.decodeStr, encoded));
-  }
-  return result;
+export interface ThumbnailRenderOptions {
+  // Base URL of the media assets; empty means same origin.
+  publicUri?: string;
+  // Injected for the tests; the default fetches the URL and reads the body.
+  fetchBytes?: (url: string) => Promise<Uint8Array>;
 }
 
-// add-handlers! takes one handler map per argument, and the variadic
-// extraction takes the rest as an array. The map must be a real CLJS map:
-// add-handlers! filters it with the :rfn keyword, and a plain JS object has
-// no keyword lookup.
-export function registerObjectsMapHandler(app: RendererApp): void {
-  const handler = arrayMap(app, [
-    [keyword(app, "id"), OBJECTS_MAP_TAG],
-    [keyword(app, "rfn"), (rep: unknown) => decodeObjectsMap(app, rep)],
-  ]);
-  call(app, KEY.addHandlers, [handler]);
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+// The bounds walk reads plain records; the engine's upload `Shape` interface
+// is the same data but carries no index signature.
+function lookupShape(objects: ThumbnailObjects, id: string): Record<string, unknown> | undefined {
+  const value = objects[id];
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 // get-file-data-for-thumbnail answers {:file-id ... :revn ... :page {...}}.
-// The worker receives it undecoded (cmdRaw) because the shell's transit-js
-// decoder has no penpot read handlers; only the compiled one does.
-export function decodeThumbnailPage(app: RendererApp, raw: string): ThumbnailPage {
-  const response = call(app, KEY.decodeStr, raw);
-  const page = get(app, response, keyword(app, "page"));
-  if (page === null || page === undefined) {
+// The worker receives it undecoded (cmdRaw) and decodes it here; the
+// objects-map read handler of lib/transit turns the page objects into a plain
+// uuid -> shape map.
+export function decodeThumbnailPage(raw: string): ThumbnailPage {
+  const response = asRecord(decodeTransit<unknown>(raw));
+  const page = asRecord(response?.page);
+  if (page === undefined) {
     throw new Error("thumbnail: get-file-data-for-thumbnail answered without a page");
   }
-  const objects = get(app, page, keyword(app, "objects"));
-  if (objects === null || objects === undefined) {
+  const objects = asRecord(page.objects);
+  if (objects === undefined) {
     throw new Error("thumbnail: the page carries no objects");
   }
-  const frame = get(app, page, keyword(app, "thumbnail-frame-id"));
-  const frameId = frame === null || frame === undefined ? null : call(app, KEY.str, frame);
-  const background = get(app, page, keyword(app, "background"));
+  const frame = page["thumbnail-frame-id"];
+  const background = page.background;
   return {
-    objects,
-    frameId: typeof frameId === "string" ? frameId : null,
+    objects: objects as ThumbnailObjects,
+    frameId: typeof frame === "string" ? frame : null,
     background:
       typeof background === "string" && background.length > 0
         ? background
@@ -114,55 +121,39 @@ export function decodeThumbnailPage(app: RendererApp, raw: string): ThumbnailPag
   };
 }
 
-function readNumber(app: RendererApp, map: unknown, name: string): number {
-  const value = get(app, map, keyword(app, name));
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
-function rectFromBounds(app: RendererApp, bounds: unknown): ThumbnailRect {
+function rectOf(bounds: { x: number; y: number; width: number; height: number }): ThumbnailRect {
   return {
-    x: readNumber(app, bounds, "x"),
-    y: readNumber(app, bounds, "y"),
-    width: readNumber(app, bounds, "width"),
-    height: readNumber(app, bounds, "height"),
+    x: Number.isFinite(bounds.x) ? bounds.x : 0,
+    y: Number.isFinite(bounds.y) ? bounds.y : 0,
+    width: Number.isFinite(bounds.width) ? bounds.width : 0,
+    height: Number.isFinite(bounds.height) ? bounds.height : 0,
   };
-}
-
-function collectShapes(app: RendererApp, shape: unknown): unknown[] {
-  const ids: unknown[] = [];
-  const shapes = get(app, shape, keyword(app, "shapes"));
-  for (let s = call(app, KEY.seq, shapes); s !== null && s !== undefined; s = call(app, KEY.next, s)) {
-    ids.push(call(app, KEY.first, s));
-  }
-  return ids;
 }
 
 // app.common.types.shape-tree/get-root-objects: every shape reachable from
 // the root's :shapes, frames themselves included but never entered, so a
 // frame contributes its own content bounds once. The traversal order does
-// not matter: the caller unions the rects.
-export function collectRootBounds(app: RendererApp, objects: unknown): ThumbnailRect[] {
-  const root = get(app, objects, uuid(app, ZERO_UUID));
-  if (root === null || root === undefined) return [];
+// not matter: the caller unions the rects. The bounds keep the compiled
+// default of get-object-bounds (ignore-margin? true).
+export function collectRootBounds(objects: ThumbnailObjects): ThumbnailRect[] {
+  const root = lookupShape(objects, ZERO_UUID);
+  if (root === undefined) return [];
 
-  const pending = collectShapes(app, root);
+  const pending: unknown[] = Array.isArray(root.shapes) ? [...root.shapes] : [];
   const bounds: ThumbnailRect[] = [];
   const processed = new Set<string>();
 
   while (pending.length > 0) {
     const id = pending.pop();
-    const key = call(app, KEY.str, id);
-    if (typeof key !== "string" || processed.has(key)) continue;
-    processed.add(key);
+    if (typeof id !== "string" || processed.has(id)) continue;
+    processed.add(id);
 
-    const shape = get(app, objects, id);
-    if (shape === null || shape === undefined) continue;
+    const shape = lookupShape(objects, id);
+    if (shape === undefined) continue;
 
-    bounds.push(
-      rectFromBounds(app, call(app, KEY.getObjectBounds, objects, shape)),
-    );
-    if (call(app, KEY.frameShapeQmark, shape) !== true) {
-      const children = collectShapes(app, shape);
+    bounds.push(rectOf(objectBounds(objects, shape)));
+    if (shape.type !== "frame") {
+      const children: unknown[] = Array.isArray(shape.shapes) ? shape.shapes : [];
       for (let i = children.length - 1; i >= 0; i -= 1) pending.push(children[i]);
     }
   }
@@ -172,15 +163,14 @@ export function collectRootBounds(app: RendererApp, objects: unknown): Thumbnail
 // app.main.render/calculate-dimensions decides the page view box when no
 // frame is marked; a marked frame contributes its own bounds. Both branches
 // then fix the 2:3 aspect ratio, exactly like the reference worker.
-export function computeViewBox(app: RendererApp, page: ThumbnailPage): ThumbnailRect {
+export function computeViewBox(page: ThumbnailPage): ThumbnailRect {
   if (page.frameId !== null) {
-    const frame = get(app, page.objects, uuid(app, page.frameId));
-    if (frame !== null && frame !== undefined) {
-      const bounds = call(app, KEY.getObjectBounds, page.objects, frame);
-      return fixAspectRatio(rectFromBounds(app, bounds));
+    const frame = lookupShape(page.objects, page.frameId);
+    if (frame !== undefined) {
+      return fixAspectRatio(rectOf(objectBounds(page.objects, frame)));
     }
   }
-  return calculateDimensions(collectRootBounds(app, page.objects));
+  return calculateDimensions(collectRootBounds(page.objects));
 }
 
 // render-canvas-blob: the reference renders the PNG into an SVG whose
@@ -206,19 +196,71 @@ async function compositeOnBackground(
   }
 }
 
-// The maximum time the worker waits for the async image pipeline
-// (process-pending's rx/merge-map fetching media fills) before it
-// force-renders without images. After `initialize-viewport` returns,
-// shapes + text layouts are done; a subsequent `renderSync` produces
-// a usable (image-less) thumbnail for the dashboard grid.
-const RENDER_TIMEOUT_MS = 8_000;
+interface UploadWork {
+  textIds: string[];
+  thumbnails: Promise<void>[];
+  full: Promise<void>[];
+}
 
-// The wasm pass itself. Serialized by the caller (the worker runs one
-// request at a time).
-export function renderThumbnail(
-  app: RendererApp,
+// The host half of the upload: media URLs for fill/stroke images and the
+// builtin font fallback for text. Every promise settles even on failure, so
+// the pass can await them without a rejection stopping the thumbnail.
+function createHost(module: RenderWasmModule, options: ThumbnailRenderOptions) {
+  const publicUri = options.publicUri ?? "";
+  const images: ImageHost = {
+    resolveUrl: (imageId, thumbnail) =>
+      resolveFileMedia(publicUri, { id: imageId }, { thumbnail }),
+    ...(options.fetchBytes === undefined ? {} : { fetchBytes: options.fetchBytes }),
+    onError: (cause: unknown, imageId: string) =>
+      console.warn("[render-wasm] could not load a thumbnail asset:", imageId, cause),
+  };
+
+  const work: UploadWork = { textIds: [], thumbnails: [], full: [] };
+
+  const onShape = (shape: Shape): void => {
+    if (shape.type === "text") work.textIds.push(shape.id);
+    const result = writeHostAttrs(module, shape, {
+      text: {
+        writeOptions: { normalizeFontId: (fontId) => fontIdToUuid(fontId) },
+      },
+      images,
+      // The cold-load batch already carried the layout and the fills/strokes;
+      // only the grid tracks and the host data remain.
+      skipLayout: true,
+      skipFillsStrokes: true,
+    });
+    for (const item of result.thumbnails) work.thumbnails.push(item);
+    for (const item of result.full) work.full.push(item);
+  };
+
+  // process-pending: the layouts run first, then the thumbnail images, then
+  // the full variants in order; a relayout follows so the text uses the
+  // metrics of whatever landed.
+  const settle = async (): Promise<void> => {
+    for (const id of work.textIds) updateTextLayout(module, id);
+    if (work.thumbnails.length > 0 || work.full.length > 0) {
+      await Promise.allSettled(work.thumbnails);
+      for (const item of work.full) {
+        try {
+          await item;
+        } catch {
+          // loadImage already reports; a rejection must not stop the pass.
+        }
+      }
+      for (const id of work.textIds) updateTextLayout(module, id);
+    }
+  };
+
+  return { onShape, settle };
+}
+
+// The wasm pass itself. The caller (the worker) serializes requests, and the
+// context is torn down right after the blob.
+export async function renderThumbnail(
+  module: RenderWasmModule,
   page: ThumbnailPage,
   width: number = THUMBNAIL_WIDTH,
+  options: ThumbnailRenderOptions = {},
 ): Promise<Blob> {
   const height = thumbnailHeight(width);
   // OffscreenCanvas truncates its size arguments; pass what the canvas
@@ -226,76 +268,65 @@ export function renderThumbnail(
   const canvasWidth = Math.max(1, Math.trunc(width));
   const canvasHeight = Math.max(1, Math.trunc(height));
   const canvas = new OffscreenCanvas(canvasWidth, canvasHeight);
-  const gl = call(app, KEY.initCanvasContext, canvas);
-  if (!gl) {
-    return Promise.reject(new Error("thumbnail: could not create a GL context"));
+  if (initCanvasContext(module, canvas) === undefined) {
+    throw new Error("thumbnail: could not create a GL context");
   }
 
-  const vbox = computeViewBox(app, page);
+  const vbox = computeViewBox(page);
   const zoom = canvasWidth / vbox.width;
+  const host = createHost(module, options);
 
-  return new Promise<Blob>((resolve, reject) => {
-    // initialize-viewport fires on-render once (set-objects-sync's
-    // completion callback); the latch guards a second fire.
-    let fired = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      // initialize-viewport fires the render callback once (setObjects'
+      // completion); the latch guards a second fire.
+      let fired = false;
+      const doRender = (): void => {
+        if (fired) return;
+        fired = true;
+        void (async () => {
+          try {
+            await host.settle();
+            if (page.frameId !== null) renderSyncShape(module, page.frameId);
+            else renderSync(module);
+            resolve();
+          } catch (cause) {
+            reject(cause);
+          }
+        })();
+      };
 
-    const doRender = (): void => {
-      if (fired) return;
-      fired = true;
-      if (timer !== null) { clearTimeout(timer); timer = null; }
-      void (async () => {
-        try {
-          if (page.frameId !== null) renderSyncShape(app, page.frameId);
-          else renderSync(app);
-          const rendered = await canvas.convertToBlob({ type: "image/png" });
-          resolve(await compositeOnBackground(rendered, canvasWidth, canvasHeight, page.background));
-        } catch (cause) {
-          reject(cause);
-        } finally {
-          // clear-canvas hands the GL context back with the reference's
-          // defaults (lose-browser-context? true): each pass uses its own
-          // OffscreenCanvas, so nothing is kept for reuse.
-          call(app, KEY.clearCanvas, arrayMap(app, []));
-        }
-      })();
-    };
+      const started = initializeViewport(module, page.objects, zoom, vbox, {
+        background: page.background,
+        backgroundOpacity: 1,
+        setObjects: (objects) => {
+          setObjects(module, objects, {
+            forceSync: true,
+            onShape: host.onShape,
+            render: doRender,
+          });
+        },
+      });
+      if (!started) {
+        reject(new Error("thumbnail: could not initialize the viewport"));
+      }
+    });
 
-    const onRender = (): void => doRender();
-
-    // initialize-viewport reads :x/:y from the bounds and the rest from the
-    // options map (background + force-sync + the render callback).
-    call(
-      app,
-      KEY.initializeViewport,
-      page.objects,
-      zoom,
-      arrayMap(app, [
-        [keyword(app, "x"), vbox.x],
-        [keyword(app, "y"), vbox.y],
-      ]),
-      arrayMap(app, [
-        [keyword(app, "background"), page.background],
-        [keyword(app, "force-sync"), true],
-        [keyword(app, "on-render"), onRender],
-      ]),
-    );
-
-    // Fallback: if on-render hasn't fired by now (sync path already fired
-    // it inline), the async image pipeline is in-flight.  Start a timeout
-    // so that stalled fetches (e.g. media server unreachable) don't hang
-    // the worker forever.
-    if (!fired) {
-      timer = setTimeout(doRender, RENDER_TIMEOUT_MS);
-    }
-  });
+    const rendered = await canvas.convertToBlob({ type: "image/png" });
+    return await compositeOnBackground(rendered, canvasWidth, canvasHeight, page.background);
+  } finally {
+    // clear-canvas uses the reference defaults (lose-browser-context? true):
+    // each pass owns its OffscreenCanvas, so nothing is kept for reuse.
+    clearCanvas(module);
+  }
 }
 
 // The worker entry: one raw RPC answer in, one PNG out.
-export async function renderThumbnailFromRaw(
-  app: RendererApp,
+export function renderThumbnailFromRaw(
+  module: RenderWasmModule,
   raw: string,
   width: number = THUMBNAIL_WIDTH,
+  options: ThumbnailRenderOptions = {},
 ): Promise<Blob> {
-  return renderThumbnail(app, decodeThumbnailPage(app, raw), width);
+  return renderThumbnail(module, decodeThumbnailPage(raw), width, options);
 }
