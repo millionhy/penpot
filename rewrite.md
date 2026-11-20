@@ -9,10 +9,10 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G3 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换），G4 进行中（路线为「先移植渲染引擎」，G4.1 引擎核心见 7.84、G4.2 画布与视口见 7.85、G4.3 形状上传与 modifiers 见 7.86）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G3 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换），G4 进行中（路线为「先移植渲染引擎」，G4.1 引擎核心见 7.84、G4.2 画布与视口见 7.85、G4.3 形状上传与 modifiers 见 7.86、G4.4 字体/文本/图片见 7.87、G4.5 viewer 切线见 7.88/7.89、G4.6a 缩略图 worker 切线见 7.90）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
-| 最后更新 | 2026-11-19 |
+| 最后更新 | 2026-11-20 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -86,7 +86,7 @@
 | G1 | 补齐新端入口（P0） | ✅ | 2026-11-18：`/settings/integrations`（7.61）、`/subscribe-nitrate`（7.62）、应用内 release notes（7.63）、workspace shape 导出入口（7.64）已补；`/render-sprite/:file-id` 确认为死路由（旧端无组件、exporter 走 `render.html`），G4 删旧路由时清理，不计入余项 |
 | G2 | exporter TS 重写（P1） | ✅ | 2026-11-19：`exporter/src-ts/` 全量取代 CLJS，CLJS 树与 shadow-cljs 已删（G2.1–G2.10，7.65–7.78）；本机联调对拍 svg/png/pdf |
 | G3 | library TS 重写（P2） | ✅ | 2026-11-19：G3.1 基础层、G3.2 导出、G3.3a tokens、G3.3b bool、G3.4 构建切换全部完成（7.79–7.83）。`library/src-ts/` 21 文件全量取代 CLJS，esbuild 产出 `target/library/penpot.js`（版本由 `package.json` 注入），72 例通过；`out`/`out2` 与 tokens 金样本逐文档一致，四种布尔与 1.2.0-RC1 对拍（difference 只差两段零长曲线）；CLJS 源码、shadow-cljs 与 cljfmt 管线已删 |
-| G4 | frontend 旧端收尾（P3） | 🔄 | 2026-11-19：新端画布仍跑未入库的 CLJS 产物 `public/js/main.js` + `shared.js`（`$APP` 上的 `app.render_wasm.api/*`），删 `frontend/src` 前必须先把渲染引擎 TS 化；G4.1 引擎核心完成（7.84）、G4.2 画布与视口原语完成（7.85）、G4.3 形状上传与 modifiers 完成（7.86），下一步 G4.4 字体/文本/图片与 svg-derived |
+| G4 | frontend 旧端收尾（P3） | 🔄 | 2026-11-20：G4.1 引擎核心（7.84）、G4.2 画布与视口（7.85）、G4.3 上传与 modifiers（7.86）、G4.4 文本/图片/svg-derived（7.87）、G4.5 viewer 切线（7.88/7.89）、G4.6a 缩略图 worker 切线（7.90）完成；仅剩 workspace 画布的 `$APP` 调用面，切完后删 `frontend/src` 与 shadow-cljs 构建 |
 | G5 | common 前端分支镜像（P4） | ⬜ | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管 |
 
 ### 支撑任务（阶段 B 契约前置，只读后端，可与阶段 F 并行）
@@ -431,7 +431,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 3. **G3 / P2 library TS**：`library/src/lib` 2 文件 / 505 行，`.penpot` 导出实现，依赖 `common` 的类型、schema 与文件构建器。先锁 API 与产物格式，再用金样本回归；不改变插件/库的对外契约。
 4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
    - 前置结论（2026-11-19）：新端 viewer/workspace/缩略图 worker 经 `lib/render-wasm/bridge.ts` 加载未入库的 `public/js/main.js` 与 `shared.js`，并通过 `$APP` 调用 `app.render_wasm.api/*`；直接删 `frontend/src` 会失去可重建的运行时。因此先移植渲染引擎到 `frontend-nextjs/lib/render-wasm/engine/`，再删 CLJS。
-   - 分片：G4.1 引擎核心（模块生命周期/内存/调用/枚举，✅ 见 7.84）→ G4.2 画布与视口（`init-canvas-context`、`initialize-viewport`、`resize-canvas`、`clear-canvas`、`set-view-box`、渲染循环与 rulers，✅ 见 7.85）→ G4.3 形状上传与 modifiers（`set-objects` 批量上传、结构/几何 modifier，✅ 见 7.86）→ G4.4 字体/文本/图片与 svg-derived → G4.5 删 `frontend/src`/shadow-cljs，改 `render-wasm/_build_env` 的前端产物目标与 `scripts/check-fmt-clj`、`scripts/ci`、CI workflow。
+   - 分片：G4.1 引擎核心（模块生命周期/内存/调用/枚举，✅ 见 7.84）→ G4.2 画布与视口（`init-canvas-context`、`initialize-viewport`、`resize-canvas`、`clear-canvas`、`set-view-box`、渲染循环与 rulers，✅ 见 7.85）→ G4.3 形状上传与 modifiers（`set-objects` 批量上传、结构/几何 modifier，✅ 见 7.86）→ G4.4 字体/文本/图片与 svg-derived（✅ 见 7.87）→ G4.5 viewer 整片切换（✅ 见 7.88/7.89）→ G4.6a 缩略图 worker（✅ 见 7.90）→ G4.6b workspace 画布切线 → G4.7 删 `frontend/src`/shadow-cljs 与前端产物目标。
 5. **G5 / P4 common 前端分支镜像**：只对前端/Node 用到的 `common` 逻辑做 TS 等价实现（类型、几何、schema、file-change 已部分由 F1.2 完成）；不改 `.cljc` 的 Clojure 分支。等 backend-rust 接管后再整体去掉 Clojure 依赖。
 
 **范围边界**
@@ -3410,6 +3410,15 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 决策与偏差：① 引擎不暴露 `wasm/disable-request-render?`，pass 无法翻这个开关；所有 pass 走同一队列，零散的 scheduled render 只会重画同一视图、不再 blit。② 固定滚动层的 include/clear-fills 掩码没有引擎 API，viewer 暂时整页一面。③ `pageKey` 就是 page id（CLJS 调用点传的也是 page id）。④ position-data 在 viewport 自己的模型上算，CLJS 用的是专用离屏上下文。⑤ 同步 pass 的 `on-render` 早于图片/字体，`host.settle()` 补上这段等待。
 - 验证：`pnpm exec vitest run lib/render-wasm` 0；`pnpm test` 0（134 文件 2569 例）；`pnpm run typecheck` 0。新增 viewer-render 4 例（fresh 顺序含 clear 在 init 前、snapshot 复用/换页重建/尺寸 resize、init 失败仍 finish、挂载计数），frame-render 3 例（完整顺序含 host.settle 在 set-objects 之后、init 失败 reject、队列串行）；引擎 barrel 用 mock，断言的是调用顺序。
 - 下一步：G4.6 把 workspace 画布与缩略图 worker 也切到 `engine/`（`viewport_wasm.cljs` 的 `$APP` 调用面），之后删 `frontend/src` 与 shadow-cljs 构建，浏览器对 viewer/workspace 冒烟。
+
+### 7.90 本轮（2026-11-20，第八十九批：G4.6a 缩略图 worker 切到 TS 引擎）
+
+- 口径：G4.6 前半，dashboard 的缩略图 worker 整片切到 `engine/`：`lib/thumbnail-render.ts` 与 `lib/thumbnail.worker.ts` 不再 `import` `$APP`、不再注册 globals 与 transit 读取器；workspace 画布仍走 `$APP`（G4.6b），两者分属不同 wasm 实例但不同路由，不并存。
+- 修改：`thumbnail-render.ts` 全部重写（`decodeThumbnailPage` 用 `lib/transit` 解码并取 `thumbnail-frame-id`/`background`；`collectRootBounds` 遍历根对象的 `shapes`，frame 只取自身且不进入；`computeViewBox` 选 frame 或有根 bounds 合并后 `fixAspectRatio`；`renderThumbnail` 走 `initCanvasContext` → `initializeViewport` → `setObjects{forceSync,onShape,render}` → `await host.settle()` → `renderSyncShape`/`renderSync` → `convertToBlob` → 背景合成 → `clearCanvas`）。`thumbnail.worker.ts` 去掉 globals/transit handler/`ensureWasmModule`，改用 `loadEngineModule()` 单例与 `renderThumbnailFromRaw`；`thumbnail-worker-client.ts` 请求格式不变（`raw`/`width`/`publicUri`）。
+- 关键语义：`createHost` 的 `onShape` 对每个形状调 `writeHostAttrs`（图片 URL 走 `resolveFileMedia`，文本字体经 `fontIdToUuid` 回退 builtin，`skipLayout`/`skipFillsStrokes` 因为冷批量已写），并收集缩略图/全量两条 Promise 与文本 id；`settle` 复刻 `process-pending`：先逐文本 `updateTextLayout`，再 `allSettled` 缩略图，再按顺序 await 全量，最后二次 `updateTextLayout`。引擎的 `render` 回调早于 host 完成，所以必须先 await 再出图。
+- 决策与偏差：① 字体仍是文档化偏差：worker 没有字体目录与 bundle 变体，文本用 builtin face。② 引用实现把 PNG 包进 SVG 再经 rasterizer 出图，这里直接在 2D OffscreenCanvas 上画背景再叠渲染位图，省掉一次往返。③ `clearCanvas` 用默认值（丢浏览器上下文），每个 pass 独占自己的 OffscreenCanvas，没有可复用的快照。④ 缩略图对象解码成普通 record，类型别名 `ThumbnailObjects`：引擎也收 Map，但 bounds 遍历按 id 索引，`ReadonlyMap` 没有索引签名。
+- 验证：`pnpm exec vitest run lib/thumbnail-render.test.ts` 0（12 例：解码 3、根 bounds 2、viewBox 2、渲染流程 5，含调用顺序、252×168 画布、frame/无 frame 分支、host attrs 顺序与字体回退、GL 失败）；`pnpm exec vitest run` 0（134 文件 2567 例）；`pnpm run typecheck` 0。浏览器冒烟（`.git/g46a-smoke.mjs`，headless Chrome + 登录 + drafts 网格）：worker 拉起后请求 `/js/render-wasm.js?version=2.18.0` 与 `render-wasm.wasm`，从不请求 `shared.js`/`main.js`，12 张卡出现缩略图、2 次 `create-file-thumbnail`，worker 控制台零错误。
+- 下一步：G4.6b workspace 画布——`workspace-render.ts`、`shape-upload.ts`、`modifiers.ts`、`propagate.ts`、`image-store.ts`、`bool.ts`、hydrate 与 `workspace-data.ts` 整体改调 `engine/`，然后 G4.7 删 `frontend/src` 与 shadow-cljs 构建。
 
 ---
 
