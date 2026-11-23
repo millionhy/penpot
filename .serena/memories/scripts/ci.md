@@ -8,7 +8,7 @@ of CI; use it to verify changes before declaring work done.
 
 - After implementing or fixing code in a module: run its checks before
   finishing (AGENTS.md: run the applicable lint and format checks).
-- When `common/` changed: validate its consumers too (frontend, backend,
+- When `common/` changed: validate its consumers too (frontend-nextjs, backend,
   exporter; see the dependency graph in `mem:critical-info`).
 - To fix formatting across a module (`--fix`) or repair delimiters
   (`--paren-repair`) before linting.
@@ -20,13 +20,13 @@ Run from the repo root:
 ```bash
 ./scripts/ci MODULE...                  # lint + test + fmt per module
 ./scripts/ci --all --no-test            # lint + fmt on all modules
-./scripts/ci --lint frontend            # lint only
-./scripts/ci --fix --no-test frontend   # format files, skip tests
+./scripts/ci --lint frontend-nextjs     # typecheck + lint only
+./scripts/ci --test frontend-nextjs     # vitest only
 ./scripts/ci --paren-repair --all       # fix delimiters in all Clojure modules
 ./scripts/ci --dry-run --all            # preview what would run
 ```
 
-Modules: `frontend backend common render-wasm exporter mcp plugins library`.
+Modules: `frontend-nextjs backend common render-wasm exporter mcp plugins library`.
 
 Flags:
 

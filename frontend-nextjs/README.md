@@ -1,7 +1,8 @@
 # frontend-nextjs
 
-Penpot 的 Next.js 前端外壳，采用绞杀者模式（Strangler Fig）逐步替换 `frontend/`
-（ClojureScript + Potok + Rumext/React）。
+Penpot 的 Next.js 前端。它用绞杀者模式（Strangler Fig）替换了 `frontend/`
+（ClojureScript + Potok + Rumext/React）；G4.7 已删除旧端的源码、测试与
+Shadow/Storybook 构建，旧目录只保留少量 JavaScript 包与字体资源。
 
 ## 核心原则
 
@@ -100,14 +101,19 @@ frontend-nextjs/
 │   └── types.ts          api-types 生成类型的桥接与别名
 ├── components/           视图组件（form/tr/notifications/modal/theme/locale-gate/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/import-dialog/export-dialog/templates-section/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification/team-header/team-invite/team-hero/team-form-modal/team-options-menu/team-leave-flows/leave-and-reassign-modal/webhook-modal/member-avatar/shortcut-keys/shortcut-row/restore-shortcuts-modal/import-shortcuts-diff-modal/workspace-wasm-canvas/workspace-viewport-overlay/penpot-loader…）
 ├── styles/               tokens.css（ds 令牌）+ forms.css + auth.css + settings.css + dashboard.css + viewer.css + workspace.css + error.css
+├── translations/         gettext 词条源（en.po、zh_CN.po、zh_Hant.po 等）
 ├── scripts/              extract-translations.mjs（词条抽取生成器）
 ├── public/               fonts/（worksans、vazirmatn、robotomono）+ images/
 ├── packages/api-types/   生成的 RPC 类型（占位）
 ├── types/transit-js.d.ts transit-js 的类型垫片
 ├── vitest.config.ts      无头逻辑单测（lib/**）
 ├── next.config.mjs       开发期反代 /api 到 backend、/assets 与 /internal 到 assets 源
-└── pnpm-workspace.yaml   独立工作区（与 frontend/ 隔离，共享 ../.pnpm-store）
+└── pnpm-workspace.yaml   独立工作区（共享 ../.pnpm-store）
 ```
+
+旧 `frontend/` 的 ClojureScript 应用已在 G4.7 删除。`frontend/packages/` 与
+`frontend/text-editor/` 仍是独立的 JavaScript 包工作区，`frontend/resources/fonts`
+的内置字体已复制到本目录 `public/fonts/`，由 Next.js 直接提供。
 
 ## 路由映射
 
@@ -129,7 +135,7 @@ CLJS 用查询串路由（`?screen=<name>`）并保留一段 `#/...` 兼容期�
 
 - **词条**：`pnpm translations` 跑 `scripts/extract-translations.mjs`，扫描外壳里的
   `tr("key")`、`<Tr k="key">` 调用点和 `labelKey: "key"` 数据字段，从
-  `frontend/translations/*.po` 抽出用到的条目生成 `lib/translations/{en,zh_cn,zh_hant}.ts`
+  `translations/*.po` 抽出用到的条目生成 `lib/translations/{en,zh_cn,zh_hant}.ts`
   （增语言只需加脚本顶部的 `locales` 表项）。en.po 是事实源：缺失的 key 直接让脚本
   失败，避免页面上出现裸 key；中文目录按上游翻译进度生成，缺的 key 在运行时逐条回退
   英文（`lookup` 的默认分支）。两类扫描不到的 key 要手工登记：后端在 `:details` 里回传

@@ -5,8 +5,6 @@ set -ex
 cljfmt --parallel=true check \
        common/src/ \
        common/test/ \
-       frontend/src/ \
-       frontend/test/ \
        backend/src/ \
        backend/test/ \
        library/src;

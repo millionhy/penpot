@@ -3,27 +3,15 @@ import { defineConfig, esmExternalRequirePlugin } from "vite";
 import react from "@vitejs/plugin-react";
 import dts from "vite-plugin-dts";
 import * as path from "path";
-import { copyFileSync } from "node:fs";
 
 const externalDeps = ["react", "react-dom", "react/jsx-runtime"];
-
-const copyCssPlugin = () => ({
-  name: "copy-css",
-  closeBundle: () => {
-    try {
-      copyFileSync("dist/ui.css", "../../resources/public/css/ui.css");
-    } catch (e) {
-      console.log("Error copying css file", e);
-    }
-  },
-});
 
 export default defineConfig(() => ({
   root: import.meta.dirname,
   css: {
     preprocessorOptions: {
       scss: {
-        loadPaths: [path.resolve(import.meta.dirname, "../../src/app/main/ui")],
+        loadPaths: [path.resolve(import.meta.dirname, "src/styles")],
       },
     },
   },
@@ -38,7 +26,6 @@ export default defineConfig(() => ({
       tsconfigPath: path.join(import.meta.dirname, "tsconfig.lib.json"),
       pathsToAliases: false,
     }),
-    copyCssPlugin(),
   ],
   build: {
     outDir: "dist/",

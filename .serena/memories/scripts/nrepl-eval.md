@@ -19,7 +19,6 @@ node scripts/nrepl-eval.mjs [options] [<code>]
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--backend` | Connect to backend nREPL (port 6064) | — |
-| `--frontend` | Connect to frontend nREPL (port 3447) | — |
 | `-p, --port PORT` | nREPL server port | `6064` |
 | `-H, --host HOST` | nREPL server host | `127.0.0.1` |
 | `-t, --timeout MS` | Timeout in milliseconds | `120000` |
@@ -27,8 +26,8 @@ node scripts/nrepl-eval.mjs [options] [<code>]
 | `-e, --last-error` | Evaluate `*e` to retrieve the last exception | — |
 | `-h, --help` | Show help message | — |
 
-- `--backend` and `--frontend` are mutually exclusive.
-- Explicit `--port` is overridden when `--backend`/`--frontend` is used.
+- Explicit `--port` is overridden when `--backend` is used. The old
+  `--frontend` alias (port 3447) was removed with the ClojureScript app in G4.7.
 
 ## When to Use
 
@@ -72,7 +71,6 @@ Reset the session to start fresh:
 
 **Frontend nREPL:**
 ```bash
-./scripts/nrepl-eval.mjs --frontend '(js/alert "hi")'
 ```
 
 **Multiple expressions via heredoc (recommended — avoids escaping issues):**
@@ -138,8 +136,8 @@ by the fully qualified symbol.
 ## Key Principles
 
 - **Default port is 6064** — just pass code directly, no `-p` needed when
-  your nREPL server is on 6064. Use `--backend` (6064) or `--frontend` (3447)
-  as quick aliases. Use `-p <PORT>` for any other port.
+  your nREPL server is on 6064. `--backend` is a quick alias. Use
+  `-p <PORT>` for any other port.
 - **Always use `:reload`** when requiring namespaces to pick up file changes.
 - **Session is reused** across invocations — defs, in-ns, and var bindings
   persist. Use `--reset-session` to clear.

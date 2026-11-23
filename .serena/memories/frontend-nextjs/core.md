@@ -1,6 +1,15 @@
 # Frontend Next.js (Strangler Shell)
 
-`frontend-nextjs/`: Next.js 15 app that replaces `frontend/` route by route. Talks to the Clojure backend over Transit RPC; never modify `backend/` for it.
+`frontend-nextjs/`: Next.js 15 app that replaced `frontend/` route by route. Talks to the Clojure backend over Transit RPC; never modify `backend/` for it.
+
+## Old frontend removal (G4.7)
+
+- `frontend/src`, `frontend/test`, Shadow CLJS, Storybook, Playwright and the old static resources are gone. Do not add `.cljs`/`.cljc` UI code.
+- `frontend/` now holds only the JavaScript package workspace (`packages/{draft-js,mousetrap,tokenscript,ui}`, `text-editor`). The design-system SCSS lives in `frontend/packages/ui/src/styles/ds/`; build it with `pnpm run build:ui` from `frontend/`.
+- Gettext sources moved to `frontend-nextjs/translations/`. `scripts/extract-translations.mjs` reads that directory.
+- The render-wasm frontend build writes `render-wasm.js|wasm` to `frontend-nextjs/public/js/`; the builtin Source Sans Pro TTFs live in `frontend-nextjs/public/fonts/`.
+- `scripts/ci` runs `frontend-nextjs` (typecheck, then vitest; `pnpm lint` still has pre-existing engine false positives). `scripts/nrepl-eval.mjs` has no `--frontend` alias any more.
+- Deferred: a Next.js production image, nginx rewrites for production, and the plugin e2e suites that used the old bundle. The devenv Caddy routes `:3450` to the Next dev server on `:3460`.
 
 ## Layout and commands
 
@@ -12,7 +21,7 @@
 ## Canvas runtime
 
 - Since G4.6b the workspace canvas also runs on `lib/render-wasm/engine/`: `workspace-app.ts` (`createWorkspaceApp`) owns the shared module, one `RenderLoop` and the workspace host; `workspace-render.ts` drives init/resize/viewport/rulers/clear; `shape-upload.ts`, `modifiers.ts`, `propagate.ts`, `bool.ts` and the image helpers call the engine directly. `workspace-selection.ts` sorts z-order in pure TS (`sortZIndexIds`). The canvas passes `isGestureActive` from a ref so a pointer pan keeps `render-finish` from finalizing mid-gesture; pointerup/pointercancel clear it and call `loop.finalizeViewInteraction()`.
-- `$APP` now survives only in `app/dev/render-wasm/page.tsx` and `bridge.ts`/`interop.ts`/`values.ts` (G4.7 deletion scope). Do not import `bridge` into app routes.
+- `$APP` and the `bridge`/`interop`/`values` modules no longer exist. All three runtimes call `lib/render-wasm/engine/`.
 - The workspace host (`workspace-app.ts`) writes text/grid/fills/strokes through `writeHostAttrs`, dedupes font fetches per URL, caches failed faces per module, and force-relayouts waiting text shapes when a face lands (`onFontsReady` → `loop.requestRender("fonts-loaded")`). `coldLoad` maps to `skipLayout`/`skipFillsStrokes` because the batch record already wrote them. `workspace-data.ts`, `font-hydrate.ts` and `fonts-store.ts` are gone; `fonts.ts` stays as the pure resolver.
 - Since G4.5b the viewer (viewport, thumbnails panel, one-shot frame renders) runs on `lib/render-wasm/engine/` and never touches `$APP`: `engine-boot.ts` (`loadEngineModule`, one artifact instance), `bundle.ts` (`loadDecodedBundle`, `pageObjects`, `shapeById`), `prepare.ts`, `bounds.ts`, `viewer-shapes.ts`, `sizes.ts` (object-bounds `ignoreMargin: false`).
 - Since G4.6a the dashboard thumbnail worker also runs the engine (`lib/thumbnail-render.ts`, `lib/thumbnail.worker.ts`): it decodes the raw RPC answer with `lib/transit`, boots an `OffscreenCanvas`, uploads with `setObjects`/`writeHostAttrs`, waits for the `process-pending` order (text layouts, thumbnail then full images, relayout), renders `renderSyncShape`/`renderSync`, composites the page background and clears with the defaults. Text falls back to the builtin face (no bundle fonts in a worker). `renderThumbnailFromRaw` is the worker entry; the client request format did not change.
@@ -42,5 +51,5 @@
 
 ## Porting rules
 
-- Port by subsystem from `frontend/src/app/render_wasm/api.cljs`, keeping the original call order; delete the `.cljs` once the TS path replaces it.
+- The CLJS source was removed in G4.7. Read it from git history (`git show <old-sha>:frontend/src/...`) when a port needs the original call order.
 - The exporter already ported the same portable layer under `exporter/src-ts/app/wasm/`; use it as reference (node-oriented, `.js` import specifiers), but keep this module's port separate.

@@ -4,8 +4,8 @@
 #
 # Use it when node_modules are stale or corrupted and a clean reinstall is
 # cheaper than debugging. Reinstall afterwards with `pnpm install` in each
-# workspace root (root, backend, common, docs, exporter, frontend, library,
-# mcp, media-processor, plugins, render-wasm).
+# workspace root (root, backend, common, docs, exporter, frontend,
+# frontend-nextjs, library, mcp, media-processor, plugins, render-wasm).
 #
 # external/ (vendored dependency trees) and .opencode/ are always ignored.
 # The pnpm content-addressable store lives at <repo>/.pnpm-store, outside

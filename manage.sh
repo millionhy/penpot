@@ -566,15 +566,6 @@ function sync-workspace {
     rsync -a --files-from="$files" --from0 "$PWD/" "$workspace/"
     rm -f "$files"
 
-    # Initial seed of frontend/resources/public/js/config.js. The file is
-    # gitignored, so git ls-files would not list it, yet the agentic devenv
-    # needs it (enable-mcp flag). After the first sync the workspace copy
-    # belongs to the user — subsequent syncs leave it untouched.
-    local cfg="frontend/resources/public/js/config.js"
-    if [[ -f "$PWD/$cfg" && ! -f "$workspace/$cfg" ]]; then
-        install -D "$PWD/$cfg" "$workspace/$cfg"
-    fi
-
     # Initial seed of the Claude Code skills link. It is gitignored, so git
     # ls-files does not list it, yet Claude Code reads skills from
     # .claude/skills alone. Seeded only when absent: afterwards the
@@ -926,22 +917,6 @@ function run-devenv {
         return 1
     fi
 
-    # Pre-flight: config.js must exist for agentic mode. The file is gitignored;
-    # without it the frontend never sets 'enable-mcp', so the agent can't drive
-    # Penpot via MCP.
-    if [[ "$agentic" == "true" ]]; then
-        local cfg="frontend/resources/public/js/config.js"
-        if [[ ! -f "$PWD/$cfg" ]]; then
-            echo "$cfg is missing in the live repo." >&2
-            echo "Create it before running with --agentic -- the file is gitignored," >&2
-            echo "read directly from \$PWD on ws0 and copied into wsN only on its initial" >&2
-            echo "sync. Without it the Penpot frontend will not establish the MCP" >&2
-            echo "connection, so the agent cannot drive it. Minimal content:" >&2
-            echo "  var penpotFlags = \"enable-mcp\";" >&2
-            return 1
-        fi
-    fi
-
     # Resolve git identity from the host when flags are omitted.
     if [[ -z "$git_user_name" ]]; then
         git_user_name="$(git config user.name 2>/dev/null || true)"
@@ -1254,9 +1229,7 @@ function build {
            --mount source=${PENPOT_USER_DATA_VOLUME},type=volume,target=/home/penpot/ \
            --mount source=`pwd`,type=bind,target=/home/penpot/penpot \
            -e EXTERNAL_UID=$CURRENT_USER_ID \
-           -e BUILD_STORYBOOK=$BUILD_STORYBOOK \
            -e BUILD_WASM=$BUILD_WASM \
-           -e SHADOWCLJS_EXTRA_PARAMS=$SHADOWCLJS_EXTRA_PARAMS \
            -e JAVA_OPTS="$JAVA_OPTS" \
            -w /home/penpot/penpot/$1 \
            $DEVENV_IMGNAME:$DEVENV_TAG sudo -EH -u penpot ./scripts/$script $version
@@ -1273,22 +1246,6 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 Copyright (c) KALEIDOS SUBSIDIARY SL
 EOF
-}
-
-function build-frontend-bundle {
-    echo ">> bundle frontend start";
-
-    mkdir -p ./bundles
-    local version=$(print-current-version);
-    local bundle_dir="./bundles/frontend";
-
-    build "frontend";
-
-    rm -rf $bundle_dir;
-    mv ./frontend/target/dist $bundle_dir;
-    echo $version > $bundle_dir/version.txt;
-    put-license-file $bundle_dir;
-    echo ">> bundle frontend end";
 }
 
 function build-mcp-bundle {
@@ -1356,22 +1313,6 @@ function build-exporter-bundle {
     echo ">> bundle exporter end";
 }
 
-function build-storybook-bundle {
-    echo ">> bundle storybook start";
-
-    mkdir -p ./bundles
-    local version=$(print-current-version);
-    local bundle_dir="./bundles/storybook";
-
-    build "frontend" "build-storybook";
-
-    rm -rf $bundle_dir;
-    mv ./frontend/storybook-static $bundle_dir;
-    echo $version > $bundle_dir/version.txt;
-    put-license-file $bundle_dir;
-    echo ">> bundle storybook end";
-}
-
 function build-docs-bundle {
     echo ">> bundle docs start";
 
@@ -1388,8 +1329,8 @@ function build-docs-bundle {
     echo ">> bundle docs end";
 }
 
-# Shared helper for the release-image builds below (frontend/backend/exporter/
-# mcp/storybook). Parses --tag; without it, tags with both $CURRENT_BRANCH and
+# Shared helper for the release-image builds below (backend/exporter/mcp/
+# media-processor). Parses --tag; without it, tags with both $CURRENT_BRANCH and
 # 'latest' (historical default, unchanged). With --tag, tags ONLY that custom
 # value -- same convention as build-devenv/build-imagemagick-docker-image: a
 # custom tag is for an isolated/test build, not a stand-in for latest.
@@ -1423,10 +1364,6 @@ function _build-release-docker-image {
     popd;
 }
 
-function build-frontend-docker-image {
-    _build-release-docker-image frontend bundle-frontend Dockerfile.frontend "$@"
-}
-
 function build-backend-docker-image {
     _build-release-docker-image backend bundle-backend Dockerfile.backend "$@"
 }
@@ -1441,10 +1378,6 @@ function build-mcp-docker-image {
 
 function build-media-processor-docker-image {
     _build-release-docker-image media-processor bundle-media-processor Dockerfile.media-processor "$@"
-}
-
-function build-storybook-docker-image {
-    _build-release-docker-image storybook bundle-storybook Dockerfile.storybook "$@"
 }
 
 function usage {
@@ -1516,25 +1449,21 @@ function usage {
     echo "                                   Options: --ws N (default: 0). See agentic-devenv.md and"
     echo "                                   .devenv/README.md for per-client setup and override paths."
     echo ""
-    echo "- build-bundle                     Build all bundles (frontend, backend, exporter, storybook and mcp)."
-    echo "- build-frontend-bundle            Build frontend bundle"
+    echo "- build-bundle                     Build the backend, exporter, mcp, media-processor and docs bundles."
     echo "- build-backend-bundle             Build backend bundle."
     echo "- build-exporter-bundle            Build exporter bundle."
     echo "- build-mcp-bundle                 Build mcp bundle."
     echo "- build-media-processor-bundle     Build media-processor bundle."
-    echo "- build-storybook-bundle           Build storybook bundle."
     echo "- build-docs-bundle                Build docs bundle."
     echo ""
-    echo "- build-docker-images [--tag TAG]  Build all docker images (frontend, backend, exporter, mcp and storybook)."
+    echo "- build-docker-images [--tag TAG]  Build all docker images (backend, exporter and mcp)."
     echo "                                   Without --tag, each image is tagged with both the current git branch"
     echo "                                   and 'latest' (unchanged default). With --tag, ONLY that custom tag"
     echo "                                   is applied, to all five images."
-    echo "- build-frontend-docker-image [--tag TAG]   Build frontend docker image."
     echo "- build-backend-docker-image [--tag TAG]    Build backend docker image."
     echo "- build-exporter-docker-image [--tag TAG]   Build exporter docker image."
     echo "- build-mcp-docker-image [--tag TAG]         Build mcp docker image."
     echo "- build-media-processor-docker-image [--tag TAG]  Build media-processor docker image."
-    echo "- build-storybook-docker-image [--tag TAG]  Build storybook docker image."
     echo "- build-imagemagick-docker-image [--tag TAG] [--push]"
     echo "                                   Build the imagemagick docker image. Local-only by default (single-"
     echo "                                   platform); pass --push to build multi-platform (amd64+arm64) and"
@@ -1587,16 +1516,10 @@ case $1 in
 
     ## production builds
     build-bundle)
-        build-frontend-bundle;
         build-mcp-bundle;
         build-media-processor-bundle;
         build-backend-bundle;
         build-exporter-bundle;
-        build-storybook-bundle;
-        ;;
-
-    build-frontend-bundle)
-        build-frontend-bundle;
         ;;
 
     build-mcp-bundle)
@@ -1615,25 +1538,15 @@ case $1 in
         build-exporter-bundle;
         ;;
 
-    build-storybook-bundle)
-        build-storybook-bundle;
-        ;;
-
     build-docs-bundle)
         build-docs-bundle;
         ;;
 
     build-docker-images)
-        build-frontend-docker-image "${@:2}"
         build-backend-docker-image "${@:2}"
         build-exporter-docker-image "${@:2}"
         build-mcp-docker-image "${@:2}"
         build-media-processor-docker-image "${@:2}"
-        build-storybook-docker-image "${@:2}"
-        ;;
-
-    build-frontend-docker-image)
-        build-frontend-docker-image "${@:2}"
         ;;
 
     build-backend-docker-image)
@@ -1650,10 +1563,6 @@ case $1 in
 
     build-media-processor-docker-image)
         build-media-processor-docker-image "${@:2}"
-        ;;
-
-    build-storybook-docker-image)
-        build-storybook-docker-image "${@:2}"
         ;;
 
     build-imagemagick-docker-image)

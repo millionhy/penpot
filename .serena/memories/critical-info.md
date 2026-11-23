@@ -29,7 +29,7 @@ You are working on the GitHub project `penpot/penpot`, a monorepo.
 
 This is a monorepo. Principles that apply to one module do *not* generally apply to others. Do not make assumptions.
 
-- `frontend/`: ClojureScript + SCSS SPA/design editor; core conventions: `mem:frontend/core`.
+- `frontend/`: retired ClojureScript app (removed in G4.7). Only the JavaScript package workspace (`packages/*`, `text-editor`) remains.
 - `frontend-nextjs/`: Next.js 15 shell replacing `frontend/` route by route, plus its own TS render-wasm engine; core conventions: `mem:frontend-nextjs/core`.
 - `backend/`: JVM Clojure HTTP/RPC server with PostgreSQL, Redis, storage, mail, and workers; core conventions: `mem:backend/core`. Runtime services and the task-queue vs Pub/Sub topology that constrains horizontal scaling: `mem:prod-infra/core`.
 - `common/`: shared CLJC data types, geometry, schemas, file/change logic, and utilities; core conventions: `mem:common/core`.
@@ -51,18 +51,18 @@ The memory is structured in a way that you can get the critical information abou
 
 # Dev Scripts (scripts/)
 
-- `scripts/nrepl-eval.mjs` — Evaluate Clojure/ClojureScript code via nREPL. Supports `--backend` (port 6064) and `--frontend` (port 3447) aliases. See `mem:scripts/nrepl-eval`.
+- `scripts/nrepl-eval.mjs` — Evaluate Clojure code via nREPL. Supports the `--backend` alias (port 6064); the old `--frontend` alias went away with the CLJS app. See `mem:scripts/nrepl-eval`.
 - `scripts/paren-repair` — Fix mismatched delimiters in Clojure/CLJS files and reformat with cljfmt. Run before lint checks when LLM edits break parens. See `mem:scripts/paren-repair`.
 - `scripts/psql` — PostgreSQL client wrapper with devenv defaults. Companion: `scripts/db-schema` for DDL dumps. See `mem:scripts/psql`.
 - `scripts/taiga.py` — Fetch public issues, user stories, and tasks from the Penpot Taiga project without authentication. See `mem:scripts/taiga`.
 - `scripts/gh.py` — GitHub operations helper: list milestone issues, fetch PR details, compare against CHANGES.md. Requires `gh` CLI. See `mem:scripts/gh`.
 - `scripts/error-reports.mjs` — Query error reports via RPC API with token authentication. Supports list/get operations with filtering and pagination. See `mem:scripts/error-reports`.
 - `scripts/clean-node-modules` — Remove stale `node_modules` from all pnpm workspaces (root, modules, member packages). Keeps the shared pnpm store at `<repo>/.pnpm-store` unless `--store`; ignores `external/` and `.opencode/`. Usage and reinstall steps: `mem:workflow/updating-pnpm`.
-- `scripts/ci` — CI orchestration script: runs lint, tests, and format checks per module (`frontend backend common render-wasm exporter mcp plugins library`). Logs go to `.ci-logs/`; read the log file on failure. See `mem:scripts/ci`.
+- `scripts/ci` — CI orchestration script: runs lint, tests, and format checks per module (`frontend-nextjs backend common render-wasm exporter mcp plugins library`). Logs go to `.ci-logs/`; read the log file on failure. See `mem:scripts/ci`.
 
 # Dependency graph
 
-`frontend -> common`, `backend -> common`, `exporter -> common`, and `frontend -> render-wasm`. Changes in `common` can affect frontend, backend, exporter, file migrations, and design-library behavior; validate across consumers when semantics change.
+`frontend-nextjs -> common`, `backend -> common`, `exporter -> common`, and `frontend-nextjs -> render-wasm`. Changes in `common` can affect frontend, backend, exporter, file migrations, and design-library behavior; validate across consumers when semantics change.
 
 # Working with Penpot designs
 

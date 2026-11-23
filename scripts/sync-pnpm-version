@@ -176,9 +176,9 @@ fi
 echo "stamped ${FIELD}: ${updated} updated, ${unchanged} unchanged"
 
 if [[ "$INSTALL" -eq 1 ]]; then
-  # The 11 pnpm workspaces: repo root plus one per module. Members resolve
+  # The 12 pnpm workspaces: repo root plus one per module. Members resolve
   # through their parent workspace lockfile, so no per-member install.
-  for dir in . backend common docs exporter frontend library mcp media-processor plugins render-wasm; do
+  for dir in . backend common docs exporter frontend frontend-nextjs library mcp media-processor plugins render-wasm; do
     echo "--- pnpm install in ${dir}"
     (cd "$dir" && pnpm install)
   done

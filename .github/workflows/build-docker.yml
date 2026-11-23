@@ -63,7 +63,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ALL_IMAGES: backend frontend exporter storybook mcp
+  ALL_IMAGES: backend exporter mcp
   # All runner instances live on the same server, so the bundle is
   # downloaded from S3 once and shared between build jobs through this
   # host-local directory. Each build job falls back to S3 if the file is
@@ -172,7 +172,7 @@ jobs:
       # never queue behind long builds.
       max-parallel: 3
       matrix:
-        image: [backend, frontend, exporter, storybook, mcp]
+        image: [backend, exporter, mcp]
 
     steps:
       - name: Set common environment variables

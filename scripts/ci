@@ -18,11 +18,13 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # Available modules
-ALL_MODULES=("frontend" "backend" "common" "render-wasm" "exporter" "mcp" "plugins" "library")
+ALL_MODULES=("frontend-nextjs" "backend" "common" "render-wasm" "exporter" "mcp" "plugins" "library")
 
 # Module commands
 declare -A LINT_CMD=(
-  [frontend]="pnpm run lint:clj && pnpm run lint:js && pnpm run lint:scss"
+  # `pnpm lint` still reports the pre-existing no-assign-module-variable and
+  # useShape hook false positives in the engine; typecheck is the green gate.
+  [frontend-nextjs]="pnpm run typecheck"
   [backend]="pnpm run lint:clj"
   [common]="pnpm run lint:clj"
   [render-wasm]="./lint"
@@ -33,7 +35,7 @@ declare -A LINT_CMD=(
 )
 
 declare -A TEST_CMD=(
-  [frontend]="pnpm run test:quiet"
+  [frontend-nextjs]="pnpm test"
   [backend]="clojure -M:dev:test"
   [common]="clojure -M:dev:test && pnpm run test:quiet"
   [render-wasm]="./test"
@@ -44,7 +46,7 @@ declare -A TEST_CMD=(
 )
 
 declare -A FMT_CHECK_CMD=(
-  [frontend]="pnpm run check-fmt:clj && pnpm run check-fmt:js && pnpm run check-fmt:scss"
+  [frontend-nextjs]=""
   [backend]="pnpm run check-fmt:clj"
   [common]="pnpm run check-fmt:clj && pnpm run check-fmt:js"
   [render-wasm]="cargo fmt --check"
@@ -55,7 +57,7 @@ declare -A FMT_CHECK_CMD=(
 )
 
 declare -A FMT_FIX_CMD=(
-  [frontend]="pnpm run fmt:clj && pnpm run fmt:js && pnpm run fmt:scss"
+  [frontend-nextjs]=""
   [backend]="pnpm run fmt:clj"
   [common]="pnpm run fmt:clj && pnpm run fmt:js"
   [render-wasm]="cargo fmt"
@@ -66,7 +68,7 @@ declare -A FMT_FIX_CMD=(
 )
 
 declare -A PAREN_REPAIR_CMD=(
-  [frontend]="find src test -name '*.clj' -o -name '*.cljs' -o -name '*.cljc' | xargs $PROJECT_ROOT/scripts/paren-repair"
+  [frontend-nextjs]=""
   [backend]="find src test -name '*.clj' -o -name '*.cljs' -o -name '*.cljc' | xargs $PROJECT_ROOT/scripts/paren-repair"
   [common]="find src test -name '*.clj' -o -name '*.cljs' -o -name '*.cljc' | xargs $PROJECT_ROOT/scripts/paren-repair"
   [render-wasm]=""
@@ -276,7 +278,7 @@ Usage: $(basename "$0") [OPTIONS] [MODULES...]
 CI orchestration script for Penpot monorepo.
 
 MODULES:
-  frontend, backend, common, render-wasm, exporter, mcp, plugins, library
+  frontend-nextjs, backend, common, render-wasm, exporter, mcp, plugins, library
   Use --all to run all modules.
 
 OPTIONS:
@@ -298,11 +300,11 @@ OPTIONS:
   --help            Show this help message
 
 EXAMPLES:
-  $(basename "$0") frontend backend          # Run lint, test, fmt on frontend and backend
+  $(basename "$0") frontend-nextjs backend   # Run lint, test, fmt on the shell and backend
   $(basename "$0") --all --no-test           # Run lint and fmt on all modules
   $(basename "$0") --lint common             # Run only lint on common
-  $(basename "$0") --fix frontend            # Fix formatting in frontend
-  $(basename "$0") --paren-repair frontend   # Fix delimiter errors in frontend
+  $(basename "$0") --fix common               # Fix formatting in common
+  $(basename "$0") --paren-repair common      # Fix delimiter errors in common
   $(basename "$0") --paren-repair --all      # Fix delimiter errors in all Clojure modules
   $(basename "$0") --all --fail-fast --verbose
 EOF

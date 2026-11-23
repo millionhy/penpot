@@ -135,7 +135,6 @@ function parseArgs(argv) {
     resetSession: false,
     lastError: false,
     backend: false,
-    frontend: false,
     code: null,
   };
 
@@ -143,8 +142,6 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === "--backend") {
       args.backend = true;
-    } else if (a === "--frontend") {
-      args.frontend = true;
     } else if (a === "-p" || a === "--port") {
       const val = argv[++i];
       if (val === undefined) { console.error("Error: --port requires a value."); process.exit(1); }
@@ -172,15 +169,8 @@ function parseArgs(argv) {
     }
   }
 
-  if (args.backend && args.frontend) {
-    console.error("Error: --backend and --frontend are mutually exclusive.");
-    process.exit(1);
-  }
-
   if (args.backend) {
     args.port = 6064;
-  } else if (args.frontend) {
-    args.port = 3447;
   } else if (args.port === null) {
     args.port = 6064;
   }
@@ -197,8 +187,7 @@ persists across invocations via a stored session ID.
 
 Options:
   --backend                   Connect to backend nREPL on port 6064 (default)
-  --frontend                  Connect to frontend nREPL on port 3447
-  -p, --port PORT             nREPL port (default: 6064; overridden by --backend/--frontend)
+  -p, --port PORT             nREPL port (default: 6064; --backend sets it)
   -H, --host HOST             nREPL host (default: 127.0.0.1)
   -t, --timeout MILLISECONDS  Timeout in milliseconds (default: 120000)
   --reset-session             Discard stored session and start fresh
@@ -209,7 +198,6 @@ Examples:
   ${bin} '(def x 42)'
   ${bin} 'x'
   ${bin} --backend '(+ 1 2 3)'
-  ${bin} --frontend '(js/alert "hi")'
   ${bin} --reset-session '(def x 0)'
   ${bin} --last-error
   ${bin} <<'EOF'

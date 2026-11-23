@@ -91,10 +91,8 @@ else
     export EMCC_CFLAGS="-g -sASSERTIONS=1 -sVERBOSE=1 $EMCC_CFLAGS"
 fi
 
-export FRONTEND_DEST="../frontend/resources/public/js";
+export FRONTEND_DEST="../frontend-nextjs/public/js";
 export EXPORT_DEST="../exporter/resources/wasm";
-
-export FRONTEND_SHARED_DEST="../frontend/src/app/render_wasm/api/shared.js";
 export EXPORT_SHARED_DEST="../exporter/resources/wasm/shared.js";
 
 function clean {
@@ -123,16 +121,6 @@ function copy_artifacts {
 
     sed -i "s/render_wasm.wasm/$BUILD_NAME.wasm?version=$VERSION_TAG/g" $DEST/$BUILD_NAME.js;
 
-    # The worker bundle is a browser concern; the exporter imports the ESM
-    # module directly under Node.
-    if [ "$RENDER_TARGET" = "frontend" ]; then
-        pnpm exec esbuild $SRC/render_wasm.js \
-            --log-level=error \
-            --outfile=$DEST/worker/render.js \
-            --platform=neutral \
-            --format=iife \
-            --global-name=WasmModule;
-    fi
 }
 
 function copy_shared_artifact {
@@ -148,7 +136,6 @@ function copy_target_artifacts {
     case "$RENDER_TARGET" in
         frontend)
             copy_artifacts "$FRONTEND_DEST";
-            copy_shared_artifact "$FRONTEND_SHARED_DEST";
             ;;
         export)
             copy_artifacts "$EXPORT_DEST";

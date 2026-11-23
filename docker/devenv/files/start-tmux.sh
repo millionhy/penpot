@@ -28,22 +28,17 @@ fi
 tmux -2 new-session -d -s "$PENPOT_TMUX_SESSION"
 
 echo "[start-tmux.sh] Installing node dependencies"
-pushd ~/penpot/frontend/
-./scripts/setup;
+pushd ~/penpot/frontend-nextjs/
+pnpm install;
 popd
 pushd ~/penpot/exporter/
 ./scripts/setup;
 popd
 
-tmux rename-window -t "$PENPOT_TMUX_SESSION:0" 'frontend watch'
+tmux rename-window -t "$PENPOT_TMUX_SESSION:0" 'frontend dev'
 tmux select-window -t "$PENPOT_TMUX_SESSION:0"
-tmux send-keys -t "$PENPOT_TMUX_SESSION" 'cd penpot/frontend' enter C-l
-tmux send-keys -t "$PENPOT_TMUX_SESSION" './scripts/watch app' enter
-
-tmux new-window -t "$PENPOT_TMUX_SESSION:1" -n 'frontend storybook'
-tmux select-window -t "$PENPOT_TMUX_SESSION:1"
-tmux send-keys -t "$PENPOT_TMUX_SESSION" 'cd penpot/frontend' enter C-l
-tmux send-keys -t "$PENPOT_TMUX_SESSION" './scripts/watch storybook' enter
+tmux send-keys -t "$PENPOT_TMUX_SESSION" 'cd penpot/frontend-nextjs' enter C-l
+tmux send-keys -t "$PENPOT_TMUX_SESSION" 'PENPOT_ASSETS_ORIGIN=http://localhost:4449 PENPOT_EXPORTER_ORIGIN=http://localhost:6061 NEXT_PUBLIC_PENPOT_BACKEND_ORIGIN=https://localhost:3449 pnpm run dev:devenv' enter
 
 tmux new-window -t "$PENPOT_TMUX_SESSION:2" -n 'exporter'
 tmux select-window -t "$PENPOT_TMUX_SESSION:2"

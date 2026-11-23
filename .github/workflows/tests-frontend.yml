@@ -7,8 +7,7 @@ defaults:
 on:
   pull_request:
     paths:
-      - 'frontend/**'
-      - 'common/**'
+      - 'frontend-nextjs/**'
       - 'render-wasm/**'
 
     types:
@@ -22,8 +21,7 @@ on:
       - staging
 
     paths:
-      - 'frontend/**'
-      - 'common/**'
+      - 'frontend-nextjs/**'
       - 'render-wasm/**'
 
 concurrency:
@@ -47,25 +45,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Lint
-        working-directory: ./frontend
-        run: |
-          pnpm install;
-          pnpm run check-fmt:js
-          pnpm run check-fmt:clj
-          pnpm run check-fmt:scss
-          pnpm run lint:clj
-          pnpm run lint:js
-          pnpm run lint:scss
+      - name: Install
+        working-directory: ./frontend-nextjs
+        run: pnpm install
+
+      - name: Typecheck
+        working-directory: ./frontend-nextjs
+        run: pnpm run typecheck
 
       - name: Unit Tests
-        working-directory: ./frontend
-        run: |
-          ./scripts/test
-
-      - name: Component Tests
-        working-directory: ./frontend
-        env:
-          VITEST_BROWSER_TIMEOUT: 120000
-        run: |
-          ./scripts/test-components
+        working-directory: ./frontend-nextjs
+        run: pnpm test

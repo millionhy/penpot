@@ -11,7 +11,8 @@ localhost:3449 {
 :3450 {
 	# For subpath test
 	# handle_path /penpot/* {
-	# 	reverse_proxy localhost:4449
+	# 	reverse_proxy localhost:3460
 	# }
-	reverse_proxy localhost:4449
+	# G4.7: the Next.js shell replaces the ClojureScript static bundle.
+	reverse_proxy localhost:3460
 }
