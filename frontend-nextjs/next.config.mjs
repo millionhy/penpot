@@ -68,20 +68,14 @@ const nextConfig = {
       },
       {
         // The builtin font files the wasm text pipeline fetches under /fonts/
-        // (D11): the frontend build ships resources/fonts/*.ttf to its static
-        // root, which the frontend nginx serves. Same origin as the assets, so
-        // point dev there; production nginx already serves the path directly.
+        // (D11): public/fonts/ holds the Source Sans Pro faces the engine
+        // requests, so those hit the Next static handler first. This rewrite
+        // stays as the fallback for any other font the shell does not bundle.
         source: "/fonts/:path*",
         destination: `${assetsOrigin}/fonts/:path*`,
       },
     ];
   },
-  // The @penpot/* renderer dependencies are `link:` packages that live outside
-  // this workspace (../frontend/packages/...). webpack resolves a linked file
-  // from its own directory, so the bare imports inside those trees (draft-js,
-  // draft-js/lib/..., immutable, the tokenscript interpreter) walk up
-  // ../frontend — which has no node_modules here — and fail. Redirect exactly
-  // those specifiers to this workspace's copies.
   webpack: (config, { isServer }) => {
     // Next sets output.library = "_N_E" with libraryTarget "assign" for the
     // client build, so every entry chunk ends with `_N_E = __webpack_exports__`.
@@ -121,17 +115,6 @@ const nextConfig = {
       });
     }
 
-    const linkedTreeSpecifiers = [
-      "draft-js",
-      "immutable",
-      "@tokens-studio/tokenscript-interpreter",
-    ];
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      ...Object.fromEntries(
-        linkedTreeSpecifiers.map((name) => [name, path.join(currentDir, "node_modules", name)]),
-      ),
-    };
     return config;
   },
 };
