@@ -14,8 +14,8 @@
 // The stroke-image fills of a legacy file stay until their slice lands.
 
 import { config } from "@/lib/config";
-import type { RendererApp } from "@/lib/render-wasm/interop";
 import { storeImageBytes } from "@/lib/render-wasm/image-store";
+import type { WorkspaceApp } from "@/lib/render-wasm/workspace-app";
 import {
   dataUriBytes,
   imageMediaUrl,
@@ -44,7 +44,7 @@ async function defaultFetchBytes(url: string): Promise<Uint8Array> {
 }
 
 export async function hydrateImageReferences(
-  app: RendererApp,
+  app: WorkspaceApp,
   references: readonly ImageFillReference[],
   options: ImageHydrateOptions = {},
 ): Promise<void> {

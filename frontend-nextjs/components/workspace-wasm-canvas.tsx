@@ -6,12 +6,12 @@
 // compiled progressive tile renderer run. The load sequence ports the
 // workspace branch of app.main.ui.workspace.viewport-wasm:
 //
-//   loadRenderer -> ensureWasmModule
+//   loadEngineModule -> createWorkspaceApp (module, render loop, host)
 //   -> init-canvas-context (try-init: one attempt plus three retries,
 //      200 ms apart; init also syncs the drawing buffer, since the canvas
 //      already has a positive client size)
-//   -> loadDecodedWorkspaceFile + workspacePageObjects (the wasm-side
-//      resolved model)
+//   -> the store's page objects of lib/workspace (the fit math, the
+//      interaction hit-testing and the engine upload read one model)
 //   -> initialize-viewport, once, with the zoom/vbox of
 //      lib/workspace-viewport's initialViewport over the page objects of
 //      lib/workspace, the page background and an on-shapes-ready marker
@@ -86,9 +86,8 @@
 //   cancels it: a StrictMode replay must not destroy the context under
 //   the live run, and losing the context right before a re-init can fail
 //   on some browsers (see clear-canvas in render_wasm/api.cljs).
-// - The JS-side file (lib/workspace, for the fit math) and the wasm-side
-//   file (workspace-data, for the render model) are two independent
-//   get-file reads of the same revision.
+// - The render model is the store's page objects (lib/workspace): one
+//   get-file read feeds the fit math, the hit-testing and the engine upload.
 // - The click selection runs on pointerup behind a 10px move threshold
 //   instead of the DOM click event of on-click (F9.3 widened the F9.2
 //   5px); a press that crosses the threshold starts the move drag. The
@@ -104,10 +103,9 @@
 //   commit in flight rejects new presses, and a failed commit only
 //   reports through the console and the store error channel (no visible
 //   banner yet, T6).
-// - The drag needs the internal modifier ABI (lib/render-wasm/modifiers):
-//   when a wasm rebuild drops an entry point the threshold crossing keeps
-//   the F9.2 behavior (the release selects nothing) and warns once per
-//   load.
+// - The drag runs on the engine's modifier protocol (lib/render-wasm/
+//   modifiers). The engine always ships those entry points; the F9.2
+//   "release selects nothing" branch stays only as a defensive guard.
 // - Escape during a drag resets the preview and then clears the selection
 //   (the CLJS :escape shortcut emits interrupt + deselect-all); a
 //   pointercancel instead restores the selection the threshold crossing
@@ -149,23 +147,15 @@ import {
 } from "react";
 
 import { WorkspaceViewportOverlay } from "@/components/workspace-viewport-overlay";
-import { ensureWasmModule, loadRenderer } from "@/lib/render-wasm/bridge";
-import { KEY, call, sleep, type RendererApp } from "@/lib/render-wasm/interop";
 import {
-  DRAG_PREVIEW_INTERNALS,
-  GEOMETRY_PUSH_INTERNALS,
   cleanModifiers,
-  commitShapeGeometry,
   configureModifiers,
   endModifiers,
-  missingInternals,
   resetModifierPreview,
   startModifiers,
-  type GeometryShape,
   type Matrix6,
-  type ShapeGeometry,
 } from "@/lib/render-wasm/modifiers";
-import { PROPAGATE_INTERNALS, propagateModifiers } from "@/lib/render-wasm/propagate";
+import { propagateModifiers } from "@/lib/render-wasm/propagate";
 import {
   clearWorkspaceCanvas,
   initializeWorkspaceViewport,
@@ -177,11 +167,13 @@ import {
   setWorkspaceRulersVisible,
   setWorkspaceViewBox,
 } from "@/lib/render-wasm/workspace-render";
+import { createWorkspaceApp, type WorkspaceApp } from "@/lib/render-wasm/workspace-app";
+import { loadEngineModule } from "@/lib/render-wasm/engine-boot";
 import {
-  loadDecodedWorkspaceFile,
-  invalidateDecodedWorkspaceFile,
-  workspacePageObjects,
-} from "@/lib/render-wasm/workspace-data";
+  currentCanvasContext,
+  intersectPositionInShape,
+  isContextInitialized,
+} from "@/lib/render-wasm/engine";
 import {
   applyShapeStyle,
   attrsWriteStyle,
@@ -263,7 +255,6 @@ import {
   uploadImage,
 } from "@/lib/workspace-image";
 import { hydrateImageReferences } from "@/lib/render-wasm/image-hydrate";
-import { hydrateTextFonts, type TextBearingShape } from "@/lib/render-wasm/font-hydrate";
 import { storeImageBytes } from "@/lib/render-wasm/image-store";
 import {
   TEXT_CLICK_HEIGHT,
@@ -278,7 +269,6 @@ import { dropIndexForFrame } from "@/lib/workspace-drop";
 import {
   applyMove,
   buildMoveChanges,
-  movedGeometry,
   resolveMoveSet,
   topNestedFrameAt,
 } from "@/lib/workspace-move";
@@ -358,10 +348,8 @@ import {
   hoverStackAt,
   isFrameShape,
   isRootFrameShape,
-  makeAppIntersectPosition,
-  makeAppSortIds,
-  makeAppTopNestedFrame,
   selectionAfterArea,
+  sortZIndexIds,
   type HoverIdsCache,
 } from "@/lib/workspace-selection";
 import {
@@ -451,7 +439,7 @@ const NOOP_TOOL_CHANGE = (): void => {};
 // the child constraints on purpose, and the overlay previews that spread),
 // and so does a wasm without the propagate ABI.
 function gestureSubtreeEntries(
-  app: RendererApp | null,
+  app: WorkspaceApp | null,
   objects: WorkspaceObjects,
   roots: readonly string[],
   matrix: Matrix6,
@@ -595,8 +583,9 @@ interface TextEditorState {
   lineHeight: number;
 }
 
-// The $APP-backed pieces of the selection library (they need the wasm
-// runtime): created once per load from appRef/wasmObjectsRef.
+// The runtime-backed pieces of the selection library: the z-order sort reads
+// the live JS model, the glyph filter reads the engine, and the frame walk
+// uses the same JS model as the drop target.
 interface InteractionAdapters {
   sortIds: (ids: readonly string[], mod: boolean) => string[];
   intersectPosition: (id: string, point: ViewportPoint) => boolean;
@@ -708,7 +697,7 @@ export interface WorkspaceWasmCanvasProps {
 // offsets! and set-rulers-selection! run on every selection change with the
 // display-state* math of rulers_state.cljs.
 function pushWorkspaceRulerState(
-  app: RendererApp,
+  app: WorkspaceApp,
   objects: WorkspaceObjects | null,
   selection: readonly string[],
 ): void {
@@ -766,7 +755,10 @@ function WorkspaceWasmCanvasImpl({
   // Monotonic run id: each load takes one, and only the current run may
   // touch the canvas (StrictMode replays effects on the same refs).
   const runIdRef = useRef(0);
-  const appRef = useRef<RendererApp | null>(null);
+  // The engine handle of this canvas: the shared module, one render loop and
+  // the host bridge. It outlives a StrictMode replay and a page switch; only
+  // a real unmount clears it with the context.
+  const appRef = useRef<WorkspaceApp | null>(null);
   // The latest {zoom, vbox, vport}; the wheel flush reads it, since events
   // arrive between renders.
   const stateRef = useRef<ViewportState | null>(null);
@@ -774,11 +766,9 @@ function WorkspaceWasmCanvasImpl({
   const teardownTimerRef = useRef<number | null>(null);
 
   // The interaction layer reads the resolved model through refs: the
-  // JS-side objects and their hit-testing index (the query math), the
-  // wasm-side objects behind the $APP adapters, and the (mod?, ids) sort
-  // cache. All are (re)built by the load effect.
+  // objects, their hit-testing index (the query math) and the (mod?, ids)
+  // sort cache. All are (re)built by the load effect.
   const objectsRef = useRef<WorkspaceObjects | null>(null);
-  const wasmObjectsRef = useRef<unknown>(null);
   const indexRef = useRef<WorkspaceIndex | null>(null);
   // F9.15: the resident index worker. Every incremental model update hands
   // its objects to the builder (scheduleIndex) instead of rebuilding the
@@ -806,14 +796,14 @@ function WorkspaceWasmCanvasImpl({
     },
     [],
   );
-  const adaptersRef = useRef<InteractionAdapters | null>(null);
   const hoverCacheRef = useRef<HoverIdsCache | null>(null);
-  // The move drag needs the internal modifier ABI; the load effect gates
-  // it once per load (see the load sequence below).
+  // The engine always carries the modifier and propagation entry points; the
+  // flags stay because the gesture code and the panel paths gate on them.
   const dragEnabledRef = useRef(false);
-  // F9.11: the geometry propagation ABI (_propagate_modifiers). A rebuild
-  // without it keeps the local constraint spread and skips the reflow.
   const propagateEnabledRef = useRef(false);
+  // True while a pointer pan owns the view interaction, so the render loop
+  // keeps it open across its render-finish debounce (view-gesture-active?).
+  const viewGestureRef = useRef(false);
   // The commit bookkeeping of the write path (F9.3 T3, AD5/AD11): the
   // interaction effect outlives prop changes, so the ids it commits with
   // and the guards all live in refs the load effect refreshes — the edit
@@ -1019,11 +1009,6 @@ function WorkspaceWasmCanvasImpl({
         // rejects a revn ABOVE the stored one (files_update.clj), so a
         // lagging submit stays accepted.
         revnRef.current = Math.max(revnRef.current, revn + 1);
-        // The decoded cache of lib/render-wasm/workspace-data still holds
-        // the file as it stood before this commit. Drop it, so a page
-        // switch or a reload re-reads the file from the backend (a page
-        // created above lands there, a renamed page shows its new name).
-        invalidateDecodedWorkspaceFile(appRef.current, fileIdRef.current);
         // F9.7: one successful request is one undo entry, whatever the
         // number of changes (a move plus its reparent stays one step).
         if (undoChanges.length > 0) {
@@ -1617,8 +1602,8 @@ function WorkspaceWasmCanvasImpl({
       zoomIntoView: fitToIds,
       // F8.2: one file-change of the collaboration channel, in the order
       // dch/commit uses with :source :remote — apply the changes of the open
-      // page to the model, push them to wasm, drop the decoded file and
-      // hydrate the image fills the batch added. No echo (the change is
+      // page to the model, push them to wasm and hydrate the image fills the
+      // batch added (text faces ride the upload host). No echo (the change is
       // already committed server-side), no undo entry (:save-undo? false),
       // and no write to file.revn/file.data: the load effect keys on
       // canvasRevn/canvasObjects and would reload the whole page.
@@ -1643,30 +1628,9 @@ function WorkspaceWasmCanvasImpl({
             } catch (cause: unknown) {
               console.warn("[workspace] could not sync a remote change to wasm:", cause);
             }
-            // A page switch would re-read the file; keep the cache honest.
-            invalidateDecodedWorkspaceFile(app, fileIdRef.current);
             const references = newImageFillReferences(before, after);
             if (references.length > 0) {
               void hydrateImageReferences(app, references);
-            }
-            // A remote text edit changes a content tree the wasm store has not
-            // shaped yet; store any face the changed text shapes need and
-            // re-run their layout (D11). Only the touched shapes are scanned.
-            const touchedIds = new Set<string>();
-            for (const change of plan.changes) {
-              if (change.type === "mod-obj" || change.type === "add-obj") {
-                touchedIds.add(change.id);
-              } else if (change.type === "mov-objects") {
-                for (const movedId of change.shapes) touchedIds.add(movedId);
-              }
-            }
-            const changedTextShapes: TextBearingShape[] = [];
-            for (const touchedId of touchedIds) {
-              const shape = after[touchedId];
-              if (shape !== undefined && shape.type === "text") changedTextShapes.push(shape);
-            }
-            if (changedTextShapes.length > 0) {
-              void hydrateTextFonts(app, changedTextShapes);
             }
           }
           // A remote delete prunes the selection; the hover ids and the
@@ -1751,6 +1715,9 @@ function WorkspaceWasmCanvasImpl({
     }
 
     setError(null);
+    // A page switch can land mid-pan; the unmounted pointer never reports its
+    // release, so a stale gesture would block every render-finish finalize.
+    viewGestureRef.current = false;
     canvas.dataset.rendered = "false";
     delete canvas.dataset.shapes;
     stateRef.current = null;
@@ -1773,69 +1740,55 @@ function WorkspaceWasmCanvasImpl({
 
     void (async () => {
       try {
-        const app = await loadRenderer();
+        // One artifact per page: the module is shared by every engine call
+        // site, and the workspace handle wraps it with the render loop and
+        // the host bridge.
+        const wasmModule = await loadEngineModule();
         if (!alive()) return;
-        await ensureWasmModule(app);
-        if (!alive()) return;
 
-        // F9.3: the move drag drives the internal modifier ABI directly;
-        // gate it once per load so a wasm rebuild missing an entry point
-        // degrades to the F9.2 click behavior instead of trapping. Both
-        // sets gate the drag: the preview needs set-modifiers, and a
-        // commit must be able to hand the geometry over to the pool (a
-        // missing push entry would leave the wasm side stale after a
-        // commit).
-        const missing = missingInternals(app, [
-          ...DRAG_PREVIEW_INTERNALS,
-          ...GEOMETRY_PUSH_INTERNALS,
-        ]);
-        dragEnabledRef.current = missing.length === 0;
-        if (missing.length > 0) {
-          console.warn(`[render-wasm] drag disabled, missing internals: ${missing.join(", ")}`);
+        let app = appRef.current;
+        if (app === null || app.module !== wasmModule) {
+          app = createWorkspaceApp(wasmModule, {
+            isGestureActive: () => viewGestureRef.current,
+          });
+          appRef.current = app;
         }
+        // A page switch reuses the module and the loop; drop the previous
+        // page's timers before the new viewport is installed.
+        app.loop.dispose();
+        // The engine always ships the modifier and propagation entry points.
+        dragEnabledRef.current = true;
+        propagateEnabledRef.current = true;
 
-        // F9.11: the geometry propagation ABI drives the resize spread and
-        // the layout reflow. A rebuild without it keeps the local constraint
-        // spread of F9.10 and commits no reflow.
-        const missingPropagate = missingInternals(app, PROPAGATE_INTERNALS);
-        propagateEnabledRef.current = missingPropagate.length === 0;
-        if (missingPropagate.length > 0) {
-          console.warn(
-            `[render-wasm] geometry propagation disabled, missing internals: ${missingPropagate.join(", ")}`,
-          );
-        }
-
-        // try-init of viewport-wasm.cljs: one attempt plus three retries
-        // 200 ms apart; a persistent failure surfaces as the error state.
-        let init = false;
-        for (let attempt = 0; attempt < 4; attempt++) {
-          if (!alive()) return;
-          try {
-            init = initWorkspaceCanvas(app, canvas);
-          } catch (cause: unknown) {
-            console.error("[render-wasm] canvas context init failed:", cause);
-            init = false;
+        // A StrictMode replay or a page switch keeps the canvas and its GL
+        // context: re-registering the same canvas would leak a context
+        // handle. A real mount (or a lost context) initializes once.
+        const existing = currentCanvasContext();
+        const reuse =
+          existing !== undefined && existing.canvas === canvas && isContextInitialized();
+        let init = reuse;
+        if (!reuse) {
+          // try-init of viewport-wasm.cljs: one attempt plus three retries
+          // 200 ms apart; a persistent failure surfaces as the error state.
+          for (let attempt = 0; attempt < 4; attempt++) {
+            if (!alive()) return;
+            try {
+              init = initWorkspaceCanvas(app, canvas);
+            } catch (cause: unknown) {
+              console.error("[render-wasm] canvas context init failed:", cause);
+              init = false;
+            }
+            if (init) break;
+            await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 200));
           }
-          if (init) break;
-          await sleep(200);
         }
         if (!init) {
           throw new Error("render-wasm: could not initialize the WebGL2 canvas context");
         }
         if (!alive()) return;
-        appRef.current = app;
 
-        const decoded = await loadDecodedWorkspaceFile(app, fileId);
-        if (!alive()) return;
-        const wasmObjects = workspacePageObjects(app, decoded.fileData, pageId);
-        if (wasmObjects === null || wasmObjects === undefined) {
-          throw new Error(`render-wasm: page ${pageId} has no objects`);
-        }
-        wasmObjectsRef.current = wasmObjects;
-
-        // The page objects of the JS-side file (the fit math and the
-        // interaction hit-testing) and the page background; both come from
-        // the store's file.
+        // The page objects of the store's file (the fit math, the interaction
+        // hit-testing and the engine upload all read the same model now).
         const objects = canvasObjects ?? {};
         objectsRef.current = objects;
         indexRef.current = createWorkspaceIndex(objects);
@@ -1843,9 +1796,8 @@ function WorkspaceWasmCanvasImpl({
         // (a commit replaces it together with the ref).
         setWorkspaceObjects(objects);
         // A (re)load invalidates the previous model's derived state: the
-        // $APP adapters, the sort cache and the transient interaction
-        // slices (the selection ids belong to the old page).
-        adaptersRef.current = null;
+        // sort cache and the transient interaction slices (the selection ids
+        // belong to the old page).
         hoverCacheRef.current?.clear();
         clearSelection();
         setHover(null);
@@ -1865,11 +1817,14 @@ function WorkspaceWasmCanvasImpl({
         stateRef.current = fitted;
 
         // init-canvas-context already ran resize-canvas! (positive client
-        // size), so the drawing buffer matches the CSS size; this installs
-        // the background, the view and the shape load. Without an
-        // :on-render callback the compiled set-objects falls back to
-        // request-render, which drives the progressive chain.
-        initializeWorkspaceViewport(app, wasmObjects, fitted.zoom, fitted.vbox, {
+        // size), so the drawing buffer matches the CSS size. A reused context
+        // may have missed a resize while the page was hidden.
+        if (reuse) resizeWorkspaceCanvas(app, canvas);
+
+        // The background, the view, the shape pool and the upload. The
+        // engine's set-objects requests the render that drives the
+        // progressive chain.
+        initializeWorkspaceViewport(app, objects, fitted.zoom, fitted.vbox, {
           background,
           onShapesReady: () => {
             canvas.dataset.shapes = "true";
@@ -1884,16 +1839,6 @@ function WorkspaceWasmCanvasImpl({
         const imageReferences = imageFillReferences(objects);
         if (imageReferences.length > 0) {
           void hydrateImageReferences(app, imageReferences, { isAlive: alive });
-        }
-
-        // The text faces the loaded page uses must reach the wasm font store
-        // before the renderer can shape the glyphs (D11). set_object carried
-        // the text but not the bytes, so this pass fetches and stores them, then
-        // re-runs the layout. It mirrors the image hydration: a failed fetch
-        // only warns and leaves that text blank; a not-ready renderer no-ops.
-        const textShapes = Object.values(objects).filter((shape) => shape.type === "text");
-        if (textShapes.length > 0) {
-          void hydrateTextFonts(app, textShapes, { isAlive: alive });
         }
 
         // The workspace chrome: rulers visible, a rounded viewport frame
@@ -2134,20 +2079,22 @@ function WorkspaceWasmCanvasImpl({
     // re-running the gesture effect.
     cursorRef.current = updateCursor;
 
-    // The $APP adapters need the loaded runtime: created on first use and
-    // invalidated by the load effect on every (re)load.
-    const ensureAdapters = (): InteractionAdapters | null => {
-      if (adaptersRef.current === null) {
-        const app = appRef.current;
-        const wasmObjects = wasmObjectsRef.current;
-        if (app === null || wasmObjects === null) return null;
-        adaptersRef.current = {
-          sortIds: makeAppSortIds(app, wasmObjects),
-          intersectPosition: makeAppIntersectPosition(app),
-          topFrame: makeAppTopNestedFrame(app, wasmObjects, false),
-        };
-      }
-      return adaptersRef.current;
+    // The runtime-backed selection hooks: the z-order sort and the frame walk
+    // read the live JS model, the glyph filter reaches the engine. Nothing is
+    // cached: a page switch swaps the model under this same closure.
+    const selectionAdapters = (): InteractionAdapters | null => {
+      const app = appRef.current;
+      const objects = objectsRef.current;
+      if (app === null || objects === null) return null;
+      return {
+        sortIds: (ids, mod) => sortZIndexIds(objects, ids, mod),
+        intersectPosition: (id, point) =>
+          intersectPositionInShape(app.module, id, point.x, point.y),
+        topFrame: (point) => {
+          const id = topNestedFrameAt(objects, point);
+          return id === ZERO_UUID ? null : id;
+        },
+      };
     };
 
     const queryStack = (world: ViewportPoint): string[] => {
@@ -2157,7 +2104,7 @@ function WorkspaceWasmCanvasImpl({
       if (state === null || index === null || objects === null) return [];
       return hoverStackAt(index, objects, world, state.zoom, {
         mod: keys.mod,
-        sortIds: ensureAdapters()?.sortIds,
+        sortIds: selectionAdapters()?.sortIds,
         cache: hoverCacheRef.current ?? undefined,
       });
     };
@@ -2168,7 +2115,7 @@ function WorkspaceWasmCanvasImpl({
       if (topFrameTimer !== 0) window.clearTimeout(topFrameTimer);
       topFrameTimer = window.setTimeout(() => {
         topFrameTimer = 0;
-        const adapters = ensureAdapters();
+        const adapters = selectionAdapters();
         if (adapters === null) return;
         setHoverTopFrameId(adapters.topFrame(world));
       }, TOP_FRAME_DEBOUNCE_MS);
@@ -2189,7 +2136,7 @@ function WorkspaceWasmCanvasImpl({
           : hoverShapeId(stack, objects, world, {
               mod: keys.mod,
               selected: getWorkspaceState().selection,
-              intersectPosition: ensureAdapters()?.intersectPosition,
+              intersectPosition: selectionAdapters()?.intersectPosition,
             });
       setHoverShapeId(hoverId);
       updateCursor();
@@ -2793,8 +2740,9 @@ function WorkspaceWasmCanvasImpl({
 
     // Leave the preview without a commit: drop the modifier overrides,
     // show the base geometry again and clear the overlay offset. Idempotent
-    // per gesture. The commit success path instead hands the geometry over
-    // through commitShapeGeometry (T5, AD7) and stops the state directly.
+    // per gesture. The commit success path instead ends and cleans the
+    // modifiers, then hands the whole records over through
+    // uploadShapeGeometry (T5, AD7) and stops the state directly.
     const cancelDragPreview = (): void => {
       if (!drag.active) return;
       stopDragState();
@@ -2810,7 +2758,7 @@ function WorkspaceWasmCanvasImpl({
     // - the JS model is replaced in place (the move application, then the
     //   mov-objects mirror over the ids the change carried) and the
     //   store/overlay follow the same reference (AD9/AD10);
-    // - the preview hands over through commitShapeGeometry: end modifiers,
+    // - the preview hands over through uploadShapeGeometry: end modifiers,
     //   clean the overrides, push every moved shape's new selrect (path
     //   content included) and request one full render, all in the task
     //   that handled the response — no intermediate frame shows the base
@@ -2819,12 +2767,12 @@ function WorkspaceWasmCanvasImpl({
     //   leaves the model, the selection and the revn alone, reporting
     //   through the console and the store error channel (AD9).
     //
-    // T4/AD8: the drop target resolves over the JS model — the wasm-side
-    // cljs snapshot freezes at load and goes stale after the first commit
-    // (the F9.2 KEY.topNestedFrame would misjudge the moved frames). The
-    // frames of the live move are excluded (a frame never reparents into
-    // itself), and the mov-objects change follows the companion mod-obj
-    // list of generate-relocate in the same request (AD5).
+    // T4/AD8: the drop target resolves over the JS model (topNestedFrameAt),
+    // which the commits keep current; a renderer-side snapshot would go
+    // stale after the first commit. The frames of the live move are excluded
+    // (a frame never reparents into itself), and the mov-objects change
+    // follows the companion mod-obj list of generate-relocate in the same
+    // request (AD5).
     //
     // F9.3 companions: hide-in-viewer, layout-item cleanup,
     // component-root, flex sizing) come from buildRelocateChanges; the
@@ -2891,19 +2839,22 @@ function WorkspaceWasmCanvasImpl({
           // A wasm failure never fails the committed file.
           try {
             if (relocate.length === 0) {
-              const entries: Array<readonly [GeometryShape, ShapeGeometry]> = [];
+              // Leave the preview mode and drop the overrides, then rewrite
+              // every moved record: the whole set_object keeps the parent,
+              // frame, rotation and transform fields a geometry-only push
+              // would drop.
+              endModifiers(pushApp);
+              cleanModifiers(pushApp);
+              const shapes: WorkspaceShape[] = [];
               for (const id of ids) {
-                const shape = objects[id];
-                if (shape === undefined || shape === null) continue;
-                const geometry = movedGeometry(shape, dx, dy);
-                if (geometry !== null) entries.push([shape, geometry]);
+                const shape = next[id];
+                if (shape !== undefined && shape !== null) shapes.push(shape);
               }
-              commitShapeGeometry(pushApp, entries);
+              uploadShapeGeometry(pushApp, shapes);
             } else {
               // A reparent rewrites the tree (children lists, frame ids,
-              // component-root): the selrect-only push cannot carry it, so
-              // leave the preview, drop the overrides and upload every
-              // shape the change list touches.
+              // component-root): leave the preview, drop the overrides and
+              // upload every shape the change list touches.
               endModifiers(pushApp);
               cleanModifiers(pushApp);
               uploadChangedShapes(pushApp, objects, next, changes);
@@ -3171,10 +3122,6 @@ function WorkspaceWasmCanvasImpl({
               const nextShape = next[id];
               if (nextShape !== undefined) {
                 uploadShapeGeometry(app, [nextShape]);
-                // The committed content may use a face the store does not hold
-                // yet; fetch it and re-shape the text (D11). A no-op when the
-                // renderer is not live or the face is already uploaded.
-                void hydrateTextFonts(app, [nextShape]);
               }
             }
           } catch (cause: unknown) {
@@ -3751,6 +3698,16 @@ function WorkspaceWasmCanvasImpl({
       const mode = interaction.mode;
       const cancelled = interaction.cancelled;
 
+      if (mode === "pan") {
+        // finish-panning: the release ends the gesture, so the render-finish
+        // debounce sees no gesture and the explicit finalize ends the view
+        // interaction with one full-quality frame.
+        viewGestureRef.current = false;
+        endGesture();
+        appRef.current?.loop.finalizeViewInteraction();
+        return;
+      }
+
       if (mode === "node" || mode === "node-handle") {
         // The release commits one mod-obj: a press that never moved (a plain
         // anchor click) and an aborted gesture send nothing. The selection
@@ -3921,6 +3878,10 @@ function WorkspaceWasmCanvasImpl({
 
     const onPointerCancel = (event: PointerEvent): void => {
       if (interaction.pointerId !== event.pointerId) return;
+      // A lost pan pointer must not leave the view interaction open forever;
+      // the compiled end handler only sees pointerup, so this is stricter.
+      const wasPan = interaction.mode === "pan";
+      if (wasPan) viewGestureRef.current = false;
       if (interaction.mode === "node" || interaction.mode === "node-handle") {
         // A physical cancellation restores the anchors captured at the press;
         // the file never saw the preview.
@@ -3964,6 +3925,7 @@ function WorkspaceWasmCanvasImpl({
         cancelTransformPreview();
       }
       endGesture();
+      if (wasPan) appRef.current?.loop.finalizeViewInteraction();
     };
 
     const onPointerLeave = (): void => {
@@ -4282,18 +4244,17 @@ function WorkspaceWasmCanvasImpl({
       }
       teardownTimerRef.current = window.setTimeout(() => {
         teardownTimerRef.current = null;
-        void (async () => {
+        const app = appRef.current;
+        if (app !== null) {
           try {
-            const app = await loadRenderer();
-            if (call(app, KEY.wasmLive) === true) {
-              clearWorkspaceCanvas(app);
-            }
-            appRef.current = null;
-            stateRef.current = null;
-          } catch {
-            // The module never loaded; nothing to hand back.
+            clearWorkspaceCanvas(app);
+          } catch (cause: unknown) {
+            // A lost context has nothing left to release.
+            console.warn("[workspace] could not clear the canvas:", cause);
           }
-        })();
+          appRef.current = null;
+        }
+        stateRef.current = null;
       }, 0);
     };
   }, []);

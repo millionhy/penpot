@@ -15,9 +15,9 @@
 //
 // The pure functions take the plain objects of lib/workspace and a
 // WorkspaceIndex (lib/workspace-index), so vitest exercises every rule
-// without the CLJS runtime. The $APP-backed adapters at the bottom run in
-// the browser against the wasm-side CLJS objects and are injected into the
-// pure functions as dependencies.
+// without the renderer. The z-order sort at the bottom reads the same model;
+// the glyph hit test and the innermost-frame walk are injected by the canvas
+// as dependencies.
 //
 // Deviations from the CLJS original, documented:
 // - No double-click enter-group/enter-frame: a double click behaves as a
@@ -45,16 +45,7 @@ import {
   type Point,
   type WorkspaceIndex,
 } from "@/lib/workspace-index";
-import {
-  arrayMap,
-  call,
-  intersectPositionInShape,
-  KEY,
-  keyword,
-  uuid,
-  vec,
-  type RendererApp,
-} from "@/lib/render-wasm/interop";
+import { getParentIdsWithIndex } from "@/lib/viewer";
 
 // --- Small helpers ----------------------------------------------------------
 
@@ -232,9 +223,9 @@ export interface HoverStackOptions {
   // false here, so blocked shapes never hover (F9.2 has no permission
   // model yet).
   readOnly?: boolean;
-  // app.common.types.shape-tree/sort-z-index (arity 3). The compiled
-  // function reads the wasm-side CLJS objects map, so the browser passes
-  // makeAppSortIds; without an adapter (unit tests) the query order stays.
+  // app.common.types.shape-tree/sort-z-index (arity 3). The canvas passes
+  // its pure `sortZIndexIds` over the live objects; without one (unit
+  // tests) the query order stays.
   sortIds?: (ids: readonly string[], mod: boolean) => string[];
   // The (mod?, ids) cache (sorted-ids-cache in the CLJS): repeated pointer
   // moves over the same shapes skip the z-index sort.
@@ -312,9 +303,9 @@ export function hoverStackAt(
 export interface HoverShapeOptions {
   mod: boolean;
   selected: readonly string[];
-  // app.render-wasm.api/intersect-position-in-shape (see
-  // makeAppIntersectPosition). Without an adapter (unit tests) the glyph
-  // filter is skipped, the documented selrect fallback.
+  // app.render-wasm.api/intersect-position-in-shape, bound to the engine
+  // module by the canvas. Without one (unit tests) the glyph filter is
+  // skipped, the documented selrect fallback.
   intersectPosition?: (id: string, point: Point) => boolean;
 }
 
@@ -485,62 +476,99 @@ export function selectionAfterArea(
   return result;
 }
 
-// --- $APP adapters (browser runtime) ----------------------------------------
+// --- Z-order (shape-tree/sort-z-index arity 3) ------------------------------
 //
-// The compiled sort-z-index and top-nested-frame read the wasm-side CLJS
-// objects map (uuid keys), so the adapters below take that map and
-// translate the plain string ids back and forth through uuid/str. They are
-// thin wrappers over lib/render-wasm/interop and are not exercised by
-// vitest (they need the compiled runtime); the pure functions accept them
-// as dependencies.
+// The compiled hover chain sorted the ids inside wasm against the CLJS
+// objects map; the TS port reads the plain JS model instead. The comparator
+// is the CLJS `is-shape-over-shape?`, including the layout z-index branch:
+// children of a flex/grid frame paint by `layout-item-z-index`, the rest by
+// their sibling position.
 
-function toIdStrings(app: RendererApp, seq: unknown): string[] {
-  const result: string[] = [];
-  let cursor = call(app, KEY.seq, seq);
-  while (cursor !== null && cursor !== undefined) {
-    const id = call(app, KEY.str, call(app, KEY.first, cursor));
-    if (typeof id === "string") result.push(id);
-    cursor = call(app, KEY.next, cursor);
+type ParentIndex = [string[], Record<string, number>];
+
+function chainOf(
+  objects: WorkspaceObjects,
+  id: string,
+  cache: Map<string, ParentIndex>,
+): ParentIndex {
+  let chain = cache.get(id);
+  if (chain === undefined) {
+    chain = getParentIdsWithIndex(objects as never, id);
+    cache.set(id, chain);
   }
-  return result;
+  return chain;
 }
 
-// shape-tree/sort-z-index (arity 3): the ids become CLJS uuids inside a
-// CLJS vector, the options map carries {:bottom-frames? mod}, and the
-// result seq converts back to plain strings.
-export function makeAppSortIds(
-  app: RendererApp,
-  cljsObjects: unknown,
-): (ids: readonly string[], mod: boolean) => string[] {
-  const bottomFramesKey = keyword(app, "bottom-frames?");
-  return (ids, mod) => {
-    if (ids.length === 0) return [];
-    const options = arrayMap(app, [[bottomFramesKey, mod]]);
-    const input = vec(app, ids.map((id) => uuid(app, id)));
-    return toIdStrings(app, call(app, KEY.sortZIndexArity3, cljsObjects, input, options));
-  };
+// get-base: the nearest common ancestor and each id's position under it.
+function baseOf(
+  idA: string,
+  chainA: ParentIndex,
+  idB: string,
+  chainB: ParentIndex,
+): [string, number | undefined, number | undefined] {
+  const [parentsA, indicesA] = chainA;
+  const [parentsB, indicesB] = chainB;
+  const setB = new Set<string>([idB, ...parentsB]);
+  const baseId = [idA, ...parentsA].find((id) => setB.has(id)) ?? ZERO_UUID;
+  return [baseId, indicesA[baseId], indicesB[baseId]];
 }
 
-// intersect-position-in-shape: the rendered glyphs of the shape contain
-// the position (interop replicates the inlined api body).
-export function makeAppIntersectPosition(
-  app: RendererApp,
-): (id: string, point: Point) => boolean {
-  return (id, point) => intersectPositionInShape(app, id, point.x, point.y);
+// ctl/any-layout?: a frame under an auto (flex or grid) layout.
+function hasAutoLayout(shape: WorkspaceShape | null | undefined): boolean {
+  if (shape === null || shape === undefined) return false;
+  return isFrameShape(shape) && (shape.layout === "flex" || shape.layout === "grid");
 }
 
-// shape-tree/top-nested-frame (arity 4): the innermost nested frame at the
-// position. The root frame (uuid/zero) normalizes to null here.
-export function makeAppTopNestedFrame(
-  app: RendererApp,
-  cljsObjects: unknown,
-  readOnly: boolean,
-): (point: Point) => string | null {
-  return (point) => {
-    const position = call(app, KEY.point, point.x, point.y);
-    const frame = call(app, KEY.topNestedFrame, cljsObjects, position, null, readOnly);
-    if (frame === null || frame === undefined) return null;
-    const id = call(app, KEY.str, frame);
-    return typeof id === "string" && id !== ZERO_UUID ? id : null;
-  };
+// ctl/layout-z-index: the item's explicit z-index inside a layout, 0 default.
+function layoutZIndex(shape: WorkspaceShape | null | undefined): number {
+  const value = shape?.["layout-item-z-index"];
+  return typeof value === "number" ? value : 0;
+}
+
+function isShapeOverShape(
+  objects: WorkspaceObjects,
+  baseShapeId: string,
+  overShapeId: string,
+  bottomFrames: boolean,
+  chains: Map<string, ParentIndex>,
+): boolean {
+  const [baseId, indexA, indexB] = baseOf(
+    baseShapeId,
+    chainOf(objects, baseShapeId, chains),
+    overShapeId,
+    chainOf(objects, overShapeId, chains),
+  );
+
+  if (baseId === baseShapeId) {
+    return bottomFrames && isFrameShape(objects[baseShapeId] ?? null);
+  }
+  if (baseId === overShapeId) {
+    return !bottomFrames || !isFrameShape(objects[baseId] ?? null);
+  }
+
+  const base = objects[baseId];
+  if (hasAutoLayout(base)) {
+    const children = base?.shapes ?? [];
+    const zA = layoutZIndex(indexA === undefined ? null : objects[children[indexA]]);
+    const zB = layoutZIndex(indexB === undefined ? null : objects[children[indexB]]);
+    if (zA === zB) return (indexA ?? 0) > (indexB ?? 0);
+    return zA < zB;
+  }
+  return (indexA ?? 0) < (indexB ?? 0);
+}
+
+// shape-tree/sort-z-index with the `{:bottom-frames? mod}` option of the
+// hover chain. The order matches the compiled one: the comparator returns a
+// positive value when the first id paints above the second.
+export function sortZIndexIds(
+  objects: WorkspaceObjects,
+  ids: readonly string[],
+  bottomFrames = false,
+): string[] {
+  if (ids.length < 2) return [...ids];
+  const chains = new Map<string, ParentIndex>();
+  return [...ids].sort((a, b) => {
+    if (a === b) return 0;
+    return isShapeOverShape(objects, a, b, bottomFrames, chains) ? 1 : -1;
+  });
 }

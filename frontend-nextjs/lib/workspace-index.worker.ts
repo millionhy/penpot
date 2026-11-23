@@ -10,7 +10,7 @@
 // clone and the pointer hot paths keep querying it synchronously.
 //
 // The queries themselves stay on the main thread, unlike the CLJS worker:
-// the hover/area adjudication runs through the wasm $APP adapters
+// the hover/area adjudication runs through the engine adapters
 // (sort-ids / intersect-position), which live with the GL context of the
 // canvas instance and cannot enter a worker. The build is the expensive
 // part (one quadtree insert per shape plus the clip/parent indexes); the

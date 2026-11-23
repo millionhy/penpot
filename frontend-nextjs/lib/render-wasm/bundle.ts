@@ -1,9 +1,7 @@
 // The viewer bundle as plain decoded values (G4.5b).
 //
-// The workspace and the /dev page decode the bundle through $APP so every
-// value stays a CLJS value (lib/render-wasm/values.ts). The viewer route
-// moves to the TypeScript engine, which reads plain objects, so this module
-// performs the same fetch with lib/transit:
+// The viewer routes run on the TypeScript engine, which reads plain objects,
+// so this module performs the fetch with lib/transit:
 //
 //   get-view-only-bundle -> t/decode-str -> pointer resolution
 //
@@ -12,8 +10,8 @@
 // over the rebuilt map. A pointer anywhere else is left as it is, exactly
 // like the CLJS passes, which only look at those two levels.
 //
-// The two decoders coexist while the workspace still runs on $APP; values.ts
-// goes away with the last consumer.
+// The /dev page still uses the CLJS decoder in values.ts; it goes away with
+// that page in G4.7.
 
 import { supportedFeatures } from "@/lib/file-data";
 import { cmdRaw } from "@/lib/rpc";

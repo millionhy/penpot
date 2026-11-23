@@ -24,6 +24,7 @@ import {
   queryHoverIds,
   selectionAfterArea,
   selectionAfterClick,
+  sortZIndexIds,
 } from "@/lib/workspace-selection";
 
 // --- Fixtures ---------------------------------------------------------------
@@ -561,5 +562,76 @@ describe("selectionAfterArea", () => {
     const index = createWorkspaceIndex(objects);
     const overD1 = { x: 0, y: 210, width: 70, height: 70 };
     expect(selectionAfterArea(objects, index, overD1, ["d1"])).toEqual(["d1"]);
+  });
+});
+
+describe("sortZIndexIds", () => {
+  function stacked(): WorkspaceObjects {
+    return {
+      [ZERO_UUID]: { id: ZERO_UUID, type: "frame", shapes: ["below", "above"] },
+      below: makeRect("below", 0, 0, 10, 10, {
+        "parent-id": ZERO_UUID,
+        "frame-id": ZERO_UUID,
+      }),
+      above: makeRect("above", 0, 0, 10, 10, {
+        "parent-id": ZERO_UUID,
+        "frame-id": ZERO_UUID,
+      }),
+    };
+  }
+
+  it("orders siblings front-most first, like the compiled comparator", () => {
+    // The sibling list paints in order, so the later id ("above") is on top
+    // and the compiled comparator answers it first.
+    expect(sortZIndexIds(stacked(), ["below", "above"])).toEqual(["above", "below"]);
+    expect(sortZIndexIds(stacked(), ["above", "below"])).toEqual(["above", "below"]);
+  });
+
+  it("puts frames below their contents with bottom-frames?", () => {
+    const objects: WorkspaceObjects = {
+      [ZERO_UUID]: { id: ZERO_UUID, type: "frame", shapes: ["frame"] },
+      frame: {
+        id: "frame",
+        type: "frame",
+        "parent-id": ZERO_UUID,
+        "frame-id": ZERO_UUID,
+        shapes: ["child"],
+      },
+      child: makeRect("child", 0, 0, 10, 10, {
+        "parent-id": "frame",
+        "frame-id": "frame",
+      }),
+    };
+    // Plain order: the container comes first (the "is-shape-over-shape?"
+    // ancestor branch).
+    expect(sortZIndexIds(objects, ["frame", "child"])).toEqual(["frame", "child"]);
+    // bottom-frames?: the frame drops behind its own contents.
+    expect(sortZIndexIds(objects, ["frame", "child"], true)).toEqual(["child", "frame"]);
+  });
+
+  it("follows layout-item-z-index inside a flex frame", () => {
+    const objects: WorkspaceObjects = {
+      [ZERO_UUID]: { id: ZERO_UUID, type: "frame", shapes: ["frame"] },
+      frame: {
+        id: "frame",
+        type: "frame",
+        layout: "flex",
+        "parent-id": ZERO_UUID,
+        "frame-id": ZERO_UUID,
+        shapes: ["first", "second"],
+      },
+      first: makeRect("first", 0, 0, 10, 10, {
+        "parent-id": "frame",
+        "frame-id": "frame",
+        "layout-item-z-index": 5,
+      }),
+      second: makeRect("second", 0, 0, 10, 10, {
+        "parent-id": "frame",
+        "frame-id": "frame",
+        "layout-item-z-index": 1,
+      }),
+    };
+    // The higher z-index is the front-most id, so it comes first.
+    expect(sortZIndexIds(objects, ["second", "first"])).toEqual(["first", "second"]);
   });
 });

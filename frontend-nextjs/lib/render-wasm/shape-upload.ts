@@ -1,51 +1,50 @@
-// The incremental wasm upload of new, transformed and restyled shapes (F9.5
-// AD5, F9.6 T4).
+// The incremental wasm upload of new, transformed and restyled shapes
+// (F9.5 AD5, F9.6 T4), over the TypeScript engine (G4.6b).
 //
-// Every write goes through set_object. This build exports only a few
-// app.render-wasm.api vars on $APP: set_object and use_shape are there, but
-// set_shape_children, set_shape_fills, set_shape_strokes, set_shape_opacity,
-// set_shape_hidden and set_shape_corners are not (runtime-probed against
-// public/js/shared.js: the vars exist, the $APP entries do not). A call to a
-// missing key throws, the caller can only warn, and the canvas keeps the old
-// pixels while the store already shows the new value.
+// Every write goes through `set_object` and carries the whole shape record
+// plus its host attrs. The engine's `setObject` writes the base props
+// (opacity, hidden, blend mode, selrect, transform, rotation, r1..r4) and the
+// children list, then hands the prepared record to `onShape`, which writes
+// the layout, fills, strokes, text and grid data. The incremental call is
+// the exact counterpart of the compiled `api/set-object`, whose host pass
+// runs with neither `skip-layout?` nor `skip-fills-strokes?`.
 //
-// set_object writes the whole record in one FFI: base props (opacity,
-// hidden, blend mode, selrect, transform, rotation, r1..r4) plus the children
-// list, then the host attrs (layout, layout item, constraints, text, fills,
-// strokes). Each call leaves that shape current. An add-obj commit is
-// therefore set_object(new) ->
-// set_object(parent, whose record carries the new children list) ->
-// request_render. No initialize-viewport and no render_sync_shape: the
-// renderer adds tiles for shapes missing from its tile set.
-//
-// A committed resize/rotate reuses set_object per transformed shape: the
-// record carries the new selrect, points, rotation, transform and flips,
-// while the selrect-only geometry push of the move path would drop the
-// rotation. One request_render follows the loop.
-//
-// Every value crosses the boundary through transit: encodeShapeValue
-// produces the same wire form the update-file payload uses (keyword keys,
-// uuid tags, record tags) and decode_str rebuilds the CLJS maps and UUID
-// objects the wasm api reads. A second hand-written converter would drift
-// from the serialized shape.
+// Consequences of that pairing:
+// - An add-obj commit is set_object(new) -> set_object(parent, whose record
+//   carries the new children list) -> request_render. No initialize-viewport
+//   and no render_sync_shape: the renderer adds tiles for shapes missing from
+//   its tile set.
+// - A committed resize/rotate reuses set_object per transformed shape: the
+//   record carries the new selrect, points, rotation, transform and flips,
+//   while a selrect-only geometry push would drop the rotation.
+// - The record travels as the plain model object. The engine's serializers
+//   read the same keyword-named fields the transit payload carries, so the
+//   compiled encode/decode round trip is no longer needed.
 
 import {
-  encodeShapeValue,
-  encodeTransit,
-  type UpdateFileChange,
-} from "@/lib/transit";
-import { KEY, call, type RendererApp } from "@/lib/render-wasm/interop";
+  setObject,
+  type Shape,
+} from "@/lib/render-wasm/engine";
+import type { UpdateFileChange } from "@/lib/transit";
+import type { WorkspaceApp } from "@/lib/render-wasm/workspace-app";
 
-// One shape map as a CLJS Shape record.
-export function cljsShape(
-  app: RendererApp,
+// The model shape and the engine record share the field names; the index
+// signature of WorkspaceShape makes the structural cast explicit.
+function renderShape(shape: Readonly<Record<string, unknown>>): Shape {
+  return shape as unknown as Shape;
+}
+
+function pushShape(
+  app: WorkspaceApp,
   shape: Readonly<Record<string, unknown>>,
-): unknown {
-  return call(app, KEY.decodeStr, encodeTransit(encodeShapeValue(shape)));
+): void {
+  setObject(app.module, renderShape(shape), {
+    onShape: (prepared) => app.host.hostAttrs(prepared),
+  });
 }
 
 export function uploadNewShape(
-  app: RendererApp,
+  app: WorkspaceApp,
   shape: Readonly<Record<string, unknown>>,
   parentShape: Readonly<Record<string, unknown>> | undefined,
 ): void {
@@ -54,39 +53,37 @@ export function uploadNewShape(
   }
 
   // The parent record carries the new children list, so the tree sees the
-  // added shape without the missing set_shape_children entry point. A root
-  // parent has no record in the model, so there is nothing to write for it.
-  call(app, KEY.setObject, cljsShape(app, shape));
-  if (parentShape !== undefined) call(app, KEY.setObject, cljsShape(app, parentShape));
-  call(app, KEY.requestRender, null);
+  // added shape. A root parent has no record in the model, so there is
+  // nothing to write for it.
+  pushShape(app, shape);
+  if (parentShape !== undefined) pushShape(app, parentShape);
+  app.loop.requestRender("upload-new-shape");
 }
 
 // Push the committed geometry of a resize/rotate (F9.6): one set_object per
-// transformed shape, so the pool sees the new rotation, transform and
-// flips, and one request_render after the loop. The caller leaves the
-// modifier preview first (end_modifiers + clean_modifiers) in the same
-// task, so no frame shows the stale base geometry. A wasm failure is the
-// caller's to warn about: the file already accepted the change.
+// transformed shape, so the pool sees the new rotation, transform and flips,
+// and one request_render after the loop. The caller leaves the modifier
+// preview first (end_modifiers + clean_modifiers) in the same task, so no
+// frame shows the stale base geometry. A wasm failure is the caller's to warn
+// about: the file already accepted the change.
 export function uploadShapeGeometry(
-  app: RendererApp,
+  app: WorkspaceApp,
   shapes: ReadonlyArray<Readonly<Record<string, unknown>>>,
 ): void {
-  for (const shape of shapes) {
-    call(app, KEY.setObject, cljsShape(app, shape));
-  }
-  call(app, KEY.requestRender, null);
+  for (const shape of shapes) pushShape(app, shape);
+  app.loop.requestRender("upload-shape-geometry");
 }
 
 // Push the result of an undo/redo commit (F9.7). The changes decide what
 // moved: every parent whose children list changed is rewritten through
-// set_object (its record carries the new list, so a deleted shape stops
-// being drawn and a re-parented one moves), then every shape that still
-// exists is rewritten through set_object (the full record keeps rotation,
-// transform and flips). The previous model supplies the old parents for
-// del-obj and mov-objects; the next model supplies the children lists and
-// the shape records. One request_render closes the batch.
+// set_object (its record carries the new list, so a deleted shape stops being
+// drawn and a re-parented one moves), then every shape that still exists is
+// rewritten through set_object (the full record keeps rotation, transform and
+// flips). The previous model supplies the old parents for del-obj and
+// mov-objects; the next model supplies the children lists and the shape
+// records. One request_render closes the batch.
 export function uploadChangedShapes(
-  app: RendererApp,
+  app: WorkspaceApp,
   before: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
   after: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
   changes: readonly UpdateFileChange[],
@@ -121,29 +118,29 @@ export function uploadChangedShapes(
     }
   }
 
-  // Parents first: their record carries the children list, so a deleted
-  // shape stops being drawn and a re-parented one moves. A parent that is
-  // also in `shapes` needs no second write.
+  // Parents first: their record carries the children list, so a deleted shape
+  // stops being drawn and a re-parented one moves. A parent that is also in
+  // `shapes` needs no second write.
   for (const parentId of parents) {
     const parent = after[parentId];
     if (parent === undefined) continue;
-    call(app, KEY.setObject, cljsShape(app, parent));
+    pushShape(app, parent);
     shapes.delete(parentId);
   }
 
   for (const id of shapes) {
     const shape = after[id];
-    if (shape !== undefined) call(app, KEY.setObject, cljsShape(app, shape));
+    if (shape !== undefined) pushShape(app, shape);
   }
 
-  call(app, KEY.requestRender, null);
+  app.loop.requestRender("upload-changed-shapes");
 }
 
 // The attribute prefixes the renderer reads off the shape record. A layout
-// container, a layout item (layout-item-*) and a constrained child all
-// change pixels or placement, so a commit that carries one rewrites the
-// record. The constraints travel inside the record like every other host
-// attr; the reflow itself waits for the next modifier of the parent.
+// container, a layout item (layout-item-*) and a constrained child all change
+// pixels or placement, so a commit that carries one rewrites the record. The
+// constraints travel inside the record like every other host attr; the reflow
+// itself waits for the next modifier of the parent.
 const WASM_ATTR_PREFIXES = ["layout", "constraints-"] as const;
 
 // Whether a commit carries an attribute the wasm record mirrors. Exported so
@@ -157,11 +154,10 @@ export function attrsWriteStyle(attrs: Readonly<Record<string, unknown>>): boole
     Array.isArray(attrs.strokes) ||
     // A text typography edit rewrites :content (the whole root tree). The
     // record carries it, so one set_object re-uploads the text (D4); the
-    // glyphs only re-measure once D11's forceUpdateTextLayout runs the wasm
-    // text re-layout over the new content.
+    // glyphs re-measure through the engine's text layout pass.
     attrs.content !== undefined ||
-    // A shadow list or a nil (the removal) both rewrite the record;
-    // the same holds for the single blur map.
+    // A shadow list or a nil (the removal) both rewrite the record; the same
+    // holds for the single blur map.
     attrs.shadow !== undefined ||
     attrs.blur !== undefined ||
     corners.every((value) => typeof value === "number")
@@ -183,13 +179,12 @@ export function attrsWriteStyle(attrs: Readonly<Record<string, unknown>>): boole
 // the DOM, so a call with none of the visible ones performs no wasm call and
 // answers false.
 export function applyShapeStyle(
-  app: RendererApp,
+  app: WorkspaceApp,
   shape: Readonly<Record<string, unknown>>,
   attrs: Readonly<Record<string, unknown>>,
 ): boolean {
   if (!attrsWriteStyle(attrs)) return false;
-
-  call(app, KEY.setObject, cljsShape(app, shape));
-  call(app, KEY.requestRender, null);
+  pushShape(app, shape);
+  app.loop.requestRender("apply-shape-style");
   return true;
 }

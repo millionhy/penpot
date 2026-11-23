@@ -48,11 +48,11 @@ export const KEY = {
   wasmReady: "$app$render_wasm$wasm$ready_QMARK_$$",
   // The fixed-scroll layer mask (viewer-apply-layer-mask!) has no entry
   // point on $APP: runtime-verified, clear/set-render-include-filter! are
-  // both undefined (the optimizer inlined them). The empty-mask reset is
-  // replicated through the internal module in pass-common.ts; the id paths
-  // land with the fixed-layer slice. set_shape_fills / set_shape_strokes DO
-  // land on $APP (registered below); an earlier probe note that listed them
-  // as inlined was wrong.
+  // both undefined (the optimizer inlined them). The engine viewer has no
+  // mask API yet, a documented deviation; the id paths land with the
+  // fixed-layer slice. set_shape_fills / set_shape_strokes DO land on $APP
+  // (registered below); an earlier probe note that listed them as inlined
+  // was wrong.
   // The rAF handle of a scheduled render (set! to null cancels the handle
   // bookkeeping, mirrors the compiled set! wasm/internal-frame-id nil).
   internalFrameId: "$app$render_wasm$wasm$internal_frame_id$$",

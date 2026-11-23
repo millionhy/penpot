@@ -1,45 +1,45 @@
-// The workspace viewport's direct-to-canvas render layer (F9.1): the port of
-// the workspace branch of app.main.ui.workspace.viewport-wasm and the
-// app.render-wasm.api entry points it drives. Unlike the viewer (which
-// renders one frame into an offscreen canvas and blits), the workspace draws
-// straight onto its visible canvas and lets the compiled progressive tile
-// renderer run.
+// The workspace viewport's direct-to-canvas render layer (G4.6b).
 //
-// The compiled build exposes the whole chain on $APP (probe-verified against
-// public/js/shared.js): init-canvas-context, resize-canvas! (arity 2),
-// initialize-viewport (variadic), set-view-box and clear-canvas. set-view-box
-// carries the interaction bookkeeping itself — view-interaction-start!, the
-// from-cache preview and the debounced finalize with its progressive
-// continuation (render-finish is module-private, but set-view-box calls it
-// internally), so the port calls it rather than rebuilding those pieces.
+// The port of the workspace branch of app.main.ui.workspace.viewport-wasm,
+// now over the TypeScript engine instead of the compiled `$APP`. The calls
+// keep the compiled order:
+//
+//   init-canvas-context
+//   -> initialize-viewport (background, view, pool, set-objects)
+//   -> rulers (theme, visibility, offsets, selection band)
+//   -> set-view-box for every wheel/pan/resize step
+//   -> clear-canvas on unmount
+//
+// The render loop owns the whole progressive pipeline: `set-view-box` enters
+// the view interaction, blits the cached atlas and debounces the finalize;
+// `set-objects` drives the loading state and the follow-up render.
 //
 // Deviations from the compiled original:
-// - vbox travels as a CLJS PersistentArrayMap. The compiled functions read it
-//   with (:x vbox), i.e. through the Keyword IFn / ILookup protocol, which
-//   does not answer plain-object lookups in this build (the compiled
-//   cljs.core/get returns null for a JS object), so a plain {x, y} literal
-//   would silently collapse to (0, 0).
-// - No page-transition lifecycle (start-initial-load-transition! /
-//   arm-page-transition-end!) and no WebGL context-loss recovery: this slice
-//   renders a single page, and reload-renderer! drives off the compiled app
-//   state, which this shell does not fill. A lost context stays static until
-//   the page is reloaded.
+// - No page-transition lifecycle and no WebGL context-loss recovery: this
+//   slice renders one page and the caller re-inits on a lost context. The
+//   loop stays usable across a page switch (dispose resets its state).
+// - The background always travels with opacity 1, like the compiled
+//   workspace call.
 
-import { KEY, arrayMap, call, keyword, type RendererApp } from "./interop";
-import { readDpr } from "./pass-common";
+import {
+  clearCanvas,
+  initCanvasContext,
+  initializeViewport,
+  resizeCanvas,
+  setObjects,
+  setRulersColors,
+  setRulersFrameVisible,
+  setRulersOffsets,
+  setRulersSelection,
+  setRulersVisible,
+  type RulerRect,
+  type ShapeObjects,
+} from "@/lib/render-wasm/engine";
+import type { WorkspaceApp } from "@/lib/render-wasm/workspace-app";
 
 export interface Point {
   x: number;
   y: number;
-}
-
-// The vbox option map of the compiled viewport functions: a CLJS keyword map,
-// see the module comment.
-export function vboxMap(app: RendererApp, vbox: Point): unknown {
-  return arrayMap(app, [
-    [keyword(app, "x"), vbox.x],
-    [keyword(app, "y"), vbox.y],
-  ]);
 }
 
 // init-canvas-context: registers a WebGL2 context on the visible canvas,
@@ -47,21 +47,19 @@ export function vboxMap(app: RendererApp, vbox: Point): unknown {
 // module is not booted or the context cannot be created; the caller retries,
 // mirroring try-init in viewport-wasm.cljs.
 export function initWorkspaceCanvas(
-  app: RendererApp,
+  app: WorkspaceApp,
   canvas: HTMLCanvasElement,
 ): boolean {
-  return call(app, KEY.initCanvasContext, canvas) === true;
+  return initCanvasContext(app.module, canvas) !== undefined;
 }
 
 // resize-canvas!: drawing buffer, render options and viewbox from the canvas
-// CSS size. The explicit-dpr overload (arity 2) is the one the compiled
-// retina watcher uses.
+// CSS size.
 export function resizeWorkspaceCanvas(
-  app: RendererApp,
+  app: WorkspaceApp,
   canvas: HTMLCanvasElement,
-  dpr?: number,
 ): void {
-  call(app, KEY.resizeCanvas, canvas, dpr ?? readDpr(app));
+  resizeCanvas(app.module, canvas);
 }
 
 export interface WorkspaceViewportOptions {
@@ -70,32 +68,30 @@ export interface WorkspaceViewportOptions {
 }
 
 // initialize-viewport: canvas background, view, shapes pool and the shape
-// load (set-objects). Without an :on-render callback the compiled set-objects
-// falls back to request-render, which drives the progressive chain.
+// load. The upload slice writes the host attrs (text, grids, fills) through
+// the workspace host; the loop requests the render once the batch lands.
 export function initializeWorkspaceViewport(
-  app: RendererApp,
-  objects: unknown,
+  app: WorkspaceApp,
+  objects: ShapeObjects,
   zoom: number,
   vbox: Point,
   options: WorkspaceViewportOptions = {},
 ): void {
-  const entries: Array<[unknown, unknown]> = [
-    [keyword(app, "background-opacity"), 1],
-  ];
-  if (options.background !== undefined) {
-    entries.push([keyword(app, "background"), options.background]);
+  const started = initializeViewport(app.module, objects, zoom, vbox, {
+    background: options.background,
+    backgroundOpacity: 1,
+    stopProgressiveRender: () => app.loop.stopProgressiveRender(),
+    setObjects: (pageObjects) => {
+      void setObjects(app.module, pageObjects, {
+        loop: app.loop,
+        onShape: (shape) => app.host.hostAttrs(shape, { coldLoad: true }),
+        onShapesReady: options.onShapesReady,
+      });
+    },
+  });
+  if (!started) {
+    throw new Error("render-wasm: initialize-viewport refused (context not live)");
   }
-  if (options.onShapesReady !== undefined) {
-    entries.push([keyword(app, "on-shapes-ready"), options.onShapesReady]);
-  }
-  call(
-    app,
-    KEY.initializeViewport,
-    objects,
-    zoom,
-    vboxMap(app, vbox),
-    arrayMap(app, entries),
-  );
 }
 
 // set-rulers-visible! / set-rulers-frame-visible!: the workspace chrome of
@@ -103,12 +99,12 @@ export function initializeWorkspaceViewport(
 // caller turns them on after the viewport is initialized and asks for a
 // render (the compiled effects do the same pair).
 export function setWorkspaceRulersVisible(
-  app: RendererApp,
+  app: WorkspaceApp,
   visible: boolean,
 ): void {
-  call(app, KEY.setRulersFrameVisible, visible);
-  call(app, KEY.setRulersVisible, visible);
-  call(app, KEY.requestRender, "set-rulers-visible");
+  setRulersFrameVisible(app.module, visible);
+  setRulersVisible(app.module, visible);
+  app.loop.requestRender("set-rulers-visible");
 }
 
 // The light palette of the reference workspace rulers
@@ -121,34 +117,13 @@ const RULER_THEME = {
   accent: "#8c33eb",
 } as const;
 
-// hex->u32argb with opacity 1, the ARGB u32 the wasm ABI takes
-// (sr-clr/hex->u32argb in the CLJS original). Expands the 3/4-digit
-// shorthand so "#fff" reads 0xFFFFFFFF, not 0xFF000FFF.
-function hexToArgbU32(hex: string): number {
-  let value = hex.slice(1);
-  if (value.length === 3 || value.length === 4) {
-    value = [...value].map((c) => c + c).join("");
-  }
-  const argb = Number.parseInt(value, 16);
-  return value.length === 6 ? (0xff << 24) | argb : argb;
-}
-
 // set-rulers-colors!: push the ruler chrome colors into the wasm UI state.
 // The default RulerState is the dark theme, so the workspace must push the
 // light palette once after the canvas init, like push-ruler-theme-colors!
 // in viewport_wasm.cljs.
-export function setWorkspaceRulerColors(app: RendererApp): void {
-  const internal = app[KEY.internalModule] as Record<
-    string,
-    (...args: number[]) => unknown
-  >;
-  internal._set_rulers_colors(
-    hexToArgbU32(RULER_THEME.bg),
-    hexToArgbU32(RULER_THEME.border),
-    hexToArgbU32(RULER_THEME.label),
-    hexToArgbU32(RULER_THEME.accent),
-  );
-  call(app, KEY.requestRender, "set-rulers-colors");
+export function setWorkspaceRulerColors(app: WorkspaceApp): void {
+  setRulersColors(app.module, RULER_THEME);
+  app.loop.requestRender("set-rulers-colors");
 }
 
 // set-rulers-offsets!: the tick-label offset of the ruler scale, the
@@ -157,61 +132,41 @@ export function setWorkspaceRulerColors(app: RendererApp): void {
 // shapes' shared parent frame origin applies. A null offset answers 0, like
 // the compiled (:x selected-frame) on nil.
 export function setWorkspaceRulersOffsets(
-  app: RendererApp,
+  app: WorkspaceApp,
   offsetX: number,
   offsetY: number,
 ): void {
-  call(app, KEY.setRulersOffsets, offsetX || 0, offsetY || 0);
+  setRulersOffsets(app.module, offsetX || 0, offsetY || 0);
 }
 
-// The selection rect of the ruler band: a CLJS PersistentArrayMap, since
-// the compiled set-rulers-selection! reads :x/:y/:width/:height through
-// the ILookup protocol (same shape rule as vboxMap). Null clears the band.
-export interface RulerSelectionRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+export type RulerSelectionRect = RulerRect;
 
+// set-rulers-selection!: the purple band of the ruler strip. The compiled
+// viewport re-presents through render-from-backbuffer! here; this port has no
+// backbuffer surface, so a full render path stands in (the same
+// substitution as set-rulers-visible).
 export function setWorkspaceRulersSelection(
-  app: RendererApp,
+  app: WorkspaceApp,
   rect: RulerSelectionRect | null,
 ): void {
-  if (rect === null) {
-    call(app, KEY.setRulersSelection, null);
-  } else {
-    call(
-      app,
-      KEY.setRulersSelection,
-      arrayMap(app, [
-        [keyword(app, "x"), rect.x],
-        [keyword(app, "y"), rect.y],
-        [keyword(app, "width"), rect.width],
-        [keyword(app, "height"), rect.height],
-      ]),
-    );
-  }
-  // The compiled viewport re-presents through render-from-backbuffer! here;
-  // this port has no backbuffer surface, so the full render path stands in
-  // (the same substitution as set-rulers-visible).
-  call(app, KEY.requestRender, "set-rulers-selection");
+  setRulersSelection(app.module, rect);
+  app.loop.requestRender("set-rulers-selection");
 }
 
-// set-view-box: push zoom/vbox into the renderer. No-ops unless the context
-// is ready (the guard lives inside the compiled function) and covers the
-// whole interaction step, including the debounced finalize.
+// set-view-box: push zoom/vbox into the renderer. The loop owns the guard,
+// the cache blit and the debounced finalize.
 export function setWorkspaceViewBox(
-  app: RendererApp,
+  app: WorkspaceApp,
   zoom: number,
   vbox: Point,
 ): void {
-  call(app, KEY.setViewBox, zoom, vboxMap(app, vbox));
+  app.loop.setViewBox(zoom, vbox);
 }
 
 // clear-canvas with the default hard teardown (lose-browser-context? true):
-// GPU resources released, GL context disposed. The unmount path of
-// viewport-wasm.cljs.
-export function clearWorkspaceCanvas(app: RendererApp): void {
-  call(app, KEY.clearCanvas, arrayMap(app, []));
+// GPU resources released, GL context disposed. The loop drops its timers
+// first, like the compiled stop-progressive-render! + clear-canvas pair.
+export function clearWorkspaceCanvas(app: WorkspaceApp): void {
+  app.loop.dispose();
+  clearCanvas(app.module);
 }

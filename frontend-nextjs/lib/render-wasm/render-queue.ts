@@ -1,9 +1,8 @@
 // The global offscreen render queue and the offscreen-to-visible blit.
 //
-// Both pieces started in pass-common.ts, which the $APP paths (the workspace
-// and the thumbnail worker) still use. They hold no $APP reference, and the
-// engine paths (the viewer and the one-shot frame render) import them from
-// here, so the engine never pulls the compiled-runtime helpers in.
+// Both pieces started in the old compiled-runtime helpers. Since G4.6b every
+// caller (the viewer, the one-shot frame render and the thumbnail worker) runs
+// on the engine, so this module holds no runtime reference.
 //
 // The queue is one process-wide chain: every pass, whichever runtime drives
 // it, holds the single wasm GL context, so two passes must never interleave.

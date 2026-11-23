@@ -1,53 +1,63 @@
-// Unit tests for the incremental wasm shape upload (F9.5 Task 4, F9.6 T4).
+// Unit tests for the incremental engine upload (F9.5 Task 4, F9.6 T4).
 //
-// A fake $APP stands in for the compiled renderer: decode_str runs the real
-// transit reader, so the recorded payload is the same wire form the backend
-// receives; every wasm write records its call. Only set_object and
-// request_render are stubbed: this build exports no other shape setter on
-// $APP (see lib/render-wasm/shape-upload.ts). The wasm module itself is not
-// loaded here.
+// The engine owns the wasm layout; this module only decides which records
+// travel and in what order. The tests replace `setObject` with a recorder, so
+// they pin the protocol the canvas relies on:
+// - a new shape goes first, then its parent record, then one render;
+// - a geometry push rewrites every record and requests one render;
+// - an undo/redo batch writes the parents before the shapes;
+// - the host attrs run once per uploaded record.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const engine = vi.hoisted(() => ({
+  setObject: vi.fn(),
+}));
+
+vi.mock("@/lib/render-wasm/engine", () => ({
+  setObject: engine.setObject,
+}));
+
 import {
   applyShapeStyle,
   attrsWriteStyle,
-  cljsShape,
   uploadChangedShapes,
   uploadNewShape,
   uploadShapeGeometry,
 } from "@/lib/render-wasm/shape-upload";
-import { KEY, type RendererApp } from "@/lib/render-wasm/interop";
-import { decodeTransit, type UpdateFileChange } from "@/lib/transit";
+import type { WorkspaceApp } from "@/lib/render-wasm/workspace-app";
+import type { UpdateFileChange } from "@/lib/transit";
 
 const RECT_ID = "00000000-0000-0000-0000-0000000000c1";
 const FRAME_ID = "00000000-0000-0000-0000-0000000000c2";
 const CHILD_A = "00000000-0000-0000-0000-0000000000c3";
 const CHILD_B = "00000000-0000-0000-0000-0000000000c4";
+const PAGE = "00000000-0000-0000-0000-0000000000d3";
 
-interface RecordedCall {
-  name: string;
-  args: unknown[];
+interface FakeApp {
+  app: WorkspaceApp;
+  renders: string[];
+  hostCalls: string[];
 }
 
-function makeFakeApp() {
-  const calls: RecordedCall[] = [];
-  const rawPayloads: string[] = [];
-  const record =
-    (name: string) =>
-    (...args: unknown[]): void => {
-      calls.push({ name, args });
-    };
-
-  const app: RendererApp = {
-    [KEY.decodeStr]: (raw: unknown) => {
-      rawPayloads.push(String(raw));
-      return decodeTransit(String(raw));
+function makeApp(): FakeApp {
+  const renders: string[] = [];
+  const hostCalls: string[] = [];
+  const app = {
+    module: { name: "fake-module" },
+    loop: {
+      requestRender: (reason: string): boolean => {
+        renders.push(reason);
+        return true;
+      },
     },
-    [KEY.setObject]: record("set-object"),
-    [KEY.requestRender]: record("request-render"),
+    host: {
+      hostAttrs: (shape: { id: string }): void => {
+        hostCalls.push(shape.id);
+      },
+    },
   };
-
-  return { app, calls, rawPayloads };
+  return { app: app as unknown as WorkspaceApp, renders, hostCalls };
 }
 
 function rectShape(): Record<string, unknown> {
@@ -62,14 +72,6 @@ function rectShape(): Record<string, unknown> {
     width: 100,
     height: 50,
     selrect: { x: 0, y: 0, width: 100, height: 50, x1: 0, y1: 0, x2: 100, y2: 50 },
-    points: [
-      { x: 0, y: 0 },
-      { x: 100, y: 0 },
-      { x: 100, y: 50 },
-      { x: 0, y: 50 },
-    ],
-    transform: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 },
-    "transform-inverse": { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 },
     fills: [{ "fill-color": "#B1B2B5", "fill-opacity": 1 }],
     strokes: [],
     r1: 0,
@@ -79,108 +81,80 @@ function rectShape(): Record<string, unknown> {
   };
 }
 
-describe("cljsShape", () => {
-  it("decodes a shape into the keyword-keyed wire payload", () => {
-    const { app, rawPayloads } = makeFakeApp();
-    const decoded = cljsShape(app, rectShape()) as Record<string, unknown>;
+function uploadedIds(): string[] {
+  return engine.setObject.mock.calls.map(
+    (call) => (call[1] as { id: string }).id,
+  );
+}
 
-    expect(rawPayloads).toHaveLength(1);
-    expect(rawPayloads[0]).toContain('"~#shape"');
-    expect(rawPayloads[0]).toContain('"~:parent-id"');
-    expect(rawPayloads[0]).toContain('"~:fill-color"');
-    expect(decoded.type).toBe("rect");
-    expect(decoded["parent-id"]).toBe(FRAME_ID);
-    expect(decoded["frame-id"]).toBe(FRAME_ID);
-    expect(decoded.fills).toEqual([{ "fill-color": "#B1B2B5", "fill-opacity": 1 }]);
-  });
-
-  it("decodes fills with their enum values", () => {
-    const { app, rawPayloads } = makeFakeApp();
-    const decoded = cljsShape(app, {
-      ...rectShape(),
-      fills: [{ "fill-color-gradient": { type: "linear" }, "fill-opacity": 1 }],
-    }) as Record<string, unknown>;
-
-    expect(rawPayloads[0]).toContain('"~:type"');
-    expect(rawPayloads[0]).toContain('"~:linear"');
-    expect(decoded.fills).toEqual([
-      { "fill-color-gradient": { type: "linear" }, "fill-opacity": 1 },
-    ]);
-  });
+beforeEach(() => {
+  engine.setObject.mockReset();
+  // Mirror the engine contract: setObject hands the prepared record to the
+  // host before the next call.
+  engine.setObject.mockImplementation(
+    (
+      _module: unknown,
+      shape: { id: string },
+      options?: { onShape?: (shape: { id: string }) => void },
+    ) => {
+      options?.onShape?.(shape);
+    },
+  );
 });
 
 describe("uploadNewShape", () => {
-  it("runs set_object(new), set_object(parent) and one render", () => {
-    const { app, calls, rawPayloads } = makeFakeApp();
+  it("runs new shape, parent record and one render in that order", () => {
+    const { app, renders, hostCalls } = makeApp();
     const parent = { id: FRAME_ID, type: "frame", shapes: [CHILD_A, CHILD_B] };
+
     uploadNewShape(app, rectShape(), parent);
 
-    expect(calls.map((call) => call.name)).toEqual([
-      "set-object",
-      "set-object",
-      "request-render",
-    ]);
-    // The new shape first, then the parent record with its children list.
-    expect(rawPayloads).toHaveLength(2);
-    expect(rawPayloads[0]).toContain('"~#shape"');
-    expect(rawPayloads[0]).toContain(`"~u${RECT_ID}"`);
-    expect(rawPayloads[1]).toContain(`"~u${FRAME_ID}"`);
-    expect(rawPayloads[1]).toContain(`"~u${CHILD_A}"`);
-    expect(rawPayloads[1]).toContain(`"~u${CHILD_B}"`);
+    expect(uploadedIds()).toEqual([RECT_ID, FRAME_ID]);
+    expect(hostCalls).toEqual([RECT_ID, FRAME_ID]);
+    expect(renders).toEqual(["upload-new-shape"]);
+    expect(engine.setObject.mock.calls[0][0]).toBe(app.module);
+    expect(engine.setObject.mock.calls[0][2]).toEqual({
+      onShape: expect.any(Function),
+    });
   });
 
   it("skips the parent write when the parent has no record", () => {
-    const { app, calls } = makeFakeApp();
+    const { app, renders } = makeApp();
+
     uploadNewShape(app, rectShape(), undefined);
 
-    expect(calls.map((call) => call.name)).toEqual(["set-object", "request-render"]);
-  });
-
-  it("throws a clear error when a $APP key is missing", () => {
-    const { app } = makeFakeApp();
-    const broken: RendererApp = { ...app };
-    delete broken[KEY.setObject];
-
-    expect(() => uploadNewShape(broken, rectShape(), undefined)).toThrow(/set_object/);
+    expect(uploadedIds()).toEqual([RECT_ID]);
+    expect(renders).toEqual(["upload-new-shape"]);
   });
 
   it("throws when the shape has no parent-id", () => {
-    const { app, calls } = makeFakeApp();
+    const { app } = makeApp();
     const orphan = { ...rectShape() };
     delete orphan["parent-id"];
 
     expect(() => uploadNewShape(app, orphan, undefined)).toThrow(/parent-id/);
-    expect(calls).toEqual([]);
+    expect(engine.setObject).not.toHaveBeenCalled();
   });
 });
 
 describe("uploadShapeGeometry", () => {
-  it("runs set_object per shape and one render after the loop", () => {
-    const { app, calls, rawPayloads } = makeFakeApp();
+  it("rewrites every record and requests one render after the loop", () => {
+    const { app, renders, hostCalls } = makeApp();
+
     uploadShapeGeometry(app, [rectShape(), { ...rectShape(), id: CHILD_A }]);
 
-    expect(calls.map((call) => call.name)).toEqual([
-      "set-object",
-      "set-object",
-      "request-render",
-    ]);
-    expect(rawPayloads).toHaveLength(2);
-    expect(rawPayloads[0]).toContain('"~#shape"');
+    expect(uploadedIds()).toEqual([RECT_ID, CHILD_A]);
+    expect(hostCalls).toEqual([RECT_ID, CHILD_A]);
+    expect(renders).toEqual(["upload-shape-geometry"]);
   });
 
   it("still requests one render for an empty list", () => {
-    const { app, calls } = makeFakeApp();
+    const { app, renders } = makeApp();
+
     uploadShapeGeometry(app, []);
 
-    expect(calls.map((call) => call.name)).toEqual(["request-render"]);
-  });
-
-  it("propagates a wasm failure to the caller", () => {
-    const { app } = makeFakeApp();
-    const broken: RendererApp = { ...app };
-    delete broken[KEY.setObject];
-
-    expect(() => uploadShapeGeometry(broken, [rectShape()])).toThrow(/set_object/);
+    expect(engine.setObject).not.toHaveBeenCalled();
+    expect(renders).toEqual(["upload-shape-geometry"]);
   });
 });
 
@@ -188,7 +162,6 @@ describe("uploadChangedShapes", () => {
   const ROOT = "00000000-0000-0000-0000-0000000000d0";
   const FRAME = "00000000-0000-0000-0000-0000000000d1";
   const FRAME_TWO = "00000000-0000-0000-0000-0000000000d2";
-  const PAGE = "00000000-0000-0000-0000-0000000000d3";
 
   function frame(id: string, children: string[]): Record<string, unknown> {
     return { id, type: "frame", "parent-id": ROOT, "frame-id": id, shapes: children };
@@ -204,7 +177,7 @@ describe("uploadChangedShapes", () => {
   }
 
   it("rewrites a modified shape without touching children", () => {
-    const { app, calls } = makeFakeApp();
+    const { app, renders } = makeApp();
     const before = beforeModel();
     const after = { ...before, [RECT_ID]: { ...before[RECT_ID], x: 10 } };
     const changes: UpdateFileChange[] = [
@@ -218,11 +191,12 @@ describe("uploadChangedShapes", () => {
 
     uploadChangedShapes(app, before, after, changes);
 
-    expect(calls.map((call) => call.name)).toEqual(["set-object", "request-render"]);
+    expect(uploadedIds()).toEqual([RECT_ID]);
+    expect(renders).toEqual(["upload-changed-shapes"]);
   });
 
-  it("attaches an added shape through its parent record", () => {
-    const { app, calls } = makeFakeApp();
+  it("writes the parent before an added shape", () => {
+    const { app } = makeApp();
     const before = beforeModel();
     const added = { ...rectShape(), id: CHILD_A, "parent-id": FRAME, "frame-id": FRAME };
     const after = {
@@ -243,17 +217,11 @@ describe("uploadChangedShapes", () => {
 
     uploadChangedShapes(app, before, after, changes);
 
-    // The parent record first (its children list carries the new shape),
-    // then the added shape itself.
-    expect(calls.map((call) => call.name)).toEqual([
-      "set-object",
-      "set-object",
-      "request-render",
-    ]);
+    expect(uploadedIds()).toEqual([FRAME, CHILD_A]);
   });
 
-  it("drops a deleted shape from the parent record and does not rewrite it", () => {
-    const { app, calls } = makeFakeApp();
+  it("drops a deleted shape through the parent record only", () => {
+    const { app } = makeApp();
     const before = beforeModel();
     const after = {
       ...before,
@@ -266,11 +234,11 @@ describe("uploadChangedShapes", () => {
 
     uploadChangedShapes(app, before, after, changes);
 
-    expect(calls.map((call) => call.name)).toEqual(["set-object", "request-render"]);
+    expect(uploadedIds()).toEqual([FRAME]);
   });
 
-  it("updates both parents of a re-parent commit", () => {
-    const { app, calls } = makeFakeApp();
+  it("writes the new parent, the old parent and the moved shape", () => {
+    const { app } = makeApp();
     const before = beforeModel();
     const after = {
       ...before,
@@ -284,30 +252,26 @@ describe("uploadChangedShapes", () => {
 
     uploadChangedShapes(app, before, after, changes);
 
-    // The new parent comes first (the change), then the old one (before),
-    // then the moved shape.
-    expect(calls.map((call) => call.name)).toEqual([
-      "set-object",
-      "set-object",
-      "set-object",
-      "request-render",
-    ]);
+    expect(uploadedIds()).toEqual([FRAME_TWO, FRAME, RECT_ID]);
   });
 
   it("still requests one render when a change targets missing shapes", () => {
-    const { app, calls } = makeFakeApp();
+    const { app, renders } = makeApp();
+
     uploadChangedShapes(app, {}, {}, [
       { type: "del-obj", "page-id": PAGE, id: RECT_ID },
     ]);
 
-    expect(calls.map((call) => call.name)).toEqual(["request-render"]);
+    expect(engine.setObject).not.toHaveBeenCalled();
+    expect(renders).toEqual(["upload-changed-shapes"]);
   });
 });
 
 describe("applyShapeStyle", () => {
   it("re-sends the whole record for a style edit", () => {
-    const { app, calls, rawPayloads } = makeFakeApp();
+    const { app, renders } = makeApp();
     const shape = { ...rectShape(), hidden: true, opacity: 0.4 };
+
     const applied = applyShapeStyle(app, shape, {
       blocked: false,
       hidden: true,
@@ -315,68 +279,39 @@ describe("applyShapeStyle", () => {
     });
 
     expect(applied).toBe(true);
-    // One set_object carries base props (hidden/opacity) and the host attrs
-    // (fills/strokes); the granular setters are not exported on $APP.
-    expect(calls.map((call) => call.name)).toEqual(["set-object", "request-render"]);
-    expect(rawPayloads).toHaveLength(1);
-    expect(rawPayloads[0]).toContain('"~#shape"');
-    expect(rawPayloads[0]).toContain(`"~u${RECT_ID}"`);
+    expect(uploadedIds()).toEqual([RECT_ID]);
+    expect(renders).toEqual(["apply-shape-style"]);
   });
 
   it("re-sends the record for a fills edit, including a cleared list", () => {
-    const { app, calls } = makeFakeApp();
+    const { app, renders } = makeApp();
+
     expect(applyShapeStyle(app, rectShape(), { fills: [] })).toBe(true);
 
-    expect(calls.map((call) => call.name)).toEqual(["set-object", "request-render"]);
+    expect(uploadedIds()).toEqual([RECT_ID]);
+    expect(renders).toEqual(["apply-shape-style"]);
   });
 
   it("returns false and touches nothing for a blocked-only edit", () => {
-    const { app, calls } = makeFakeApp();
+    const { app, renders } = makeApp();
+
     expect(applyShapeStyle(app, rectShape(), { blocked: true })).toBe(false);
-    expect(calls).toEqual([]);
+
+    expect(engine.setObject).not.toHaveBeenCalled();
+    expect(renders).toEqual([]);
   });
 
-  it("re-sends the record for a shadow edit with its enum keyword", () => {
-    const { app, calls, rawPayloads } = makeFakeApp();
-    const shadow = {
-      id: "00000000-0000-0000-0000-0000000000e1",
-      style: "drop-shadow",
-      "offset-x": 4,
-      "offset-y": 4,
-      blur: 4,
-      spread: 0,
-      hidden: false,
-      color: { color: "#000000", opacity: 0.2 },
-    };
-    const shape = { ...rectShape(), shadow: [shadow] };
-
-    expect(applyShapeStyle(app, shape, { shadow: [shadow] })).toBe(true);
-
-    expect(calls.map((call) => call.name)).toEqual(["set-object", "request-render"]);
-    // The style travels as a keyword: a plain string fails the backend enum.
-    expect(rawPayloads[0]).toContain('"~:drop-shadow"');
-  });
-
-  it("re-sends the record when a shadow or a blur is removed", () => {
-    const { app, calls, rawPayloads } = makeFakeApp();
+  it("re-sends the record for a shadow or a blur removal", () => {
+    const { app } = makeApp();
 
     expect(applyShapeStyle(app, rectShape(), { shadow: null })).toBe(true);
     expect(applyShapeStyle(app, rectShape(), { blur: null })).toBe(true);
 
-    // A nil removal still rewrites the record: set_object then drops the
-    // effect from the renderer state.
-    expect(calls.map((call) => call.name)).toEqual([
-      "set-object",
-      "request-render",
-      "set-object",
-      "request-render",
-    ]);
-    expect(rawPayloads[0]).not.toContain('"~:shadow"');
-    expect(rawPayloads[1]).not.toContain('"~:blur"');
+    expect(uploadedIds()).toEqual([RECT_ID, RECT_ID]);
   });
 
-  it("re-sends the record for a layout, a layout item or a constraint edit", () => {
-    const { app, calls } = makeFakeApp();
+  it("re-sends the record for layout, layout item, constraint and fixed-scroll edits", () => {
+    const { app } = makeApp();
 
     expect(applyShapeStyle(app, rectShape(), { layout: "flex" })).toBe(true);
     expect(
@@ -387,34 +322,20 @@ describe("applyShapeStyle", () => {
     );
     expect(applyShapeStyle(app, rectShape(), { "fixed-scroll": true })).toBe(true);
 
-    expect(calls.map((call) => call.name)).toEqual([
-      "set-object",
-      "request-render",
-      "set-object",
-      "request-render",
-      "set-object",
-      "request-render",
-      "set-object",
-      "request-render",
-    ]);
+    expect(uploadedIds()).toEqual([RECT_ID, RECT_ID, RECT_ID, RECT_ID]);
   });
 
   it("re-sends the record when a text commit rewrites content", () => {
-    const { app, calls } = makeFakeApp();
+    const { app } = makeApp();
 
-    // A D4 typography edit carries the new root tree under :content; the
-    // wasm record re-uploads it (the D11 pipeline re-measures the glyphs).
     expect(attrsWriteStyle({ content: { type: "root" } })).toBe(true);
     expect(applyShapeStyle(app, rectShape(), { content: { type: "root" } })).toBe(
       true,
     );
-    expect(calls.map((call) => call.name)).toEqual([
-      "set-object",
-      "request-render",
-    ]);
+    expect(uploadedIds()).toEqual([RECT_ID]);
   });
 
-  it("never rewrites the record for an editor-only attribute", () => {
+  it("classifies editor-only attributes", () => {
     expect(attrsWriteStyle({ blocked: true })).toBe(false);
     expect(attrsWriteStyle({ "layout-item-z-index": 2 })).toBe(true);
     expect(attrsWriteStyle({ "constraints-v": null })).toBe(true);

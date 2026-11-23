@@ -1,7 +1,7 @@
 // The font resolution half of the wasm text pipeline (D11). Pure data + pure
 // fns — no wasm module, no DOM — so vitest exercises every branch and the
-// engine-facing store step (lib/render-wasm/fonts-store.ts) only feeds these
-// results to the wasm exports.
+// host bridge (lib/render-wasm/workspace-app.ts, viewer-host.ts) only feeds
+// these results to the wasm exports.
 //
 // Ported from:
 // - common/src/app/common/fonts.cljs (font-id->backend, font-id->uuid,
@@ -30,9 +30,16 @@
 //   letter-spacing) are not used here because the wasm text layout reads them
 //   off the shape record already pushed through set_object.
 
-import { uuidToU32 } from "@/lib/render-wasm/interop";
+import { uuidToU32 } from "@/lib/render-wasm/engine/uuid";
 
 export type U32Quartet = readonly [number, number, number, number];
+
+// The engine's uuid reader answers a Uint32Array; the resolver's record keeps
+// a fixed tuple so callers cannot resize it.
+function idQuartet(id: string): U32Quartet {
+  const words = uuidToU32(id);
+  return [words[0], words[1], words[2], words[3]];
+}
 
 export type FontBackend = "google" | "custom" | "builtin";
 
@@ -325,7 +332,7 @@ export function resolveFontFace(ref: FontFaceRef, ctx: ResolveContext = {}): Res
       face: {
         backend,
         familyUuid,
-        wasmIdWords: uuidToU32(familyUuid),
+        wasmIdWords: idQuartet(familyUuid),
         weight: serializeFontWeight(custom.weight),
         style: serializeFontStyle(custom.style),
         ttfUrl: customTtfUrl(custom.ttfFileId, publicUri),
@@ -352,7 +359,7 @@ export function resolveFontFace(ref: FontFaceRef, ctx: ResolveContext = {}): Res
     face: {
       backend,
       familyUuid: ZERO_UUID,
-      wasmIdWords: uuidToU32(ZERO_UUID),
+      wasmIdWords: idQuartet(ZERO_UUID),
       weight: serializeFontWeight(rawWeight),
       style: serializeFontStyle(styleName),
       ttfUrl: builtinTtfUrl(variant.ttfUrl, publicUri),

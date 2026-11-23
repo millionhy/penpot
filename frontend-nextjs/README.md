@@ -90,12 +90,12 @@ frontend-nextjs/
 │   ├── avatars.ts        canvas 首字母头像（仅客户端，对应 app.util.profile）
 │   ├── dom.ts            useDocumentTitle、triggerDownload/Uri、normalizeWheel、pickFiles（标题副作用与浏览器交互助手）
 │   ├── viewer.ts         viewer 数据层（F6：文件加载、frame 选择与缩放）
-│   ├── render-wasm/      WASM 直调层（F6/F9：bridge/interop + viewer/frame/workspace 渲染链）
+│   ├── render-wasm/      WASM 直调层（engine 引擎 + viewer/frame/workspace/缩略图渲染链；bridge/interop 仅 dev 页）
 │   ├── file-data.ts      viewer/workspace 共享文件数据件（F9.1 抽出：features、指针解析、UUID）
 │   ├── workspace.ts      workspace 数据层（F9.1：get-file + 片段解析 + URL 参数）
 │   ├── workspace-viewport.ts 视口数学（F9.1：适配/缩放/平移/滚轮归一化；F9.2：clientToWorld）
 │   ├── workspace-index.ts    命中检测索引（F9.2：quadtree 移植 + overlap/选择矩形查询 + clip 索引）
-│   ├── workspace-selection.ts 选择与悬停语义（F9.2：hover 栈/remove-hover?、$APP 适配器、点击/框选）
+│   ├── workspace-selection.ts 选择与悬停语义（F9.2：hover 栈/remove-hover?、纯 TS z-order、点击/框选）
 │   ├── workspace-store.ts workspace 模块 store（F9.1：file/page/视口切片；F9.2：选择/hover/框选）
 │   └── types.ts          api-types 生成类型的桥接与别名
 ├── components/           视图组件（form/tr/notifications/modal/theme/locale-gate/settings-sidebar/dashboard-*/fonts-page/file-menu/project-menu/import-dialog/export-dialog/templates-section/inline-edition/layout-toggle/check-updates/delete-shared-dialog/deleted-tabs/progress-notification/team-header/team-invite/team-hero/team-form-modal/team-options-menu/team-leave-flows/leave-and-reassign-modal/webhook-modal/member-avatar/shortcut-keys/shortcut-row/restore-shortcuts-modal/import-shortcuts-diff-modal/workspace-wasm-canvas/workspace-viewport-overlay/penpot-loader…）
