@@ -1,7 +1,7 @@
 // GENERATED FILE - do not edit by hand.
 // Regenerate with: node scripts/extract-translations.mjs
 //
-// Simplified Chinese subset of frontend/translations/zh_CN.po, limited to
+// Simplified Chinese subset of translations/zh_CN.po, limited to
 // the keys the migrated shell pages use. Values keep the %s placeholders and
 // the [label](url) link syntax of the source catalog; lib/i18n.ts resolves
 // both.

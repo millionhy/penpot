@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Regenerate the typed catalogs in lib/translations/ from
-// frontend/translations/<locale>.po, limited to the keys the Next.js shell
+// translations/<locale>.po, limited to the keys the Next.js shell
 // actually uses.
 //
 // The CLJS app ships every translation to the browser and resolves keys at
@@ -23,8 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const shellRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const repoRoot = path.resolve(shellRoot, "..");
-const poDir = path.join(repoRoot, "frontend", "translations");
+const poDir = path.join(shellRoot, "translations");
 const outDir = path.join(shellRoot, "lib", "translations");
 
 // Catalogs to emit. `code` names both the generated file and the catalog the
@@ -215,7 +214,7 @@ function emit(locale, catalog, keys) {
   return `// GENERATED FILE - do not edit by hand.
 // Regenerate with: node scripts/extract-translations.mjs
 //
-// ${locale.label} subset of frontend/translations/${locale.po}, limited to
+// ${locale.label} subset of translations/${locale.po}, limited to
 // the keys the migrated shell pages use. Values keep the %s placeholders and
 // the [label](url) link syntax of the source catalog; lib/i18n.ts resolves
 // both.

@@ -4,7 +4,7 @@
 // selection (matchLocale + the active-locale pair below).
 //
 // The catalogs are generated: node scripts/extract-translations.mjs pulls the
-// keys used by the shell out of frontend/translations/*.po (en is the source
+// keys used by the shell out of translations/*.po (en is the source
 // of truth; zh_cn and zh_hant carry whatever upstream has translated and fall
 // back to English per key), so strings stay byte-identical to the CLJS app.
 //
