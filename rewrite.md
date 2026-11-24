@@ -9,10 +9,10 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G4 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换、G4 渲染引擎移植与旧前端删除，G4.7 见 7.92），G5 进行中（G5.1 颜色镜像与构建解阻见 7.93）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G4 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换、G4 渲染引擎移植与旧前端删除，G4.7 见 7.92），G5 进行中（G5.1 颜色镜像见 7.93，G5.2 几何/路径镜像见 7.94）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
-| 最后更新 | 2026-11-23 |
+| 最后更新 | 2026-11-24 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -87,7 +87,7 @@
 | G2 | exporter TS 重写（P1） | ✅ | 2026-11-19：`exporter/src-ts/` 全量取代 CLJS，CLJS 树与 shadow-cljs 已删（G2.1–G2.10，7.65–7.78）；本机联调对拍 svg/png/pdf |
 | G3 | library TS 重写（P2） | ✅ | 2026-11-19：G3.1 基础层、G3.2 导出、G3.3a tokens、G3.3b bool、G3.4 构建切换全部完成（7.79–7.83）。`library/src-ts/` 21 文件全量取代 CLJS，esbuild 产出 `target/library/penpot.js`（版本由 `package.json` 注入），72 例通过；`out`/`out2` 与 tokens 金样本逐文档一致，四种布尔与 1.2.0-RC1 对拍（difference 只差两段零长曲线）；CLJS 源码、shadow-cljs 与 cljfmt 管线已删 |
 | G4 | frontend 旧端收尾（P3） | ✅ | 2026-11-23：G4.1 引擎核心（7.84）、G4.2 画布与视口（7.85）、G4.3 上传与 modifiers（7.86）、G4.4 文本/图片/svg-derived（7.87）、G4.5 viewer 切线（7.88/7.89）、G4.6a 缩略图 worker 切线（7.90）、G4.6b workspace 画布切线（7.91）、G4.7 删 CLJS 树与前端产物目标（7.92）完成。新端三个画布运行时（workspace/viewer/缩略图）都走 TS 引擎；旧 `frontend/src`/`test`、Shadow、Storybook、Playwright 与静态资源已删 |
-| G5 | common 前端分支镜像（P4） | 🔧 | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管。G5.1 `types.color` 镜像与 `inspect-css` 接线完成（7.93），几何/路径/文件变更分片待做 |
+| G5 | common 前端分支镜像（P4） | 🔧 | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管。G5.1 `types.color` 镜像完成（7.93），G5.2 几何/路径镜像与调用点收拢完成（7.94）；schema 与文件变更分片待做 |
 
 ### 支撑任务（阶段 B 契约前置，只读后端，可与阶段 F 并行）
 
@@ -432,7 +432,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
    - 前置结论（2026-11-19）：新端 viewer/workspace/缩略图 worker 经 `lib/render-wasm/bridge.ts` 加载未入库的 `public/js/main.js` 与 `shared.js`，并通过 `$APP` 调用 `app.render_wasm.api/*`；直接删 `frontend/src` 会失去可重建的运行时。因此先移植渲染引擎到 `frontend-nextjs/lib/render-wasm/engine/`，再删 CLJS。
    - 分片：G4.1 引擎核心（模块生命周期/内存/调用/枚举，✅ 见 7.84）→ G4.2 画布与视口（`init-canvas-context`、`initialize-viewport`、`resize-canvas`、`clear-canvas`、`set-view-box`、渲染循环与 rulers，✅ 见 7.85）→ G4.3 形状上传与 modifiers（`set-objects` 批量上传、结构/几何 modifier，✅ 见 7.86）→ G4.4 字体/文本/图片与 svg-derived（✅ 见 7.87）→ G4.5 viewer 整片切换（✅ 见 7.88/7.89）→ G4.6a 缩略图 worker（✅ 见 7.90）→ G4.6b workspace 画布切线（✅ 见 7.91）→ G4.7 删 CLJS 树与前端产物目标（✅ 见 7.92）。
-5. **G5 / P4 common 前端分支镜像**：只对前端/Node 用到的 `common` 逻辑做 TS 等价实现（类型、几何、schema、file-change 已部分由 F1.2 完成）；不改 `.cljc` 的 Clojure 分支。等 backend-rust 接管后再整体去掉 Clojure 依赖。分片：G5.1 颜色工具与 `inspect-css` 接线（✅ 见 7.93）→ G5.2 几何/路径 → G5.3 schema 与文件变更适配。
+5. **G5 / P4 common 前端分支镜像**：只对前端/Node 用到的 `common` 逻辑做 TS 等价实现（类型、几何、schema、file-change 已部分由 F1.2 完成）；不改 `.cljc` 的 Clojure 分支。等 backend-rust 接管后再整体去掉 Clojure 依赖。分片：G5.1 颜色工具与 `inspect-css` 接线（✅ 见 7.93）→ G5.2 几何/路径与调用点收拢（✅ 见 7.94）→ G5.3 schema 与文件变更适配。
 
 **范围边界**
 
@@ -465,7 +465,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
         M0 workspace | M1 transit | M2 errors+config | M3 rpc(axum) | M4 session | M5 storage | M6 worker | M7 ws
-阶段 G  ████████████████████░░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）；G2 exporter 全量 TypeScript（7.65–7.78）；G3 library 全量 TS（7.79–7.83）；G4 渲染引擎移植与旧前端删除（7.84–7.92）；G5.1 颜色镜像（7.93）
+阶段 G  █████████████████████░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）；G2 exporter 全量 TypeScript（7.65–7.78）；G3 library 全量 TS（7.79–7.83）；G4 渲染引擎移植与旧前端删除（7.84–7.92）；G5.1 颜色镜像（7.93）；G5.2 几何/路径镜像（7.94）
         G1 入口 4/4（render-sprite 死路由剔除） | G2 exporter | G3 library | G4 frontend ✅ | G5 common
 支撑    ▒▒▒▒▒▒▒▒  S1 RPC 清单 → F1.2 ; S2 OpenAPI ⛔ ; S3 DB schema → B5/B6 ; S4 transit 金样本 → B1 ; S5 JWE 向量 ⛔
 图例： █ 进行中/完成　▒ 可并行　░ 未开始
@@ -3456,6 +3456,17 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`pnpm run typecheck` 0；`pnpm run lint` 0（此前 45 error）；`pnpm test` 0（132 文件 2,548 例，新增 `color.test.ts` 24 例）；`pnpm build` 0（此前 exit 1，产物含全部 app 路由）。
 - 决策与偏差：① 新增 `lib/common/` 作为 common 镜像的落点，不建跨模块包，避免 frontend-nextjs 反向依赖 exporter 的 `src-ts`。② 镜像只覆盖纯函数；`schema:color`、`library-color->color`、`stroke->color`、`grid->color` 等与文件数据形状耦合的部分留到后续分片。③ `parseHexColor` 是给 UI 的小扩展（接受不带 `#` 的 3/6 位十六进制），不属于 CLJS 原命名空间。
 - 下一步：G5.2 几何与路径镜像——`geom.point`/`matrix`/`rect`/`bounds` 现在分散在 `workspace-*`、`inspect-css` 与 `engine/`，先按调用点收拢并补对拍测试，再进入 schema 与 file-change 分片。
+
+### 7.94 本轮（2026-11-24，第九十三批：G5.2 几何与路径镜像）
+
+- 口径：G5 第二片。把前端散落在 `inspect-*`、`workspace-path` 与渲染引擎里的几何、路径副本收拢到 `frontend-nextjs/lib/common/`，只做 `app.common.geom.*` 与 `app.common.types.path.*` 的前端/Node 侧 TS 等价实现；`.cljc` 源码与后端分支不动。
+- 新增几何层：`lib/common/geom/point.ts`（点构造与 Transit 字符串解码、向量运算、角度/象限、归一化、投影、旋转、矩阵变换）、`matrix.ts`（SVG 顺序合成、平移/缩放/旋转/斜切、逆矩阵、格式化与解析、容差比较）、`rect.ts`（0.01 最小尺寸、角点维护、点集包围盒、矩形联合/相交/包含、裁剪与比例修正）、`index.ts`。测试 `point.test.ts` 13 例、`matrix.test.ts` 10 例、`rect.test.ts` 10 例。
+- 新增路径层：`lib/common/path/segment.ts`（move/line/curve/close 命令、Transit 解码对象/段数组/28 字节 packed content、三次曲线求值/极值/分割/交点、内容包围盒、点在线内/边界内）、`subpath.ts`（子路径提取与连接、反向、闭合、`clock-wise`、`shape-with-open-path?`）、`index.ts`。测试 `segment.test.ts` 9 例、`subpath.test.ts` 9 例。
+- 接线：`inspect-css.ts` 的矩阵构造/合成/逆矩阵/中心变换改引 common matrix；`inspect.ts` 的 `unionSelrect` 改用 `makeRect` + `joinRects`；`workspace-path.ts` 改接 `pointsToSegments`、`pointsToRect`、`contentToSelrect`、`rectToPoints`、`makeRect`；`render-wasm/engine/path.ts` 删除本地 227 行路径实现，只 re-export common path；`engine/bounds.ts` 改接 common rect，并保留原有 `makeRect`/`pointsRect`/`joinRects`/`rectToPoints` 导出面。
+- 语义保留：`angleToPoint` 使用弧度；`matrixOf` 同时接受普通对象与 `matrix(...)` 字符串；`multiplyAll` 保持 SVG 组合顺序；`joinRects` 使用存储的 `x2`/`y2`，不从 width/height 反推；`cornersToRect` 的点重载取第一个点的 `y`；路径点重合用 `< 0.1`，几何比较用 `1e-4`/`1e-3` 容差。`reverseCommand` 反向 line-to 时只带前一段端点，反向 curve-to 时交换两组控制点。
+- 验证：`pnpm exec vitest run lib/common/geom lib/common/path lib/workspace-path.test.ts lib/render-wasm/engine/path.test.ts lib/render-wasm/engine/bounds.test.ts` 0（8 文件 104 例）；`pnpm run typecheck` 0；`pnpm run lint` 0（余既有 warning）；`pnpm test` 0（137 文件 2,599 例，新增 51 例）；`pnpm build` 0（全部 34 个静态页生成）。
+- 边界：本轮只镜像纯几何/路径函数，不改 `backend/`，不修改 `CHANGES.md`。schema 与 file-change 的读写适配、以及仍依赖文件数据形状的 common 接口留到 G5.3。
+- 下一步：G5.3 schema 与文件变更适配——先盘点前端/Node 实际消费的 `common.schema` 与 `file-change` 入口，按调用面补 TS 类型守卫、变更构造与反演测试，再收口 README 与阶段状态。
 
 ---
 

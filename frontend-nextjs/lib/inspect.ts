@@ -43,6 +43,7 @@ import {
   type InspectColorFormat,
 } from "@/lib/inspect-css";
 import { ZERO_UUID, type ViewerObjects, type ViewerShape } from "@/lib/viewer";
+import { joinRects, makeRect } from "@/lib/common/geom/rect";
 
 // --- Shapes -----------------------------------------------------------------
 
@@ -282,20 +283,10 @@ export interface InspectRect {
 
 // The axis-aligned box around the selection (selection-feedback).
 export function unionSelrect(shapes: readonly ViewerShape[]): InspectRect | null {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const shape of shapes) {
-    const rect = shape.selrect;
-    if (rect === undefined) continue;
-    minX = Math.min(minX, rect.x);
-    minY = Math.min(minY, rect.y);
-    maxX = Math.max(maxX, rect.x + rect.width);
-    maxY = Math.max(maxY, rect.y + rect.height);
-  }
-  if (!Number.isFinite(minX)) return null;
-  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  const rects = shapes.flatMap((shape) => (shape.selrect === undefined ? [] : [makeRect(shape.selrect)]));
+  const joined = joinRects(rects);
+  if (joined === undefined) return null;
+  return { x: joined.x, y: joined.y, width: joined.width, height: joined.height };
 }
 
 // --- Text -------------------------------------------------------------------

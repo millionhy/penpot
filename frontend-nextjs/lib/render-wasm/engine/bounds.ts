@@ -12,27 +12,18 @@
 
 import { shapeWithOpenPath } from "./path";
 import type { Point } from "./viewport";
+import {
+  joinRects as joinRectValues,
+  makeRect,
+  pointsToRect,
+  rectToPoints,
+  type Rect,
+} from "@/lib/common/geom/rect";
 
-export interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-}
+export { makeRect, rectToPoints };
+export type { Rect };
 
 type Shape = Record<string, unknown>;
-
-// rect/make-rect: the width and height never go below 0.01, so a degenerate
-// rect still has corners to join.
-export function makeRect(x = 0, y = 0, width = 0.01, height = 0.01): Rect {
-  const w = Math.max(width, 0.01);
-  const h = Math.max(height, 0.01);
-  return { x, y, width: w, height: h, x1: x, y1: y, x2: x + w, y2: y + h };
-}
 
 function numberOr(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -64,47 +55,13 @@ function readPoints(value: unknown): Point[] {
 // rect/points->rect: the axis-aligned box around the points. Nil points
 // answer nil in the CLJS; the callers here substitute an empty rect.
 export function pointsRect(points: readonly Point[]): Rect | null {
-  if (points.length === 0) return null;
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const point of points) {
-    if (point.x < minX) minX = point.x;
-    if (point.y < minY) minY = point.y;
-    if (point.x > maxX) maxX = point.x;
-    if (point.y > maxY) maxY = point.y;
-  }
-  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
-  return makeRect(minX, minY, maxX - minX, maxY - minY);
+  return pointsToRect(points) ?? null;
 }
 
 // rect/join-rects: the union box of the rects that carry numeric corners.
 export function joinRects(rects: readonly (Rect | null | undefined)[]): Rect | null {
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  let seen = false;
-  for (const rect of rects) {
-    if (rect === null || rect === undefined) continue;
-    seen = true;
-    if (rect.x1 < minX) minX = rect.x1;
-    if (rect.y1 < minY) minY = rect.y1;
-    if (rect.x2 > maxX) maxX = rect.x2;
-    if (rect.y2 > maxY) maxY = rect.y2;
-  }
-  if (!seen || !Number.isFinite(minX) || !Number.isFinite(minY)) return null;
-  return makeRect(minX, minY, maxX - minX, maxY - minY);
-}
-
-export function rectToPoints(rect: Rect): Point[] {
-  return [
-    { x: rect.x, y: rect.y },
-    { x: rect.x2, y: rect.y },
-    { x: rect.x2, y: rect.y2 },
-    { x: rect.x, y: rect.y2 },
-  ];
+  const valid = rects.filter((rect): rect is Rect => rect !== null && rect !== undefined);
+  return joinRectValues(valid) ?? null;
 }
 
 export interface Padding {

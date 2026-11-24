@@ -14,8 +14,8 @@
 // - The shape data crosses the transit boundary as plain objects (keyword
 //   keys become kebab-case strings, keywords become strings), so every
 //   getter reads string keys and compares string values.
-// - The matrix helpers are local: app.common.geom.matrix is not part of the
-//   shell bundle. They follow the SVG composition order the CLJS uses.
+// - The matrix helpers mirror app.common.geom.matrix in
+//   lib/common/geom/matrix.ts and keep the SVG composition order.
 // - formatters read only the options the inspect panel passes (color format
 //   and the root-shape set); the text generator options are not ported.
 
@@ -32,6 +32,17 @@ import {
   parseHexColor,
   rgbToHsl as rgbToHslParts,
 } from "@/lib/common/color";
+import {
+  UNIT_MATRIX as UNIT,
+  applyMatrix,
+  formatMatrix as formatMatrixParts,
+  inverse,
+  isUnitMatrix as isUnit,
+  matrixOf as matrixOfParts,
+  multiply,
+  translateMatrix as translateMatrixParts,
+  transformPointCenter,
+} from "@/lib/common/geom/matrix";
 
 export { formatPrecision };
 
@@ -114,12 +125,7 @@ export function formatPercent(value: number): string {
 
 // fmt/format-matrix: to-fixed keeps the trailing zeros ("1.00").
 export function formatMatrix(matrix: InspectMatrix): string {
-  const fixed = (value: number): string => value.toFixed(2);
-  return (
-    "matrix(" +
-    [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].map(fixed).join(", ") +
-    ")"
-  );
+  return formatMatrixParts(matrix, 2);
 }
 
 // --- Colors -----------------------------------------------------------------
@@ -229,61 +235,29 @@ export function colorSwatch(color: InspectColor, format: InspectColorFormat): st
 
 // --- Matrices ---------------------------------------------------------------
 
-const UNIT_MATRIX: InspectMatrix = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
-
 export function matrixOf(value: unknown): InspectMatrix {
-  if (value === null || value === undefined || typeof value !== "object") return UNIT_MATRIX;
-  const matrix = value as Partial<InspectMatrix>;
-  const read = (key: keyof InspectMatrix): number =>
-    typeof matrix[key] === "number" ? (matrix[key] as number) : UNIT_MATRIX[key];
-  return { a: read("a"), b: read("b"), c: read("c"), d: read("d"), e: read("e"), f: read("f") };
+  return matrixOfParts(value);
 }
 
 // The SVG composition of two matrices: apply m2 first, then m1.
 export function multiplyMatrix(m1: InspectMatrix, m2: InspectMatrix): InspectMatrix {
-  return {
-    a: m1.a * m2.a + m1.c * m2.b,
-    b: m1.b * m2.a + m1.d * m2.b,
-    c: m1.a * m2.c + m1.c * m2.d,
-    d: m1.b * m2.c + m1.d * m2.d,
-    e: m1.a * m2.e + m1.c * m2.f + m1.e,
-    f: m1.b * m2.e + m1.d * m2.f + m1.f,
-  };
+  return multiply(m1, m2);
 }
 
 export function inverseMatrix(matrix: InspectMatrix): InspectMatrix {
-  const det = matrix.a * matrix.d - matrix.b * matrix.c;
-  if (det === 0) return UNIT_MATRIX;
-  return {
-    a: matrix.d / det,
-    b: -matrix.b / det,
-    c: -matrix.c / det,
-    d: matrix.a / det,
-    e: (matrix.c * matrix.f - matrix.d * matrix.e) / det,
-    f: (matrix.b * matrix.e - matrix.a * matrix.f) / det,
-  };
+  return inverse(matrix) ?? { ...UNIT };
 }
 
 export function isUnitMatrix(matrix: InspectMatrix): boolean {
-  return (
-    matrix.a === 1 &&
-    matrix.b === 0 &&
-    matrix.c === 0 &&
-    matrix.d === 1 &&
-    matrix.e === 0 &&
-    matrix.f === 0
-  );
+  return isUnit(matrix);
 }
 
 export function translateMatrix(x: number, y: number): InspectMatrix {
-  return { a: 1, b: 0, c: 0, d: 1, e: x, f: y };
+  return translateMatrixParts(x, y);
 }
 
 export function transformPoint(point: InspectPoint, matrix: InspectMatrix): InspectPoint {
-  return {
-    x: point.x * matrix.a + point.y * matrix.c + matrix.e,
-    y: point.x * matrix.b + point.y * matrix.d + matrix.f,
-  };
+  return applyMatrix(point, matrix);
 }
 
 // gsh/transform-points: translate to the center, apply the matrix, translate
@@ -293,11 +267,7 @@ export function transformPoints(
   center: InspectPoint,
   matrix: InspectMatrix,
 ): InspectPoint[] {
-  const full = multiplyMatrix(
-    multiplyMatrix(translateMatrix(center.x, center.y), matrix),
-    translateMatrix(-center.x, -center.y),
-  );
-  return points.map((point) => transformPoint(point, full));
+  return points.map((point) => transformPointCenter(point, center, matrix) ?? point);
 }
 
 // gsh/calculate-geometry's selrect: the axis-aligned box of the points.

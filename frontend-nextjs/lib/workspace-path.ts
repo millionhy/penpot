@@ -25,12 +25,15 @@
 import { PathData, type PathSegmentSpec } from "@/lib/transit";
 import { IDENTITY_TRANSFORM, type WorkspaceShape } from "@/lib/workspace";
 import type { DrawPoint, DrawRect } from "@/lib/workspace-draw";
+import { makeRect, pointsToRect, rectToPoints, type Rect } from "@/lib/common/geom/rect";
+import {
+  contentToSelrect,
+  pointsToSegments,
+  type PathSegment,
+} from "@/lib/common/path";
 
 // drawing/curve.cljs simplify-tolerance.
 export const CURVE_SIMPLIFY_TOLERANCE = 0.3;
-
-// grc/make-rect clamps both sides to 0.01.
-const MIN_SIZE = 0.01;
 
 // A path needs a start point and at least one end point; the CLJS
 // finish-drawing marks the shape uninitialized below that, and
@@ -111,15 +114,7 @@ export function simplifyPoints(
 // path/points->content: a move-to for the first point and one line-to per
 // following point.
 export function pathSegmentsFromPoints(points: readonly DrawPoint[]): PathSegmentSpec[] {
-  const segments: PathSegmentSpec[] = [];
-  points.forEach((point, index) => {
-    segments.push(
-      index === 0
-        ? { command: "move-to", x: point.x, y: point.y }
-        : { command: "line-to", x: point.x, y: point.y },
-    );
-  });
-  return segments;
+  return pointsToSegments(points).map(toSegmentSpec);
 }
 
 // path/calc-selrect over the line-to content: the bounding box of the
@@ -127,51 +122,12 @@ export function pathSegmentsFromPoints(points: readonly DrawPoint[]): PathSegmen
 // poisons the box like the CLJS min/max fold does, so the caller can drop
 // the shape by checking the result.
 export function pointsRect(points: readonly DrawPoint[]): DrawRect | null {
-  if (points.length === 0) return null;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const point of points) {
-    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
-    if (point.x < minX) minX = point.x;
-    if (point.y < minY) minY = point.y;
-    if (point.x > maxX) maxX = point.x;
-    if (point.y > maxY) maxY = point.y;
-  }
-  return {
-    x: minX,
-    y: minY,
-    width: Math.max(maxX - minX, MIN_SIZE),
-    height: Math.max(maxY - minY, MIN_SIZE),
-  };
+  return toDrawRect(pointsToRect(points));
 }
 
-// The t values in (0, 1) where the cubic Bezier derivative of one axis
-// vanishes (a t^2 + b t + c, the derivative divided by three).
-function cubicExtrema(p0: number, p1: number, p2: number, p3: number): number[] {
-  const a = -p0 + 3 * p1 - 3 * p2 + p3;
-  const b = 2 * (p0 - 2 * p1 + p2);
-  const c = p1 - p0;
-  const roots: number[] = [];
-  const push = (t: number): void => {
-    if (t > 0 && t < 1) roots.push(t);
-  };
-  if (Math.abs(a) < 1e-12) {
-    if (Math.abs(b) > 1e-12) push(-c / b);
-    return roots;
-  }
-  const discriminant = b * b - 4 * a * c;
-  if (discriminant < 0) return roots;
-  const sqrt = Math.sqrt(discriminant);
-  push((-b + sqrt) / (2 * a));
-  push((-b - sqrt) / (2 * a));
-  return roots;
-}
-
-function cubicAt(p0: number, p1: number, p2: number, p3: number, t: number): number {
-  const mt = 1 - t;
-  return mt * mt * mt * p0 + 3 * mt * mt * t * p1 + 3 * mt * t * t * p2 + t * t * t * p3;
+function toDrawRect(rect: Rect | undefined): DrawRect | null {
+  if (rect === undefined) return null;
+  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 }
 
 // path/calc-selrect (segment/content->selrect): the bounding box of the
@@ -181,56 +137,29 @@ function cubicAt(p0: number, p1: number, p2: number, p3: number, t: number): num
 // shape instead of committing a NaN box.
 export function contentRect(segments: readonly PathSegmentSpec[]): DrawRect | null {
   if (segments.length === 0) return null;
-  const points: DrawPoint[] = [];
-  let current: DrawPoint | null = null;
-  let subpathStart: DrawPoint | null = null;
   for (const segment of segments) {
-    switch (segment.command) {
-      case "move-to": {
-        current = { x: segment.x ?? 0, y: segment.y ?? 0 };
-        subpathStart = current;
-        points.push(current);
-        break;
-      }
-      case "line-to": {
-        current = { x: segment.x ?? 0, y: segment.y ?? 0 };
-        points.push(current);
-        break;
-      }
-      case "curve-to": {
-        const from: DrawPoint = current ?? { x: segment.c1x ?? 0, y: segment.c1y ?? 0 };
-        const c1: DrawPoint = { x: segment.c1x ?? from.x, y: segment.c1y ?? from.y };
-        const c2: DrawPoint = { x: segment.c2x ?? from.x, y: segment.c2y ?? from.y };
-        const to: DrawPoint = { x: segment.x ?? c2.x, y: segment.y ?? c2.y };
-        // The handles are not on the curve: only the endpoints and the
-        // analytic extrema bound it (segment/content->selrect).
-        points.push(to);
-        const ts = [
-          ...cubicExtrema(from.x, c1.x, c2.x, to.x),
-          ...cubicExtrema(from.y, c1.y, c2.y, to.y),
-        ];
-        for (const t of ts) {
-          points.push({
-            x: cubicAt(from.x, c1.x, c2.x, to.x, t),
-            y: cubicAt(from.y, c1.y, c2.y, to.y, t),
-          });
-        }
-        current = to;
-        break;
-      }
-      case "close-path": {
-        if (subpathStart !== null) points.push(subpathStart);
-        current = subpathStart;
-        break;
-      }
+    for (const key of ["x", "y", "c1x", "c1y", "c2x", "c2y"] as const) {
+      const value = segment[key];
+      if (value !== undefined && !Number.isFinite(value)) return null;
     }
   }
-  return pointsRect(points);
+  return toDrawRect(contentToSelrect(segments.map(toPathSegment)));
 }
 
 // The bounding box of a packed content, the shape `content` fields carry.
 export function pathDataRect(content: PathData): DrawRect | null {
-  return contentRect(content.toSegments().map(toSegmentSpec));
+  const segments = content.toSegments();
+  if (segments.length === 0) return null;
+  return toDrawRect(contentToSelrect(segments));
+}
+
+function toPathSegment(segment: PathSegmentSpec): PathSegment {
+  const params: Record<string, number> = {};
+  for (const key of ["x", "y", "c1x", "c1y", "c2x", "c2y"] as const) {
+    const value = segment[key];
+    if (value !== undefined) params[key] = value;
+  }
+  return { command: segment.command, params };
 }
 
 // The PathSegment of PathData.toSegments() back to the drawing-side spec.
@@ -275,14 +204,7 @@ export function segmentsToSvgPath(segments: readonly PathSegmentSpec[]): string 
 // grc/rect->points: the four corners, clockwise from the top left. The line
 // tools build their `points` the same way.
 export function rectPoints(rect: DrawRect): DrawPoint[] {
-  const x2 = rect.x + rect.width;
-  const y2 = rect.y + rect.height;
-  return [
-    { x: rect.x, y: rect.y },
-    { x: x2, y: rect.y },
-    { x: x2, y: y2 },
-    { x: rect.x, y: y2 },
-  ];
+  return rectToPoints(makeRect(rect));
 }
 
 // cts/setup-path over the simplified drawing: the packed content, the
