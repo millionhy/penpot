@@ -7,5 +7,25 @@
     // dangerouslyAllowSVG for the svg assets; neither is decided yet. Revisit
     // together with the asset pipeline.
     "@next/next/no-img-element": "off"
-  }
+  },
+  "overrides": [
+    {
+      // `module` is the Emscripten instance handle these files pass around.
+      // Renaming it to `wasmModule` everywhere would only hide that the engine
+      // mirrors the Rust module lifetime; the rule targets accidental writes
+      // to webpack's module object in app code, which does not apply here.
+      "files": [
+        "lib/render-wasm/**/*.ts",
+        "lib/thumbnail-render.ts",
+        "lib/thumbnail-render.test.ts",
+        "lib/thumbnail.worker.ts",
+        "components/viewer-thumbnails.tsx",
+        "components/viewer-wasm-viewport.tsx",
+        "components/workspace-wasm-canvas.tsx"
+      ],
+      "rules": {
+        "@next/next/no-assign-module-variable": "off"
+      }
+    }
+  ]
 }

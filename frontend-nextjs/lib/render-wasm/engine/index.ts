@@ -266,7 +266,7 @@ export {
   type Transform,
   type UploadOptions,
 } from "./upload";
-export { hasShape, intersectPositionInShape, useShape } from "./select";
+export { hasShape, intersectPositionInShape, selectShape } from "./select";
 export {
   BATCH_MAX_SHAPES,
   BATCH_UPLOAD_OPTIONS,

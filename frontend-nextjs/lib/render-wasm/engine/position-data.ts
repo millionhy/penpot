@@ -15,7 +15,7 @@
 import { call } from "./call";
 import { free, heapF32, heapU32, offset32 } from "./memory";
 import { ready, type RenderWasmModule } from "./module";
-import { useShape } from "./select";
+import { selectShape } from "./select";
 import { textParagraphs, type TextContent } from "./text";
 
 export const POSITION_DATA_U8_SIZE = 36;
@@ -158,7 +158,7 @@ export function calculatePositionData(
   shape: PositionDataShape,
 ): PositionDataAttrs[] | undefined {
   if (!ready()) return undefined;
-  if (!useShape(module, shape.id)) return undefined;
+  if (!selectShape(module, shape.id)) return undefined;
 
   const offset = offset32(call<number>(module, "_calculate_position_data"));
   // Re-read after the call: a heap growth detaches the previous views.

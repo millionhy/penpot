@@ -9,8 +9,9 @@ import { call } from "./call";
 import { live, ready, type RenderWasmModule } from "./module";
 import { uuidToU32 } from "./uuid";
 
-// use-shape: makes `id` current. No-op without a live context.
-export function useShape(module: RenderWasmModule, id: string): boolean {
+// use-shape: makes `id` current. No-op without a live context. Named
+// `selectShape` because the React hooks rule reads `useShape` as a hook.
+export function selectShape(module: RenderWasmModule, id: string): boolean {
   if (!live()) return false;
   const words = uuidToU32(id);
   call(module, "_use_shape", words[0], words[1], words[2], words[3]);

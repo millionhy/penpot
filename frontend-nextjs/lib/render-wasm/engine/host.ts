@@ -10,7 +10,7 @@
 //   - image bytes for fill and stroke image fills.
 //
 // The shape must be current before any of these setters runs: a batch leaves
-// the last record current, not this one. `useShape` therefore runs first for
+// the last record current, not this one. `selectShape` therefore runs first for
 // every shape that needs any of the work below, except a batch shape that is
 // only a plain container.
 //
@@ -18,7 +18,7 @@
 // on the incremental path; the cold load already carried them in the record,
 // which is what `skipLayout` marks.
 
-import { useShape } from "./select";
+import { selectShape } from "./select";
 import type { Shape } from "./upload";
 import type { Stroke } from "./fills";
 import {
@@ -98,7 +98,7 @@ export function writeHostAttrs(
     (content !== null && content !== undefined && isSvgRaw) ||
     (options.skipLayout === true ? isGridLayout(shape) : true);
 
-  if (needsCurrent) useShape(module, id);
+  if (needsCurrent) selectShape(module, id);
 
   if (isSvgRaw && content !== null && content !== undefined) {
     const markup = options.getStaticMarkup?.(shape);

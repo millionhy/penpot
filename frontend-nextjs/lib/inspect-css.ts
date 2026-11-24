@@ -25,6 +25,15 @@ import {
   type ViewerObjects,
   type ViewerShape,
 } from "@/lib/viewer";
+import {
+  formatHsla as formatHslaParts,
+  formatPrecision,
+  formatRgba as formatRgbaParts,
+  parseHexColor,
+  rgbToHsl as rgbToHslParts,
+} from "@/lib/common/color";
+
+export { formatPrecision };
 
 // --- Types ------------------------------------------------------------------
 
@@ -113,65 +122,26 @@ export function formatMatrix(matrix: InspectMatrix): string {
   );
 }
 
-// d/format-precision: a number with at most `digits` decimals and no
-// trailing zeros.
-export function formatPrecision(value: number, digits = 2): string {
-  return value
-    .toFixed(digits)
-    .replace(/\.0+$/, "")
-    .replace(/(\.\d*[^0])0+$/, "$1");
-}
-
 // --- Colors -----------------------------------------------------------------
 
-function expandHex(hex: string): string {
-  const clean = hex.replace(/^#/, "").toLowerCase();
-  if (clean.length === 3) {
-    return clean
-      .split("")
-      .map((char) => char + char)
-      .join("");
-  }
-  return clean.slice(0, 6).padEnd(6, "0");
-}
-
 function hexToRgb(hex: string): [number, number, number] {
-  const clean = expandHex(hex);
-  return [
-    Number.parseInt(clean.slice(0, 2), 16),
-    Number.parseInt(clean.slice(2, 4), 16),
-    Number.parseInt(clean.slice(4, 6), 16),
-  ];
+  return parseHexColor(hex) ?? [0, 0, 0];
 }
 
-// rgb->hsl of app.common.types.color: hues in degrees, s and l as 0..1.
+// rgb->hsl: lib/common/color takes the CLJS tuple, this panel keeps the
+// three-argument shape its call sites and tests use.
 export function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  const rn = r / 255;
-  const gn = g / 255;
-  const bn = b / 255;
-  const max = Math.max(rn, gn, bn);
-  const min = Math.min(rn, gn, bn);
-  const l = (max + min) / 2;
-  if (max === min) return [0, 0, l];
-  const delta = max - min;
-  const s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
-  let h: number;
-  if (max === rn) h = (gn - bn) / delta + (gn < bn ? 6 : 0);
-  else if (max === gn) h = (bn - rn) / delta + 2;
-  else h = (rn - gn) / delta + 4;
-  return [h * 60, s, l];
+  return rgbToHslParts([r, g, b]);
 }
 
 // cc/format-rgba: "r, g, b, a" with the alpha at two decimals.
 export function formatRgba(r: number, g: number, b: number, a: number): string {
-  return [Math.round(r), Math.round(g), Math.round(b), formatPrecision(a, 2)].join(", ");
+  return formatRgbaParts([Math.round(r), Math.round(g), Math.round(b), a]);
 }
 
 // cc/format-hsla: "h, s%, l%, a".
 export function formatHsla(h: number, s: number, l: number, a: number): string {
-  return (
-    Math.round(h) + ", " + formatNumber(s * 100) + "%, " + formatNumber(l * 100) + "%, " + formatNumber(a)
-  );
+  return formatHslaParts([Math.round(h), s, l, a]);
 }
 
 // d/opacity-to-hex: the alpha byte as two uppercase hex digits.

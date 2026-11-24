@@ -21,7 +21,7 @@ import { call } from "./call";
 import { ASYNC_THRESHOLD } from "./render-loop";
 import { live, type RenderWasmModule } from "./module";
 import { setShapePathContent, setShapeSvgAttrs, type PathContent } from "./props";
-import { useShape } from "./select";
+import { selectShape } from "./select";
 import { applySvgDerived } from "./svg-derived";
 import {
   flushShapesBatch,
@@ -157,7 +157,7 @@ export function serializeShapesBatch(
   flushShapesBatch(module, prepared, options);
   for (const shape of prepared) {
     if (!needsShapeTail(shape)) continue;
-    useShape(module, shape.id);
+    selectShape(module, shape.id);
     writeShapeTail(module, shape);
   }
   return prepared;
