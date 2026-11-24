@@ -9,7 +9,7 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换、G4 渲染引擎移植与旧前端删除、G5 common 前端镜像，收口见 7.96）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（收口见 7.96）；阶段 B（backend-rust）**计划已批准**，M0 工作区基线完成（2026-11-24），M1 `transit` 进行中，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
 | 最后更新 | 2026-11-24 |
@@ -53,8 +53,8 @@
 | --- | --- | --- | --- | --- |
 | B0 | — | `backend-rust/` 目录 + 规划 README | ✅ | 占位、crate 规划、门禁说明 |
 | B0.1 | — | 阶段 B 执行计划 | ✅ | `PLAN.md` + `HANDOFF.md`；决策：axum、crate 名无前缀、`transit` 自建 enum、实现但不接入部署 |
-| B0.2 | M0 | Cargo workspace + Makefile | ⬜ | `crates/{transit,errors,config,session,db,storage,worker,ws,rpc}`；不接 `scripts/ci` |
-| B1 | M1 | `transit` crate | ⬜ | Transit+JSON reader/writer + Penpot 标签 + `^ `/`^N` 缓存；预言机 = `transit-js`（不需后端） |
+| B0.2 | M0 | Cargo workspace + Makefile | ✅ | 2026-11-24：workspace、`Cargo.lock`、stable 工具链、`.gitignore` 与本地 Makefile 就位；cargo 等价命令全绿，不接 `scripts/ci` |
+| B1 | M1 | `transit` crate | 🔧 | reader/writer/value/cache + 金样本 + malformed/proptest 已落地；T1.6 真实应答语料待 devenv |
 | B2 | M2 | `errors` + `config` crate | ⬜ | `ex-data` → HTTP status/body；`PENPOT_*` env + flags |
 | B3 | M3 | `rpc` crate（axum 骨架） | ⬜ | 三组路由 + 中间件同序 + Registry；本地 `cargo run`，不接 nginx |
 | B4 | M4 | `session` crate | ⬜ | JWE `a256kw`+`a256gcm` + HKDF-BLAKE2b-512；会话查 **`http_session_v2`**（旧表已由 `0155` 删除）；兼容性待 C1 向量 |
@@ -463,7 +463,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 阶段 F  █████████████████████████████░░░░░░░░░░░░░░░░  (F0–F4 已完成；F5.7 大半、F6 全部完成：F6.1–F6.6；F7.1–F7.4 完成；F9.1–F9.12、F9.3 伴随变更、drop-index、F9.10 子级传播、F9.11 布局 reflow、F9.12 grid cells 入口与线条/箭头工具完成、浏览器冒烟 52/52：只读画布、交互选择、拖动保存、外壳与菜单、绘制与样式面板、缩放手柄、撤销/重做、z-order、伴随变更、布局内插入与重排、布局/约束段与多选批量、resize 约束传播、布局重排走 wasm 传播、分组 flyout 与线条/箭头)
         F0 脚手架 | F1 契约/会话 | F2 设计系统 | F3 auth | F4 settings | F5 dashboard
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
-阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
+阶段 B  ██▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  M0 ✅（工作区基线）；M1 🔧（transit，不接入部署）
         M0 workspace | M1 transit | M2 errors+config | M3 rpc(axum) | M4 session | M5 storage | M6 worker | M7 ws
 阶段 G  █████████████████████████████████████████  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）；G2 exporter 全量 TypeScript（7.65–7.78）；G3 library 全量 TS（7.79–7.83）；G4 渲染引擎移植与旧前端删除（7.84–7.92）；G5 common 镜像与收口盘点（7.93–7.96）
         G1 入口 4/4（render-sprite 死路由剔除） | G2 exporter | G3 library | G4 frontend ✅ | G5 common ✅
@@ -3489,6 +3489,15 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 仍存的小重复：UUID 正则 5 处（`file-data.ts`、`plugin-context.ts`、`transit.ts`、`render-wasm/engine/uuid.ts`、`render-wasm/fonts.ts`；`transit.ts` 只收小写是有意收紧），坐标上限 `2147483647` 在 `transit.ts` 与 `common/schema.ts` 各一份，rect 辅助在 `thumbnail.ts`、`workspace-viewport.ts`、`workspace-index.ts` 各按自己的 null/默认值语义保留。结论：均不阻塞 G5，随消费者迁移或 backend-rust 接管时再合并。
 - 决策：G5 标为完成。按计划顺序，下一里程碑是 backend-rust 的 M0 → M1（transit）；Next 生产部署片（镜像、生产 nginx、compose 服务）仍受阶段 B 门禁「不改 `docker/`」约束，需要单独立项并改门禁后才能动。
 - 验证：`rg` 盘点 import 面与重复定义；G5.3 提交 `e1971edca2` 后 `pnpm run typecheck`、`pnpm run lint`、`pnpm test`（139 文件 2,638 例）均 0。本轮只改文档，无产品代码差异。
+
+### 7.97 本轮（2026-11-24，第九十六批：backend-rust M0 工作区基线）
+
+- 口径：阶段 B 的 M0，只搭工作区与本地门禁；不接 nginx/反代，不改 `backend/`、`docker/`、`scripts/ci`，不承接流量。
+- 工作区：`backend-rust/Cargo.toml`（resolver 3、成员 `crates/*`、workspace lint）、`Cargo.lock`、`rust-toolchain.toml`（stable，不钉小版本）、`.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile`（`build`/`test`/`doc`/`fmt`/`fmt-check`/`lint`/`check`/`check-offline`/`capture`/`clean`）已就位。
+- M0 解阻：`serde_json` 打开 `float_roundtrip`，修复最短十进制浮点写回后落到相邻 f64 的字节漂移；`malformed` 用例按 JSON/transit 规范改正（非法 surrogate、原始控制字符、奇数项 cmap、空 pointer 应报错），clippy 的 `unused_self` 与测试里的数值转换告警按语义处理。
+- 文档：`README.md` 改为 M0 完成 / M1 进行中，补本地验证命令；`PLAN.md` 的工具链口径改为 stable，并记录 M0 落地与 M1 现状；`HANDOFF.md` 的仓库快照同步。
+- 验证：`cargo fmt --all --check` 0；`cargo clippy --workspace --all-targets -- -D warnings` 0；`cargo test --workspace --locked --offline` 0（28 例）；`cargo build --workspace --locked --offline` 0。本机没有 `make` 命令，用 Makefile 对应的 cargo 命令验收。
+- 下一步：M1 收尾——T1.6 真实后端应答语料与 `~u`/`~#uuid`、`~m`/`~#inst` 写侧定案；未获提交授权前只保留工作区改动。
 
 ---
 

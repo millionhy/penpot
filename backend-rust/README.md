@@ -4,8 +4,13 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 
 ## 当前状态
 
-**计划已批准，实现尚未开始**（本目录还没有 `Cargo.toml` 与代码）。
+**M0 工作区基线完成（2026-11-24）；M1 `transit` 进行中。**
 
+- 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
+  `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
+- M1 已有：`crates/transit` 的 reader/writer/cache/value、transit-js 金样本语料、畸形输入与
+  proptest round-trip；`serde_json` 打开 `float_roundtrip`，保证写出的浮点数能逐字节读回。
+- 待办：T1.6 真实后端应答语料（需要 devenv），之后才定案 `~u`/`~#uuid` 等线上形态。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 
@@ -47,6 +52,20 @@ backend-rust/
 顺序（`PLAN.md` §5）：`M0 workspace → M1 transit（关键路径）→ M2 errors+config ∥ M3 rpc(axum) → M4 session
 → M5 storage → M6 worker → M7 ws`。`transit` 先做，因为 RPC 请求体、应答体、`task.props`、session payload
 全是 transit。
+
+## 本地验证（不接 CI）
+
+```bash
+cd backend-rust
+make build          # cargo build --workspace
+make test           # cargo test --workspace
+make lint           # cargo clippy --workspace --all-targets -- -D warnings
+make check-offline  # cargo build/test --workspace --offline
+```
+
+Windows 没有 `make` 时直接跑括号里的 cargo 命令。M0 验收等价于
+`cargo fmt --all --check`、上面的 `clippy`、`cargo test --workspace` 与
+`cargo build --workspace --offline` 全部退出 0。
 
 ## 不在范围内
 

@@ -1,0 +1,6 @@
+[toolchain]
+# Do not pin a concrete minor version: the machine that builds this workspace
+# may carry a newer stable, and a hard pin makes a fresh checkout fail to
+# build until rustup can download the pinned toolchain.
+channel = "stable"
+profile = "minimal"

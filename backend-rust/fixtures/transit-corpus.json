@@ -1,0 +1,892 @@
+{
+  "generatedBy": "backend-rust/fixtures/gen-transit-corpus.mjs",
+  "oracle": "transit-js 0.8.874",
+  "note": "wire is byte-exact oracle output; expect_wire is the canonical form (oracle read+write, or hand-pinned where its writer throws or we normalise on purpose)",
+  "cases": [
+    {
+      "name": "nil",
+      "note": "null is a 1-char tag (_), so it is quoted",
+      "wire": "[\"~#'\",null]",
+      "oracle": "transit.writer(\"json\").write(<nil>)",
+      "expect_wire": "[\"~#'\",null]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "true",
+      "note": "booleans become ~?t/~?f in key position",
+      "wire": "[\"~#'\",true]",
+      "oracle": "transit.writer(\"json\").write(<true>)",
+      "expect_wire": "[\"~#'\",true]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "false",
+      "note": "the false spelling is 'f'",
+      "wire": "[\"~#'\",false]",
+      "oracle": "transit.writer(\"json\").write(<false>)",
+      "expect_wire": "[\"~#'\",false]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "integer",
+      "note": "integers cross as bare JSON numbers",
+      "wire": "[\"~#'\",42]",
+      "oracle": "transit.writer(\"json\").write(<integer>)",
+      "expect_wire": "[\"~#'\",42]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "negative-integer",
+      "note": "sign kept",
+      "wire": "[\"~#'\",-7]",
+      "oracle": "transit.writer(\"json\").write(<negative-integer>)",
+      "expect_wire": "[\"~#'\",-7]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "zero",
+      "note": "0",
+      "wire": "[\"~#'\",0]",
+      "oracle": "transit.writer(\"json\").write(<zero>)",
+      "expect_wire": "[\"~#'\",0]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "double",
+      "note": "4.5",
+      "wire": "[\"~#'\",4.5]",
+      "oracle": "transit.writer(\"json\").write(<double>)",
+      "expect_wire": "[\"~#'\",4.5]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "integral-double",
+      "note": "JS has no int/double split: 3.0 prints as 3",
+      "wire": "[\"~#'\",3]",
+      "oracle": "transit.writer(\"json\").write(<integral-double>)",
+      "expect_wire": "[\"~#'\",3]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "double-fraction",
+      "note": "0.1",
+      "wire": "[\"~#'\",0.1]",
+      "oracle": "transit.writer(\"json\").write(<double-fraction>)",
+      "expect_wire": "[\"~#'\",0.1]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "double-precision",
+      "note": "1/7 shortest round-trip digits",
+      "wire": "[\"~#'\",0.14285714285714285]",
+      "oracle": "transit.writer(\"json\").write(<double-precision>)",
+      "expect_wire": "[\"~#'\",0.14285714285714285]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "double-1e20",
+      "note": "fixed notation while k <= 21",
+      "wire": "[\"~#'\",100000000000000000000]",
+      "oracle": "transit.writer(\"json\").write(<double-1e20>)",
+      "expect_wire": "[\"~#'\",100000000000000000000]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "double-1e21",
+      "note": "exponential above 1e21, with e+",
+      "wire": "[\"~#'\",1e+21]",
+      "oracle": "transit.writer(\"json\").write(<double-1e21>)",
+      "expect_wire": "[\"~#'\",1e+21]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "double-1e-6",
+      "note": "fixed notation down to 1e-6",
+      "wire": "[\"~#'\",0.000001]",
+      "oracle": "transit.writer(\"json\").write(<double-1e-6>)",
+      "expect_wire": "[\"~#'\",0.000001]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "double-1e-7",
+      "note": "exponential below 1e-6",
+      "wire": "[\"~#'\",1e-7]",
+      "oracle": "transit.writer(\"json\").write(<double-1e-7>)",
+      "expect_wire": "[\"~#'\",1e-7]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "double-negative-zero",
+      "note": "JSON.stringify(-0) is 0",
+      "wire": "[\"~#'\",0]",
+      "oracle": "transit.writer(\"json\").write(<double-negative-zero>)",
+      "expect_wire": "[\"~#'\",0]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "double-infinity",
+      "note": "special doubles take the ~z tag",
+      "wire": "[\"~#'\",\"~zINF\"]",
+      "oracle": "transit.writer(\"json\").write(<double-infinity>)",
+      "expect_wire": "[\"~#'\",\"~zINF\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "double-negative-infinity",
+      "note": "~z-INF",
+      "wire": "[\"~#'\",\"~z-INF\"]",
+      "oracle": "transit.writer(\"json\").write(<double-negative-infinity>)",
+      "expect_wire": "[\"~#'\",\"~z-INF\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "double-nan",
+      "note": "~zNaN",
+      "wire": "[\"~#'\",\"~zNaN\"]",
+      "oracle": "transit.writer(\"json\").write(<double-nan>)",
+      "expect_wire": "[\"~#'\",\"~zNaN\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string",
+      "note": "plain string",
+      "wire": "[\"~#'\",\"hello\"]",
+      "oracle": "transit.writer(\"json\").write(<string>)",
+      "expect_wire": "[\"~#'\",\"hello\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-short",
+      "note": "2 chars",
+      "wire": "[\"~#'\",\"ab\"]",
+      "oracle": "transit.writer(\"json\").write(<string-short>)",
+      "expect_wire": "[\"~#'\",\"ab\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-empty",
+      "note": "empty string",
+      "wire": "[\"~#'\",\"\"]",
+      "oracle": "transit.writer(\"json\").write(<string-empty>)",
+      "expect_wire": "[\"~#'\",\"\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-tilde",
+      "note": "leading ~ is escaped by doubling it",
+      "wire": "[\"~#'\",\"~~:hello\"]",
+      "oracle": "transit.writer(\"json\").write(<string-tilde>)",
+      "expect_wire": "[\"~#'\",\"~~:hello\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-caret",
+      "note": "leading ^ is escaped with a ~ prefix",
+      "wire": "[\"~#'\",\"~^hello\"]",
+      "oracle": "transit.writer(\"json\").write(<string-caret>)",
+      "expect_wire": "[\"~#'\",\"~^hello\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-backtick",
+      "note": "leading ` is escaped with a ~ prefix",
+      "wire": "[\"~#'\",\"~`hello\"]",
+      "oracle": "transit.writer(\"json\").write(<string-backtick>)",
+      "expect_wire": "[\"~#'\",\"~`hello\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-inner-tilde",
+      "note": "only the first char matters",
+      "wire": "[\"~#'\",\"a~b\"]",
+      "oracle": "transit.writer(\"json\").write(<string-inner-tilde>)",
+      "expect_wire": "[\"~#'\",\"a~b\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-quote",
+      "note": "JSON escape for the double quote",
+      "wire": "[\"~#'\",\"a\\\"b\"]",
+      "oracle": "transit.writer(\"json\").write(<string-quote>)",
+      "expect_wire": "[\"~#'\",\"a\\\"b\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-backslash",
+      "note": "JSON escape for the backslash",
+      "wire": "[\"~#'\",\"a\\\\b\"]",
+      "oracle": "transit.writer(\"json\").write(<string-backslash>)",
+      "expect_wire": "[\"~#'\",\"a\\\\b\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-tab",
+      "note": "\\t short escape",
+      "wire": "[\"~#'\",\"a\\tb\"]",
+      "oracle": "transit.writer(\"json\").write(<string-tab>)",
+      "expect_wire": "[\"~#'\",\"a\\tb\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-newline",
+      "note": "\\n short escape",
+      "wire": "[\"~#'\",\"a\\nb\"]",
+      "oracle": "transit.writer(\"json\").write(<string-newline>)",
+      "expect_wire": "[\"~#'\",\"a\\nb\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-control",
+      "note": "other control chars use \\u00xx",
+      "wire": "[\"~#'\",\"a\\u000bb\"]",
+      "oracle": "transit.writer(\"json\").write(<string-control>)",
+      "expect_wire": "[\"~#'\",\"a\\u000bb\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "string-unicode",
+      "note": "non-ASCII is not escaped",
+      "wire": "[\"~#'\",\"café☃\"]",
+      "oracle": "transit.writer(\"json\").write(<string-unicode>)",
+      "expect_wire": "[\"~#'\",\"café☃\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "keyword",
+      "note": "keyword with a namespace slash",
+      "wire": "[\"~#'\",\"~:foo/bar\"]",
+      "oracle": "transit.writer(\"json\").write(<keyword>)",
+      "expect_wire": "[\"~#'\",\"~:foo/bar\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "keyword-simple",
+      "note": "plain keyword",
+      "wire": "[\"~#'\",\"~:a\"]",
+      "oracle": "transit.writer(\"json\").write(<keyword-simple>)",
+      "expect_wire": "[\"~#'\",\"~:a\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "symbol",
+      "note": "~$ tag",
+      "wire": "[\"~#'\",\"~$sym\"]",
+      "oracle": "transit.writer(\"json\").write(<symbol>)",
+      "expect_wire": "[\"~#'\",\"~$sym\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "uuid",
+      "note": "~u tag",
+      "wire": "[\"~#'\",\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\"]",
+      "oracle": "transit.writer(\"json\").write(<uuid>)",
+      "expect_wire": "[\"~#'\",\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "instant",
+      "note": "~m epoch millis",
+      "wire": "[\"~#'\",\"~m1700000000000\"]",
+      "oracle": "transit.writer(\"json\").write(<instant>)",
+      "expect_wire": "[\"~#'\",\"~m1700000000000\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "instant-epoch",
+      "note": "~m0",
+      "wire": "[\"~#'\",\"~m0\"]",
+      "oracle": "transit.writer(\"json\").write(<instant-epoch>)",
+      "expect_wire": "[\"~#'\",\"~m0\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "bigint",
+      "note": "~n arbitrary precision integer",
+      "wire": "[\"~#'\",\"~n12345678901234567890\"]",
+      "oracle": "transit.writer(\"json\").write(<bigint>)",
+      "expect_wire": "[\"~#'\",\"~n12345678901234567890\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "bigdec",
+      "note": "~f arbitrary precision decimal",
+      "wire": "[\"~#'\",\"~f3.14159265358979323846\"]",
+      "oracle": "transit.writer(\"json\").write(<bigdec>)",
+      "expect_wire": "[\"~#'\",\"~f3.14159265358979323846\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "uri",
+      "note": "Penpot registers the multi-char tag ~#uri",
+      "wire": "[\"~#'\",\"~rhttps://example.com/a\"]",
+      "oracle": "transit.writer(\"json\").write(<uri>)",
+      "expect_wire": "[\"~#'\",\"~rhttps://example.com/a\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "array",
+      "note": "a JS array is a transit array: bare JSON",
+      "wire": "[1,2,3]",
+      "oracle": "transit.writer(\"json\").write(<array>)",
+      "expect_wire": "[1,2,3]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "array-empty",
+      "note": "empty array",
+      "wire": "[]",
+      "oracle": "transit.writer(\"json\").write(<array-empty>)",
+      "expect_wire": "[]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "array-mixed",
+      "note": "heterogeneous",
+      "wire": "[1,\"two\",\"~:three\",true,null]",
+      "oracle": "transit.writer(\"json\").write(<array-mixed>)",
+      "expect_wire": "[1,\"two\",\"~:three\",true,null]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "list",
+      "note": "transit list ~#list",
+      "wire": "[\"~#list\",[1,2,3]]",
+      "oracle": "transit.writer(\"json\").write(<list>)",
+      "expect_wire": "[\"~#list\",[1,2,3]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "list-empty",
+      "note": "empty vector",
+      "wire": "[\"~#list\",[]]",
+      "oracle": "transit.writer(\"json\").write(<list-empty>)",
+      "expect_wire": "[\"~#list\",[]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "set",
+      "note": "transit set ~#set",
+      "wire": "[\"~#set\",[1,2]]",
+      "oracle": "transit.writer(\"json\").write(<set>)",
+      "expect_wire": "[\"~#set\",[1,2]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "set-empty",
+      "note": "empty set",
+      "wire": "[\"~#set\",[]]",
+      "oracle": "transit.writer(\"json\").write(<set-empty>)",
+      "expect_wire": "[\"~#set\",[]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "ordered-set",
+      "note": "Penpot's ~#ordered-set (lambdaisland LinkedSet)",
+      "wire": "[\"~#ordered-set\",[1,2,3]]",
+      "oracle": "transit.writer(\"json\").write(<ordered-set>)",
+      "expect_wire": "[\"~#ordered-set\",[1,2,3]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "ordered-map",
+      "note": "~#ordered-map rep is a FLAT array of pairs",
+      "wire": "[\"~#ordered-map\",[\"~:a\",1,\"~:b\",2]]",
+      "oracle": "transit.writer(\"json\").write(<ordered-map>)",
+      "expect_wire": "[\"~#ordered-map\",[\"~:a\",1,\"~:b\",2]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cmap",
+      "note": "~#cmap rep is a flat array too",
+      "wire": "[\"~#cmap\",[[\"~#list\",[1,2]],\"x\"]]",
+      "oracle": "transit.writer(\"json\").write(<cmap>)",
+      "expect_wire": "[\"~#cmap\",[[\"~#list\",[1,2]],\"x\"]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "map-empty",
+      "note": "the marker alone",
+      "wire": "[\"^ \"]",
+      "oracle": "transit.writer(\"json\").write(<map-empty>)",
+      "expect_wire": "[\"^ \"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "map-keyword",
+      "note": "keyword keys",
+      "wire": "[\"^ \",\"~:a\",1,\"~:b\",\"x\"]",
+      "oracle": "transit.writer(\"json\").write(<map-keyword>)",
+      "expect_wire": "[\"^ \",\"~:a\",1,\"~:b\",\"x\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "map-string",
+      "note": "plain string keys",
+      "wire": "[\"^ \",\"k1\",\"v1\"]",
+      "oracle": "transit.writer(\"json\").write(<map-string>)",
+      "expect_wire": "[\"^ \",\"k1\",\"v1\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "map-nested",
+      "note": "nested map",
+      "wire": "[\"^ \",\"~:a\",1,\"~:b\",[\"^ \",\"~:c\",\"x\"]]",
+      "oracle": "transit.writer(\"json\").write(<map-nested>)",
+      "expect_wire": "[\"^ \",\"~:a\",1,\"~:b\",[\"^ \",\"~:c\",\"x\"]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "map-of-list",
+      "note": "a vector inside a map",
+      "wire": "[\"^ \",\"~:items\",[\"~#list\",[1,2]]]",
+      "oracle": "transit.writer(\"json\").write(<map-of-list>)",
+      "expect_wire": "[\"^ \",\"~:items\",[\"~#list\",[1,2]]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "map-many-keys",
+      "note": "ten keys, order preserved",
+      "wire": "[\"~#cmap\",[[\"~:key0\",0],[\"~:key1\",1],[\"~:key2\",2],[\"~:key3\",3],[\"~:key4\",4],[\"~:key5\",5],[\"~:key6\",6],[\"~:key7\",7],[\"~:key8\",8],[\"~:key9\",9]]]",
+      "oracle": "transit.writer(\"json\").write(<map-many-keys>)",
+      "expect_wire": "[\"~#cmap\",[[\"~:key0\",0],[\"~:key1\",1],[\"~:key2\",2],[\"~:key3\",3],[\"~:key4\",4],[\"~:key5\",5],[\"~:key6\",6],[\"~:key7\",7],[\"~:key8\",8],[\"~:key9\",9]]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-keyword-key",
+      "note": "a repeated long keyword key becomes ^N",
+      "wire": "[\"^ \",\"~:aaaaaaaa\",[\"^ \",\"~:z\",3],\"~:bbbbbbbb\",[\"^ \",\"~:y\",2]]",
+      "oracle": "transit.writer(\"json\").write(<cache-keyword-key>)",
+      "expect_wire": "[\"^ \",\"~:aaaaaaaa\",[\"^ \",\"~:z\",3],\"~:bbbbbbbb\",[\"^ \",\"~:y\",2]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-keyword-value",
+      "note": "keyword values are cacheable (~: prefix)",
+      "wire": "[\"^ \",\"~:k1\",\"~:vvvvvv\",\"~:k2\",\"^1\"]",
+      "oracle": "transit.writer(\"json\").write(<cache-keyword-value>)",
+      "expect_wire": "[\"^ \",\"~:k1\",\"~:vvvvvv\",\"~:k2\",\"^1\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-string-key",
+      "note": "plain strings are cached only in key position",
+      "wire": "[\"^ \",\"kkkkkkkk\",\"zzzzzz\",\"jjjjjjjj\",\"wwwwww\"]",
+      "oracle": "transit.writer(\"json\").write(<cache-string-key>)",
+      "expect_wire": "[\"^ \",\"kkkkkkkk\",\"zzzzzz\",\"jjjjjjjj\",\"wwwwww\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-uuid-value-not-cached",
+      "note": "UUIDs never get a cache slot (~u is not syntax)",
+      "wire": "[\"^ \",\"~:a\",\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\",\"~:b\",\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\"]",
+      "oracle": "transit.writer(\"json\").write(<cache-uuid-value-not-cached>)",
+      "expect_wire": "[\"^ \",\"~:a\",\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\",\"~:b\",\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-instant-value-not-cached",
+      "note": "~m is not cacheable either",
+      "wire": "[\"^ \",\"~:a\",\"~m1700000000000\",\"~:b\",\"~m1700000000000\"]",
+      "oracle": "transit.writer(\"json\").write(<cache-instant-value-not-cached>)",
+      "expect_wire": "[\"^ \",\"~:a\",\"~m1700000000000\",\"~:b\",\"~m1700000000000\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-in-vector",
+      "note": "the vector rep caches its keyword items",
+      "wire": "[\"^ \",\"~:arr\",[\"~#list\",[\"~:shared\",\"^2\"]],\"~:after\",\"^2\"]",
+      "oracle": "transit.writer(\"json\").write(<cache-in-vector>)",
+      "expect_wire": "[\"^ \",\"~:arr\",[\"~#list\",[\"~:shared\",\"^2\"]],\"~:after\",\"^2\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-tag-token",
+      "note": "a repeated ~#list tag becomes a cache code",
+      "wire": "[\"~#list\",[[\"^0\",[1,2]],3]]",
+      "oracle": "transit.writer(\"json\").write(<cache-tag-token>)",
+      "expect_wire": "[\"~#list\",[[\"^0\",[1,2]],3]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-many-entries",
+      "note": "45 keys forces two-character cache codes",
+      "wire": "[\"~#cmap\",[[\"~:name000\",\"^1\"],[\"~:name001\",\"^2\"],[\"~:name002\",\"^3\"],[\"~:name003\",\"^4\"],[\"~:name004\",\"^5\"],[\"~:name005\",\"^6\"],[\"~:name006\",\"^7\"],[\"~:name007\",\"^8\"],[\"~:name008\",\"^9\"],[\"~:name009\",\"^:\"],[\"~:name010\",\"^;\"],[\"~:name011\",\"^<\"],[\"~:name012\",\"^=\"],[\"~:name013\",\"^>\"],[\"~:name014\",\"^?\"],[\"~:name015\",\"^@\"],[\"~:name016\",\"^A\"],[\"~:name017\",\"^B\"],[\"~:name018\",\"^C\"],[\"~:name019\",\"^D\"],[\"~:name020\",\"^E\"],[\"~:name021\",\"^F\"],[\"~:name022\",\"^G\"],[\"~:name023\",\"^H\"],[\"~:name024\",\"^I\"],[\"~:name025\",\"^J\"],[\"~:name026\",\"^K\"],[\"~:name027\",\"^L\"],[\"~:name028\",\"^M\"],[\"~:name029\",\"^N\"],[\"~:name030\",\"^O\"],[\"~:name031\",\"^P\"],[\"~:name032\",\"^Q\"],[\"~:name033\",\"^R\"],[\"~:name034\",\"^S\"],[\"~:name035\",\"^T\"],[\"~:name036\",\"^U\"],[\"~:name037\",\"^V\"],[\"~:name038\",\"^W\"],[\"~:name039\",\"^X\"],[\"~:name040\",\"^Y\"],[\"~:name041\",\"^Z\"],[\"~:name042\",\"^[\"],[\"~:name043\",\"^10\"],[\"~:name044\",\"^11\"],null]]",
+      "oracle": "transit.writer(\"json\").write(<cache-many-entries>)",
+      "expect_wire": "[\"~#cmap\",[[\"~:name000\",\"^1\"],[\"~:name001\",\"^2\"],[\"~:name002\",\"^3\"],[\"~:name003\",\"^4\"],[\"~:name004\",\"^5\"],[\"~:name005\",\"^6\"],[\"~:name006\",\"^7\"],[\"~:name007\",\"^8\"],[\"~:name008\",\"^9\"],[\"~:name009\",\"^:\"],[\"~:name010\",\"^;\"],[\"~:name011\",\"^<\"],[\"~:name012\",\"^=\"],[\"~:name013\",\"^>\"],[\"~:name014\",\"^?\"],[\"~:name015\",\"^@\"],[\"~:name016\",\"^A\"],[\"~:name017\",\"^B\"],[\"~:name018\",\"^C\"],[\"~:name019\",\"^D\"],[\"~:name020\",\"^E\"],[\"~:name021\",\"^F\"],[\"~:name022\",\"^G\"],[\"~:name023\",\"^H\"],[\"~:name024\",\"^I\"],[\"~:name025\",\"^J\"],[\"~:name026\",\"^K\"],[\"~:name027\",\"^L\"],[\"~:name028\",\"^M\"],[\"~:name029\",\"^N\"],[\"~:name030\",\"^O\"],[\"~:name031\",\"^P\"],[\"~:name032\",\"^Q\"],[\"~:name033\",\"^R\"],[\"~:name034\",\"^S\"],[\"~:name035\",\"^T\"],[\"~:name036\",\"^U\"],[\"~:name037\",\"^V\"],[\"~:name038\",\"^W\"],[\"~:name039\",\"^X\"],[\"~:name040\",\"^Y\"],[\"~:name041\",\"^Z\"],[\"~:name042\",\"^[\"],[\"~:name043\",\"^10\"],[\"~:name044\",\"^11\"],null]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-short-key-not-cached",
+      "note": "keys of 3 or fewer chars are never cached",
+      "wire": "[\"^ \",\"~:ab\",3,\"~:cd\",2]",
+      "oracle": "transit.writer(\"json\").write(<cache-short-key-not-cached>)",
+      "expect_wire": "[\"^ \",\"~:ab\",3,\"~:cd\",2]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-duplicate-symbol",
+      "note": "symbols cache like keywords",
+      "wire": "[\"^ \",\"~:a\",\"~$shared_symbol\",\"~:b\",\"^0\"]",
+      "oracle": "transit.writer(\"json\").write(<cache-duplicate-symbol>)",
+      "expect_wire": "[\"^ \",\"~:a\",\"~$shared_symbol\",\"~:b\",\"^0\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "tagged-unknown-long",
+      "note": "an unknown multi-char tag stays a tagged value",
+      "wire": "[\"~#custom/thing\",[\"^ \",\"~:a\",1]]",
+      "oracle": "transit.writer(\"json\").write(<tagged-unknown-long>)",
+      "expect_wire": "[\"~#custom/thing\",[\"^ \",\"~:a\",1]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "tagged-unknown-short",
+      "note": "a 1-char tag with a string rep uses the ~qabc form",
+      "wire": "[\"~#'\",\"~qabc\"]",
+      "oracle": "transit.writer(\"json\").write(<tagged-unknown-short>)",
+      "expect_wire": "[\"~#'\",\"~qabc\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "tagged-shape",
+      "note": "Penpot record tag (identity handler in lib/transit.ts)",
+      "wire": "[\"~#shape\",[\"^ \",\"~:id\",\"s1\",\"~:type\",\"~:frame\",\"~:name\",\"Board\"]]",
+      "oracle": "transit.writer(\"json\").write(<tagged-shape>)",
+      "expect_wire": "[\"~#shape\",[\"^ \",\"~:id\",\"s1\",\"~:type\",\"~:frame\",\"~:name\",\"Board\"]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "tagged-point",
+      "note": "geom point record",
+      "wire": "[\"~#point\",[1.5,2.5]]",
+      "oracle": "transit.writer(\"json\").write(<tagged-point>)",
+      "expect_wire": "[\"~#point\",[1.5,2.5]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "tagged-matrix",
+      "note": "geom matrix record",
+      "wire": "[\"~#matrix\",[\"^ \",\"~:a\",1,\"~:b\",0]]",
+      "oracle": "transit.writer(\"json\").write(<tagged-matrix>)",
+      "expect_wire": "[\"~#matrix\",[\"^ \",\"~:a\",1,\"~:b\",0]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "tagged-rect",
+      "note": "geom rect record",
+      "wire": "[\"~#rect\",[\"^ \",\"~:x\",0,\"~:y\",0,\"~:width\",100,\"~:height\",50]]",
+      "oracle": "transit.writer(\"json\").write(<tagged-rect>)",
+      "expect_wire": "[\"~#rect\",[\"^ \",\"~:x\",0,\"~:y\",0,\"~:width\",100,\"~:height\",50]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "tagged-fills",
+      "note": "~#penpot/fills wraps a vector",
+      "wire": "[\"~#penpot/fills\",[\"~#list\",[[\"^ \",\"~:fillColor\",\"#ff0000\"]]]]",
+      "oracle": "transit.writer(\"json\").write(<tagged-fills>)",
+      "expect_wire": "[\"~#penpot/fills\",[\"~#list\",[[\"^ \",\"~:fillColor\",\"#ff0000\"]]]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "pointer",
+      "note": "~#penpot/pointer rep is [id meta]",
+      "wire": "[\"~#penpot/pointer\",[\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\",[\"^ \",\"~:type\",\"~:shape\"]]]",
+      "oracle": "transit.writer(\"json\").write(<pointer>)",
+      "expect_wire": "[\"~#penpot/pointer\",[\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\",[\"^ \",\"~:type\",\"~:shape\"]]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "pointer-no-meta",
+      "note": "nil meta decodes to no meta",
+      "wire": "[\"~#penpot/pointer\",[\"~u00000000-0000-0000-0000-000000000000\",null]]",
+      "oracle": "transit.writer(\"json\").write(<pointer-no-meta>)",
+      "expect_wire": "[\"~#penpot/pointer\",[\"~u00000000-0000-0000-0000-000000000000\",null]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "duration",
+      "note": "JVM Duration, rep is millis",
+      "wire": "[\"~#duration\",1500]",
+      "oracle": "transit.writer(\"json\").write(<duration>)",
+      "expect_wire": "[\"~#duration\",1500]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "with-meta-nested",
+      "note": "~#with-meta rep is [value meta]",
+      "wire": "[\"~#with-meta\",[[\"~#list\",[1,2]],[\"^ \",\"~:a\",1]]]",
+      "oracle": "transit.writer(\"json\").write(<with-meta-nested>)",
+      "expect_wire": "[\"~#with-meta\",[[\"~#list\",[1,2]],[\"^ \",\"~:a\",1]]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "path-data",
+      "note": "the four segment kinds",
+      "wire": "[\"~#penpot/path-data\",\"~bAQAAAAAAAAAAAAAAAAAAAAAAAAAAACBBAACgQQIAAAAAAAAAAAAAAAAAAAAAAAAAAADwQQAAIEIDAAAAAACAPwAAAEAAAEBAAACAQAAAoEAAAMBABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"]",
+      "oracle": "transit.writer(\"json\").write(<path-data>)",
+      "expect": {
+        "svg": "M10,20L30,40C1,2,3,4,5,6Z"
+      },
+      "expect_wire": "[\"~#penpot/path-data\",\"~bAQAAAAAAAAAAAAAAAAAAAAAAAAAAACBBAACgQQIAAAAAAAAAAAAAAAAAAAAAAAAAAADwQQAAIEIDAAAAAACAPwAAAEAAAEBAAACAQAAAoEAAAMBABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "path-data-empty",
+      "note": "a zero-length buffer",
+      "wire": "[\"~#penpot/path-data\",\"~b\"]",
+      "oracle": "transit.writer(\"json\").write(<path-data-empty>)",
+      "expect_wire": "[\"~#penpot/path-data\",\"~b\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "path-data-clamped",
+      "note": "coords beyond the safe-int bounds are clamped on read",
+      "wire": "[\"~#penpot/path-data\",\"~bAQAAAAAAAAAAAAAAAAAAAAAAAABe0DJPXtAyzw==\"]",
+      "oracle": "transit.writer(\"json\").write(<path-data-clamped>)",
+      "expect_wire": "[\"~#penpot/path-data\",\"~bAQAAAAAAAAAAAAAAAAAAAAAAAABe0DJPXtAyzw==\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "binary-empty",
+      "note": "empty binary",
+      "wire": "[\"~#'\",\"~b\"]",
+      "oracle": "transit.writer(\"json\").write(<binary-empty>)",
+      "expect_wire": "[\"~#'\",\"~b\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "binary-full-range",
+      "note": "base64 padding and high bytes",
+      "wire": "[\"~#'\",\"~bAAEC+vv8/f7/\"]",
+      "oracle": "transit.writer(\"json\").write(<binary-full-range>)",
+      "expect_wire": "[\"~#'\",\"~bAAEC+vv8/f7/\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "objects-map",
+      "note": "nested transit string under a uuid-ish key",
+      "wire": "[\"^ \",\"~:objects\",[\"~#penpot/objects-map/v2\",[\"^ \",\"~:s1\",\"[\\\"~#shape\\\",[\\\"^ \\\",\\\"~:id\\\",\\\"s1\\\",\\\"~:type\\\",\\\"~:frame\\\",\\\"~:name\\\",\\\"Board\\\"]]\"]],\"~:aa\",\"1\",\"~:bb\",\"2\",\"~:again\",[\"^ \",\"^2\",\"plain\"]]",
+      "oracle": "transit.writer(\"json\").write(<objects-map>)",
+      "expect_wire": "[\"^ \",\"~:objects\",[\"~#penpot/objects-map/v2\",[\"^ \",\"~:s1\",\"[\\\"~#shape\\\",[\\\"^ \\\",\\\"~:id\\\",\\\"s1\\\",\\\"~:type\\\",\\\"~:frame\\\",\\\"~:name\\\",\\\"Board\\\"]]\"]],\"~:aa\",\"1\",\"~:bb\",\"2\",\"~:again\",[\"^ \",\"^2\",\"plain\"]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "objects-map-two-shapes",
+      "note": "two nested docs",
+      "wire": "[\"^ \",\"~:objects\",[\"~#penpot/objects-map/v2\",[\"^ \",\"~:s1\",\"[\\\"~#shape\\\",[\\\"^ \\\",\\\"~:id\\\",\\\"s1\\\",\\\"~:type\\\",\\\"~:frame\\\",\\\"~:name\\\",\\\"Board\\\"]]\",\"~:s2\",\"[\\\"~#shape\\\",[\\\"^ \\\",\\\"~:id\\\",\\\"s2\\\",\\\"~:type\\\",\\\"~:rect\\\"]]\"]]]",
+      "oracle": "transit.writer(\"json\").write(<objects-map-two-shapes>)",
+      "expect_wire": "[\"^ \",\"~:objects\",[\"~#penpot/objects-map/v2\",[\"^ \",\"~:s1\",\"[\\\"~#shape\\\",[\\\"^ \\\",\\\"~:id\\\",\\\"s1\\\",\\\"~:type\\\",\\\"~:frame\\\",\\\"~:name\\\",\\\"Board\\\"]]\",\"~:s2\",\"[\\\"~#shape\\\",[\\\"^ \\\",\\\"~:id\\\",\\\"s2\\\",\\\"~:type\\\",\\\"~:rect\\\"]]\"]]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "verbose-map-object",
+      "note": "a JSON object is the verbose map form; the writer normalises to ^ ",
+      "wire": "{\"a\":1,\"b\":true}",
+      "oracle": "hand-written",
+      "expect_wire": "[\"^ \",\"a\",1,\"b\",true]",
+      "canonical": false,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "verbose-tagged-object",
+      "note": "a 1-key object whose key is a tag is a tagged value",
+      "wire": "{\"~#list\":[1,2]}",
+      "oracle": "hand-written",
+      "expect_wire": "[\"~#list\",[1,2]]",
+      "canonical": false,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-code-never-written",
+      "note": "reading an unwritten slot yields nil (transit-js yields undefined)",
+      "wire": "[\"^ \",\"~:key000\",1,\"^49\",2]",
+      "oracle": "hand-written",
+      "expect_wire": "[\"^ \",\"~:key000\",1,\"~_\",2]",
+      "canonical": false,
+      "expectSource": "hand-pinned (intentional normalisation)"
+    },
+    {
+      "name": "lone-tilde",
+      "note": "a bare ~ decodes to a tag with an empty name",
+      "wire": "\"~\"",
+      "oracle": "hand-written",
+      "expect_wire": "[\"~#\",\"\"]",
+      "canonical": false,
+      "expectSource": "hand-pinned (intentional normalisation)"
+    },
+    {
+      "name": "escaped-double-tilde",
+      "note": "~~~x unescapes to ~~x",
+      "wire": "\"~~~x\"",
+      "oracle": "hand-written",
+      "expect_wire": "[\"~#'\",\"~~~x\"]",
+      "canonical": false,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "uuid-verbose-tag",
+      "note": "the JVM may spell UUIDs as ~#uuid (T1.6 / C2)",
+      "wire": "[\"~#uuid\",\"5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\"]",
+      "oracle": "hand-written",
+      "expect_wire": "[\"~#'\",\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\"]",
+      "canonical": false,
+      "expectSource": "hand-pinned (intentional normalisation)"
+    },
+    {
+      "name": "inst-verbose-tag",
+      "note": "and instants as ~#inst (T1.6 / C2)",
+      "wire": "[\"~#inst\",\"2023-11-14T22:13:20.000Z\"]",
+      "oracle": "hand-written",
+      "expect_wire": "[\"~#'\",\"~t2023-11-14T22:13:20.000Z\"]",
+      "canonical": false,
+      "expectSource": "hand-pinned (intentional normalisation)"
+    },
+    {
+      "name": "transit-r-uri",
+      "note": "transit's own single-char URI tag must decode like ~#uri",
+      "wire": "\"~rhttps://example.com/a\"",
+      "oracle": "hand-written",
+      "expect_wire": "[\"~#'\",\"~rhttps://example.com/a\"]",
+      "canonical": false,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "nested-quoted-vector",
+      "note": "a quoted vector at top level",
+      "wire": "[\"~#'\",[\"~#list\",[1,2]]]",
+      "oracle": "hand-written",
+      "expect_wire": "[\"~#list\",[1,2]]",
+      "canonical": false,
+      "expectSource": "hand-pinned (intentional normalisation)"
+    },
+    {
+      "name": "map-with-quoted-key",
+      "note": "quoted keyword as a map key",
+      "wire": "[\"^ \",[\"~#'\",\"~:a\"],1]",
+      "oracle": "hand-written",
+      "expect_wire": "[\"^ \",\"~:a\",1]",
+      "canonical": false,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "rpc-get-teams",
+      "note": "a vector of maps, the get-teams answer shape",
+      "wire": "[\"~#list\",[[\"^ \",\"~:id\",\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\",\"~:name\",\"Acme Inc\",\"~:created-at\",\"~m1700000000000\",\"~:is-membership-admin\",false],[\"^ \",\"^1\",\"~u00000000-0000-0000-0000-000000000000\",\"^2\",\"Acme Inc\",\"^3\",\"~m1700000000000\",\"^4\",true]]]",
+      "oracle": "transit.writer(\"json\").write(<rpc-get-teams>)",
+      "expect_wire": "[\"~#list\",[[\"^ \",\"~:id\",\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\",\"~:name\",\"Acme Inc\",\"~:created-at\",\"~m1700000000000\",\"~:is-membership-admin\",false],[\"^ \",\"^1\",\"~u00000000-0000-0000-0000-000000000000\",\"^2\",\"Acme Inc\",\"^3\",\"~m1700000000000\",\"^4\",true]]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "rpc-params-keyword-nested",
+      "note": "command params: keyword keys all the way down",
+      "wire": "[\"^ \",\"~:id\",\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\",\"~:session-id\",\"~u11111111-1111-1111-1111-111111111111\",\"~:revn\",3,\"~:vern\",12,\"~:changes\",[\"~#list\",[[\"^ \",\"~:type\",\"~:mov-objects\",\"~:page-id\",\"~u22222222-2222-2222-2222-222222222222\",\"~:parent-id\",\"~u33333333-3333-3333-3333-333333333333\",\"~:shapes\",[\"^5\",[\"~u44444444-4444-4444-4444-444444444444\"]]]]]]",
+      "oracle": "transit.writer(\"json\").write(<rpc-params-keyword-nested>)",
+      "expect_wire": "[\"^ \",\"~:id\",\"~u5b2a2b4c-9b4d-4a1e-8f6a-2b3c4d5e6f70\",\"~:session-id\",\"~u11111111-1111-1111-1111-111111111111\",\"~:revn\",3,\"~:vern\",12,\"~:changes\",[\"~#list\",[[\"^ \",\"~:type\",\"~:mov-objects\",\"~:page-id\",\"~u22222222-2222-2222-2222-222222222222\",\"~:parent-id\",\"~u33333333-3333-3333-3333-333333333333\",\"~:shapes\",[\"^5\",[\"~u44444444-4444-4444-4444-444444444444\"]]]]]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "rpc-error-body",
+      "note": "an ex-data shaped error payload",
+      "wire": "[\"^ \",\"~:type\",\"~:verification/error\",\"~:code\",\"~:wrong-credentials\",\"~:hint\",\"Email or password is wrong\"]",
+      "oracle": "transit.writer(\"json\").write(<rpc-error-body>)",
+      "expect_wire": "[\"^ \",\"~:type\",\"~:verification/error\",\"~:code\",\"~:wrong-credentials\",\"~:hint\",\"Email or password is wrong\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "rpc-204-empty",
+      "note": "the empty answer is nil",
+      "wire": "[\"~#'\",null]",
+      "oracle": "transit.writer(\"json\").write(<rpc-204-empty>)",
+      "expect_wire": "[\"~#'\",null]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    }
+  ]
+}

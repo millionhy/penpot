@@ -11,11 +11,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| HEAD（快照时） | `22727203b0` `:books: Record the F9.3 workspace drag move slice` |
-| 工作区 | 仅 `backend-rust/PLAN.md`、`backend-rust/HANDOFF.md` 未跟踪；`backend-rust/README.md` 已改 |
-| 阶段 F | F0–F4 ✅、F6 ✅、F7.1–F7.3 🔧、F9.1–F9.3 🔧、F5.7 进行中、F8 ⬜ |
-| 阶段 B | **计划已批准，实现未开始**（`backend-rust/` 无代码、无 `Cargo.toml`） |
-| `rewrite.md` | 1435 行；§0/§3.2/§4/§5/§7.7 已改口径，本轮记录见 §7.26 |
+| HEAD（快照时） | `07eea09660` `:books: Close the G5 common mirror inventory` |
+| 工作区 | 代码/配置/语料未跟踪（`Cargo.*`、`Makefile`、`.gitignore`、`rust-toolchain.toml`、`crates/`、`fixtures/`）；`README/PLAN/HANDOFF` 为已跟踪文档且有本轮改动；`.g2-tmp/` 未跟踪 |
+| 阶段 F/G | F 已收口；G0–G5 已完成，见 `rewrite.md` §7.92–§7.96 |
+| 阶段 B | **M0 ✅（2026-11-24）**；M1 `transit` 🔧：reader/writer/value/cache、金样本、畸形输入与 proptest 已落地，T1.6 真实语料待 devenv |
+| `rewrite.md` | §7.96 为 G5 收口记录；backend-rust 里程碑状态见本文与 `PLAN.md` |
 
 ## 2. 已拍板决策（不要重议，除非用户改口）
 

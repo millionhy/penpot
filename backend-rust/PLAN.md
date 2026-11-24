@@ -97,7 +97,7 @@
 backend-rust/
 ├── Cargo.toml              # [workspace] members = ["crates/*"] + [workspace.dependencies] 锁版
 ├── Cargo.lock              # 提交，保证离线可构建
-├── rust-toolchain.toml     # channel = "1.98"
+├── rust-toolchain.toml     # channel = "stable"（不钉小版本）
 ├── .gitignore              # target/
 ├── fixtures/               # transit 金样本（transit-js 生成）+ JWE 向量（待采集）
 └── crates/
@@ -123,10 +123,15 @@ backend-rust/
 - T0.1 workspace、`rust-toolchain.toml`、`[workspace.dependencies]` 按缓存版本锁定、`.gitignore`
 - T0.2 `backend-rust/Makefile`：`build` / `test` / `fmt` / `lint`（`clippy -- -D warnings`）/ `check-offline`；**不接 `scripts/ci`**
 - T0.3 更新 `backend-rust/README.md`：crate 命名表、「只写代码不承接流量」边界、`http_session` → `http_session_v2` 订正
+- 落地（2026-11-24）：工作区、锁文件、stable 工具链、`.gitignore` 与 `Makefile` 已就位；`serde_json` 打开
+  `float_roundtrip`；若干 malformed 用例按 JSON/transit 规范改正。
 
 DoD：`make build && make test && make lint` 绿；`cargo build --offline` 绿；README 与本文一致。
 
-### M1 — `transit`（5–8 人日，关键路径）
+### M1 — `transit`（5–8 人日，关键路径，🔧 进行中）
+
+现状（2026-11-24）：reader/writer/value/cache、transit-js 金样本、畸形输入与 proptest round-trip 已落地；
+T1.6 的真实应答语料待 devenv。
 
 - T1.1 标签/handler 表定稿（`transit.cljc` + `transit.ts` + 本地 transit-js 源码）
 - T1.2 Value 模型（**已定：自建 enum**，不用 `serde_json::Value` 打标）：`Keyword` / `String` /
@@ -262,7 +267,8 @@ M0 ▓ → M1 ▓▓▓（关键路径）→ M2 ▓▓ ∥ M3 ▓▓▓ → M4 �
 
 ## 9. 下一步
 
-执行 M0 + M1 的 T1.1–T1.5：可编译的 `transit` reader + transit-js 预言机金样本 + `cargo test -p transit` 结果，然后回报，再决定 M2/M3 是否并行。
+M0 已完成（2026-11-24）。M1 的 T1.1–T1.5 已落地并可离线跑绿。下一步是 T1.6：devenv 起来后采集真实应答，
+定案 `~u`/`~#uuid`、`~m`/`~#inst` 等写侧形态；之后决定 M2/M3 是否并行。
 
 ## 10. 换机器 / devenv 起来之后的采集清单
 

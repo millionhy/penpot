@@ -1,0 +1,5 @@
+/target/
+
+# Online captures (real tokens, real responses, DDL dumps) never enter git.
+# See PLAN.md §10 "采集安全规则".
+/fixtures/online/
