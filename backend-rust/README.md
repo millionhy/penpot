@@ -4,13 +4,29 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 
 ## 当前状态
 
-**M0 工作区基线完成（2026-11-24）；M1 `transit` 进行中。**
+**M0 工作区基线、M1 `transit`（离线部分）、M2 `errors` + `config`、M3 `rpc` 骨架完成（2026-11-24）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
 - M1 已有：`crates/transit` 的 reader/writer/cache/value、transit-js 金样本语料、畸形输入与
-  proptest round-trip；`serde_json` 打开 `float_roundtrip`，保证写出的浮点数能逐字节读回。
-- 待办：T1.6 真实后端应答语料（需要 devenv），之后才定案 `~u`/`~#uuid` 等线上形态。
+  proptest round-trip；金样本 103 条，缓存长度按 UTF-16 code unit 计数；URI 写
+  `["~#uri", …]` 以对齐 Penpot 的 handler。
+  `serde_json` 打开 `float_roundtrip`，保证写出的浮点数能逐字节读回。
+- T1.6 已落成 `crates/transit/TODO-ONLINE.md`：10 项待真实应答确认的形态与 4 项离线定案。
+  真实语料（C2）需要 devenv；采到后只回填金样本，不改当前代码路径。
+- M2 已有：`crates/errors` 逐分支对齐 `backend/src/app/http/errors.clj`（401/403/405/400/409/413/
+  429/404/500/503/504），`Cause` 同时覆盖受控错误、PostgreSQL、IO 与包装异常；`HttpError`
+  实现 axum `IntoResponse`，map body 用 verbose transit 并标 `application/transit+json`。
+  `crates/config` 解码 18 个 `PENPOT_*` 键、应用 `enable-`/`disable-` 与两条派生 flag；
+  未识别键进 `Config::unknown`，再由 `pending` / `unrecognized` 区分「schema 已定义、尚未接」与
+  真未知；schema 中尚未接的键进 `PENDING_KEYS`，两边增删都会让测试失败。
+- M3 已有：`crates/rpc` 的三组路由（`/api/main/methods`、`/api/rpc/command`、`/api/management/methods`）
+  与 4 条 308 重定向；`Registry` + `AuthPolicy`（默认要求登录）、薄参数 schema、query/transit body
+  合并、compact/verbose transit 应答、`nil`→204、SSE 固定帧、`x-shared-key`/`x-client` 检查、
+  CORS（allowlist + 预检 204）、`inet/parse-request` 的 IP 优先级。本地 `cargo run -p rpc`
+  起 `127.0.0.1:6061` 的 DB-free 服务。29 条 `oneshot` 测试加 3 条 `rpc.clj` 源码契约测试。
+  真实会话解码、sqlx 事务、multipart 与
+  长连接 SSE 分别留给 M4/M5/M7；multipart 还缺本地缓存的 `multer` 依赖。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 
@@ -36,22 +52,22 @@ backend-rust/
 ├── Makefile              本地 build/test/fmt/lint/check-offline/capture（不接 CI）
 ├── fixtures/             transit 金样本（transit-js 预言机生成）；online/ 不入库
 └── crates/
-    ├── transit/          Transit+JSON reader/writer + Penpot 标签 + 缓存语义
-    ├── errors/           ex-data(:type/:code/:hint) → HTTP status/body
-    ├── config/           PENPOT_* env + flags（enable-/disable-）
+    ├── transit/          ✅ Transit+JSON reader/writer + Penpot 标签 + 缓存语义（含 verbose）
+    ├── errors/           ✅ ex-data(:type/:code/:hint) → HTTP status/body（axum IntoResponse）
+    ├── config/           ✅ PENPOT_* env + flags（enable-/disable-）
     ├── session/          JWE a256kw+a256gcm + HKDF-BLAKE2b-512 + claims/verify
     ├── db/               sqlx 池、kebab→snake 命名、事务包装（运行时查询）
     ├── storage/          storage_object 闭包 metadata、bucket、去重、GC、fs/s3
     ├── worker/           cron、task 状态机、dispatcher 认领、runner 循环
     ├── ws/               msgbus topic/订阅计数、消息多态、axum WebSocket
-    └── rpc/              axum 服务：路由 + 中间件管道 + 命令 Registry
+    └── rpc/              ✅ axum 服务：路由 + 中间件管道 + 命令 Registry（DB-free 骨架）
 ```
 
 依赖方向：`rpc → {transit, errors, config, session, db, storage, worker, ws}`，下层互不引用。
 
 顺序（`PLAN.md` §5）：`M0 workspace → M1 transit（关键路径）→ M2 errors+config ∥ M3 rpc(axum) → M4 session
-→ M5 storage → M6 worker → M7 ws`。`transit` 先做，因为 RPC 请求体、应答体、`task.props`、session payload
-全是 transit。
+→ M5 storage → M6 worker → M7 ws`。M0–M3 已完成；`transit` 先做，因为 RPC 请求体、应答体、
+`task.props`、session payload 全是 transit。
 
 ## 本地验证（不接 CI）
 

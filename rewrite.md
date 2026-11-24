@@ -3499,6 +3499,108 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`cargo fmt --all --check` 0；`cargo clippy --workspace --all-targets -- -D warnings` 0；`cargo test --workspace --locked --offline` 0（28 例）；`cargo build --workspace --locked --offline` 0。本机没有 `make` 命令，用 Makefile 对应的 cargo 命令验收。
 - 下一步：M1 收尾——T1.6 真实后端应答语料与 `~u`/`~#uuid`、`~m`/`~#inst` 写侧定案；未获提交授权前只保留工作区改动。
 
+### 7.98 本轮（2026-11-24，第九十七批：backend-rust M1 transit 收尾）
+
+- 口径：M1 只补离线可证的部分；不接部署、不改 `backend/`/`docker/`/`scripts/ci`，不采集线上语料。
+- 缓存长度：`is_cacheable` 从 UTF-8 字节数改为 **UTF-16 code unit** 计数，对齐 JavaScript
+  `String.length` 与 Java `String.length()`。`"éé"` 是 2 units（不缓存），`"😀😀"` 是 4 units
+  （缓存）；旧实现会把前者错误占槽，导致后续 `^N` 解码错位。新增 1 条单测与 3 条金样本
+  （`cache-utf16-key-length`、`cache-utf16-value-length`、`cache-utf16-astral-key`）。
+- URI 写侧：`Value::Uri` 从 transit 的 `~r` 改为 Penpot 的 `["~#uri", …]`。依据是
+  `transit.cljc` 的 `:id "uri"`，且 `frontend-nextjs/lib/transit.ts` 只注册 `uri` reader；
+  transit-js 会把 `~r` 读成未解析的 `TaggedValue`。读取仍接受 `~r`，归一到同一变体。
+- 单字符 tag 判定：同样从 Rust 字符数改为 UTF-16 code unit。astral tag 是 2 units，
+  必须走 `["~#😀", rep]`；旧实现会误写成 `~😀rep`。新增 `tagged-astral-tag` 金样本。
+- 语料：`gen-transit-corpus.mjs` 生成 103 条（92 条已 canonical、7 条手钉期望），新增
+  `uri-penpot-tag` 原始样本，并把 `uri`/`transit-r-uri` 的期望钉为 `~#uri`。
+- 兼容清单：新增 `crates/transit/TODO-ONLINE.md`，列 10 项待真实应答确认的形态
+  （`~u`/`~#uuid`、`~m`/`~#inst`、`~r`/`~#uri`、JVM `file`/`path`、嵌套 tagged probe、
+  `path-data` 非 binary rep、objects-map 嵌套文档、顶层 quote、非 ASCII 缓存、`cmap`、
+  `duration`）与 4 项离线定案（不建 `CacheRef` 变体、`Quoted` 仅写侧、`file`/`path` 保留
+  `Tagged`、vector/array 必须分家）。
+- 文档：`README.md`/`PLAN.md`/`HANDOFF.md` 同步 M1 离线完成与下一步 M2。
+- 验证：`cargo fmt --all --check` 0；`cargo clippy --workspace --all-targets --locked -- -D warnings` 0；
+  `cargo test --workspace --locked --offline` 0（5 个测试目标共 29 例）；`cargo build --workspace
+  --locked --offline` 0。语料生成 `node fixtures/gen-transit-corpus.mjs` 稳定输出 103 条。
+- 下一步：M2 `errors` + `config`；C2 真实应答到位后按 `TODO-ONLINE.md` 回填金样本。
+- 提交：未提交（等用户明确要求）。
+
+### 7.99 本轮（2026-11-24，第九十八批：backend-rust M2 errors + config）
+
+- 口径：M2 仍是「实现但不接入部署」；不接 nginx、不改 `backend/`/`common/`/`docker/`/`scripts/ci`，
+  不承接流量，未获授权不 commit。
+- `errors`：新增 `crates/errors`，`ErrorType`/`ErrorCode`/`ExError`/`Cause`/`HttpError` 逐条对齐
+  `backend/src/app/http/errors.clj`。受控错误覆盖 authentication(401)、authorization(403)、
+  restriction(405/400)、rate-limit(429)、concurrency-limit(429)、validation(400/409/413)、
+  assertion(500)、not-found(404)、nitrate 两条(503)、internal(500) 与 default；异常覆盖
+  PostgreSQL(504/500)、IOException(500)、无 `ex-data`(unexpected)、未知 `ex-data`(unhandled)、
+  `Completion/ExecutionException` 解包与 next.jdbc 的 rollback/handling 取 handling。
+  body 用 `transit::Value` 保留未知键，只删 `errors.clj` 明确删除的键；rate-limit body 固定
+  四键（缺值写 nil），concurrency-limit 只发 429 + headers。
+- verbose 应答：`app.http/router-handler` 用 `t/encode-str body {:type :json-verbose}`，所以
+  `IntoResponse` 走新增的 `transit::encode_verbose` 并标 `application/transit+json`。
+  verbose writer 覆盖 map/array/quoting/单字符 tag/整数键/nil 键/cmap/URI/Instant，已对
+  transit-js 实测；compact writer 行为不变。
+- `config`：新增 18 个 `PENPOT_*` 键（secret-key、auth-token-cookie-*、public-uri、host、tenant、
+  is-saas、objects-storage-*、redis-uri、telemetry-enabled、worker-*-parallelism、flags），
+  类型化解码含 `15m`/`168h`/`1h30m`/`500ms` 等 duration 形式；`enable-`/`disable-` 按顺序应用；
+  http 且非 localhost 的 `public-uri` 关闭 secure cookie，`telemetry-enabled` 加 telemetry flag。
+  未识别的 `PENPOT_*` 进 `Config::unknown`，再由 `pending` / `unrecognized` 区分「schema 已定义、
+  Rust 未接」与真未知（143 个未接键在 `PENDING_KEYS` 里可运行时查询）。
+- 表对齐：flag 三集合与 `default` 向量对 `common/src/app/common/flags.cljc`；`KNOWN_KEYS` 的名字
+  和 `ValueKind` 对 `backend/src/app/config.clj` 的 `schema:config`；其余 143 个 schema 键进显式
+  `PENDING_KEYS`（任何一边新增/改名都会失败）；PG hint 与 `strip-internal-fields` 对 `errors.clj`。
+- 依赖：workspace 启用 `axum 0.8.9`（`default-features = false`）。新成员触发解析后，
+  `Cargo.lock` 把 `js-sys`/`libc`/`rustix`/`wasm-bindgen` 收到 Rust 1.85 兼容的最新补丁版，
+  离线构建与 `--locked` 均通过。
+- 验证：`cargo fmt --all --check` 0；`cargo clippy --workspace --all-targets --locked --offline
+  -- -D warnings` 0；`cargo test --workspace --locked --offline` 0（95 例，含 doctest）；
+  `cargo build --workspace --locked --offline` 0；`cargo doc --workspace --no-deps --offline` 0。
+- 下一步：M3 `rpc`（axum 骨架）——三组路由、GET `get-` 前缀、`Registry`、中间件顺序与
+  `tower::ServiceExt::oneshot` 测试；C2 真实应答到位后回填 M1 金样本。
+- 提交：未提交（等用户明确要求）。
+
+### 7.100 本轮（2026-11-24，第九十九批：backend-rust M3 rpc 骨架）
+
+- 口径：M3 仍是「实现但不接入部署」；不接 nginx、不改 `backend/`/`common/`/`docker/`/`scripts/ci`，
+  不承接流量，未获授权不 commit。
+- 新增 `crates/rpc`：`context`（`Module`/`AuthType`/`Identity`/`CommandContext`）、`registry`
+  （`Command`/`AuthPolicy`/`Registry`/`authorize`）、`params`（query 解码与薄 schema）、
+  `response`（`CommandResult`/SSE/compact+verbose 编码）、`router`（axum 路由与分发）、
+  `main`（`127.0.0.1:6061` 的 DB-free 服务）。
+- 路由契约：`/api/main/methods/{name}`、`/api/rpc/command/{name}`、
+  `/api/management/methods/{name}`；`/api/_doc`、`/api/doc`、`/api/openapi`、`/api/openapi.join`
+  以 308 跳到 `public-uri` 对应文档地址。GET/HEAD 的 `get-` 前缀检查放在命令查找之前，
+  对齐 `rpc.clj` 的先后顺序；未知的非 `get-` 名字返回 405，未知的 `get-` 命令返回 404。
+- 鉴权：`AuthPolicy::default()` 等同 `(::auth mdata true)`，需要会话；三条错误分支
+  `authentication-required`(401)、`token-auth-required`(403)、`missing-perms`(403，body 带
+  `:required` 集合) 复用 `errors` crate。management 路由先校验
+  `x-shared-key: <id> <key>`（常量时间比较）；`client-header-check` 打开时 main 路由要求 `x-client`。
+- CORS：`allowed-origins` 非空时挂 `mw/wrap-cors` 的等价行为——OPTIONS 直接 204 空体；
+  所有应答带 `Vary: Origin`；只有命中 allowlist 的 `Origin` 才得到
+  `access-control-allow-origin/credentials/methods/headers` 与 `expose-headers` 五组头。
+- 参数与应答：query 拆成 keyword map，重复键变 vector；POST 只接 `application/transit+json`，
+  body map 与 query 合并且 body 优先；schema 支持 str/UUID/int/bool/keyword/set/vector、
+  required 与 closed map；`nil`→204；成功体默认 compact transit，`transit-readable-response`
+  或 `transit_verbose` 查询参数切 verbose；`::http/status`/`::http/headers` 可透传。
+- 上下文：`request-id` 每请求一枚 UUID；`x-session-id` 可解析时写入；IP 按 `inet/parse-request`
+  的优先级取 `x-real-ip` → `x-forwarded-for` 首跳 → socket peer，非 IP 字面量会跳过；
+  本地服务用 `into_make_service_with_connect_info::<SocketAddr>()` 提供 peer。事务命令走
+  `TransactionHook` 占位，metrics 用 tracing span 记录耗时。
+- 契约测试：`tests/clj_contract.rs` 直接 `include_str!` 读取 `backend/src/app/rpc.clj`，
+  断言三组路径、4 条重定向目标与 `get-` 前缀规则仍在源码里，路由漂移会直接失败。
+- 验证：`cargo fmt --all --check` 0；`cargo clippy --workspace --all-targets --locked --offline
+  -- -D warnings` 0；`cargo test --workspace --locked --offline` 0（142 例，含 15 条 rpc 单测、
+  29 条 rpc oneshot、3 条 rpc 契约测试、1 条 transit doctest）；`cargo build --workspace
+  --locked --offline` 0；`cargo doc --workspace --no-deps --offline` 0。本地冒烟：
+  `get-echo` 200 compact transit、`get-health` 200、未知名字 405、`/api/openapi` 308。
+- 明确未做：真实 session/access-token 解码（M4）、sqlx 事务（M5）、长连接 SSE（M7）、
+  `Accept: application/json`、multipart。multipart 需要 axum 的 `multipart` feature 与
+  `multer` crate，本地缓存没有，需单独批准联网拉依赖。
+- 下一步：M4 `session`——HKDF(HMAC-BLAKE2b-512)、A256KW + A256GCM、claims/verify；JWE
+  逐字节兼容仍要等 C1 向量。
+- 提交：未提交（等用户明确要求）。
+
 ---
 
 ## 8. 开发环境备注（本机）

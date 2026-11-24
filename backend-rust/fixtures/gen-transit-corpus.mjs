@@ -65,6 +65,11 @@ const EXPECTS = {
   "inst-verbose-tag": '["~#\'","~t2023-11-14T22:13:20.000Z"]',
   // An unwritten cache slot reads as nil; we write it back as the `~_` key.
   "cache-code-never-written": '["^ ","~:key000",1,"~_",2]',
+  // Penpot's write handler id is `uri`; transit-js's own URI type writes `~r`,
+  // which its default reader leaves as a TaggedValue. Both spellings decode to
+  // the same variant and normalise to `~#uri`.
+  uri: '["~#uri","https://example.com/a"]',
+  "transit-r-uri": '["~#uri","https://example.com/a"]',
   // transit-js cannot re-encode either of these (the leaked Tag makes its writer
   // throw), so the expectation is hand-pinned.
   "lone-tilde": '["~#",""]',
@@ -233,12 +238,27 @@ record("cache-duplicate-symbol", "symbols cache like keywords", map([
   keyword("a"), symbol("shared_symbol"),
   keyword("b"), symbol("shared_symbol"),
 ]));
+// The three cases below pin the UTF-16 length rule. A byte-counting or
+// char-counting port allocates a different slot and mis-resolves `^N`.
+record("cache-utf16-key-length", "a 2-unit non-ASCII key must not take a cache slot", map([
+  "éé", map(["abcd", 1]),
+  "abcd", map(["abcd", 2]),
+]));
+record("cache-utf16-value-length", "`~:é` is 3 units, so it is never cached", map([
+  keyword("k1"), keyword("é"),
+  keyword("k2"), keyword("é"),
+]));
+record("cache-utf16-astral-key", "two astral code points are four UTF-16 units", map([
+  "first", map(["😀😀", 1]),
+  "second", map(["😀😀", 2]),
+]));
 
 // ---------------------------------------------------------------------------
 // 7. Tagged / quoted forms.
 // ---------------------------------------------------------------------------
 record("tagged-unknown-long", "an unknown multi-char tag stays a tagged value", tagged("custom/thing", map([keyword("a"), 1])));
 record("tagged-unknown-short", "a 1-char tag with a string rep uses the ~qabc form", tagged("q", "abc"));
+record("tagged-astral-tag", "a tag with an astral character is 2 UTF-16 units, so it keeps the tagged-array form", tagged("😀", "x"));
 record("tagged-shape", "Penpot record tag (identity handler in lib/transit.ts)", tagged("shape", map([keyword("id"), "s1", keyword("type"), keyword("frame"), keyword("name"), "Board"])));
 record("tagged-point", "geom point record", tagged("point", [1.5, 2.5]));
 record("tagged-matrix", "geom matrix record", tagged("matrix", map([keyword("a"), 1, keyword("b"), 0])));
@@ -326,6 +346,8 @@ raw("inst-verbose-tag", "and instants as ~#inst (T1.6 / C2)",
   '["~#inst","2023-11-14T22:13:20.000Z"]');
 raw("transit-r-uri", "transit's own single-char URI tag must decode like ~#uri",
   '"~rhttps://example.com/a"');
+raw("uri-penpot-tag", "Penpot's own write form is the multi-char ~#uri tag",
+  '["~#uri","https://example.com/a"]');
 raw("nested-quoted-vector", "a quoted vector at top level", '["~#\'",["~#list",[1,2]]]');
 raw("map-with-quoted-key", "quoted keyword as a map key", '["^ ",["~#\'","~:a"],1]');
 

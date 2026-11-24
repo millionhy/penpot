@@ -1,7 +1,7 @@
 # backend-rust 开发计划（**已批准** · 实现但不接入部署）
 
-本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8），实现尚未开始；换机器后的上下文快照见
-`backend-rust/HANDOFF.md`。
+本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M3 已完成（2026-11-24），下一步 M4
+`session`。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
 
@@ -61,7 +61,9 @@
 
 数据侧另有（`lib/transit.ts` + `objects_map.cljc` + 测试）：`~#shape`、`~#point`、`~#matrix`、`~#rect`、`~#penpot/fills`、`~#penpot/path-data`（rep 为 `~b` 二进制，28 字节小端段）、`~#penpot/objects-map/v2`（值是**嵌套 transit 字符串**，必须用独立 reader 解码以免破坏外层缓存）、`~#with-meta`。
 
-> 待确认（T1.5）：同一语义在 CLJ 写侧的形态可能不同（例如 UUID 是否写 `~u` 还是 `["~#uuid",…]`）。仓库内无真实应答语料，需一次后端采样定案；不影响编译，影响兼容性断言。
+> 待确认（T1.6）：同一语义在 CLJ 写侧的形态可能不同（例如 UUID 是否写 `~u` 还是
+> `["~#uuid",…]`）。仓库内无真实应答语料，需一次后端采样定案；不影响编译，影响兼容性断言。
+> 完整清单见 `crates/transit/TODO-ONLINE.md`。
 
 ### 2.2 RPC / HTTP 语义（`backend/src/app/rpc.clj`、`http/errors.clj`）
 
@@ -128,32 +130,52 @@ backend-rust/
 
 DoD：`make build && make test && make lint` 绿；`cargo build --offline` 绿；README 与本文一致。
 
-### M1 — `transit`（5–8 人日，关键路径，🔧 进行中）
+### M1 — `transit`（5–8 人日，关键路径，✅ 代码完成，T1.6 待线上语料）
 
-现状（2026-11-24）：reader/writer/value/cache、transit-js 金样本、畸形输入与 proptest round-trip 已落地；
-T1.6 的真实应答语料待 devenv。
+现状（2026-11-24）：reader/writer/value/cache、103 条 transit-js 金样本、畸形输入与 proptest
+round-trip 已落地；`TODO-ONLINE.md` 已写清 10 项待确认形态。真实应答语料（C2）仍待 devenv，
+它只影响字节兼容断言，不影响 M1 的代码与离线验收。
 
 - T1.1 标签/handler 表定稿（`transit.cljc` + `transit.ts` + 本地 transit-js 源码）
-- T1.2 Value 模型（**已定：自建 enum**，不用 `serde_json::Value` 打标）：`Keyword` / `String` /
-  `Uuid` / `Instant` / `Duration` / `BigInt` / `Uri` / `Binary` / `List(vector)` / `Array` / `Set` /
-  `OrderedMap` / `OrderedSet` / `Pointer` / `Tagged` / `CacheRef`；**vector 与 array 必须是不同变体**
+- T1.2 Value 模型（**已定：自建 enum**，不用 `serde_json::Value` 打标）：`Keyword` / `Str` /
+  `Uuid` / `Instant` / `Duration` / `BigInteger` / `Uri` / `Binary` / `List(vector)` / `Array` / `Set` /
+  `OrderedMap` / `OrderedSet` / `Pointer` / `Tagged`；**vector 与 array 必须是不同变体**
   （后端 vector 应答写 `~#list`，裸 JSON 数组是 transit array，读者两者都要接）
+  - `CacheRef` 不建独立变体：`^N` 在解码时立即解析，值模型只保留解析后的值。
+    `Value::Quoted` 只用于写侧；`~#'` 读回是 identity。
 - T1.3 reader：`^ ` map 头、`^N` 缓存、`~u/~m/~n/~:、~$、~b`、`~#list/set/ordered-*/with-meta/'`、嵌套 `penpot/objects-map/v2`（独立 reader，隔离缓存）、`penpot/path-data`
 - T1.4 writer：关键字键、缓存注册策略、vector → `~#list`、与 CLJS/CLJ 写侧形态对齐
+  - 缓存长度按 **UTF-16 code unit** 计数，与 JavaScript/Java 的 `String.length` 一致
+    （非 ASCII referent 用字节数或 Rust 字符数都会错位）；单字符 tag 的判定同规则。
+  - URI 写 `["~#uri", …]`，对齐 `transit.cljc` 的 `:id "uri"`；`~r` 仅在读取时接受并归一。
 - T1.5 `fixtures/gen-transit-corpus.mjs`：用 transit-js 作预言机批量产样本（含 ≥60 条：标量、嵌套 map、vector、pointer、objects-map、path-data、with-meta）→ Rust 逐字节对拍 + `proptest` round-trip
 - T1.6 兼容性缺口清单：把「需真实后端才能定案」的形态（`~u` vs `~#uuid` 等）写成 `crates/transit/TODO-ONLINE.md`，不靠猜实现
+  - 已落地：10 项待确认 + 4 项离线定案的设计。
 
-DoD：语料逐字节一致；round-trip 1000 例；畸形输入返回结构化错误、零 panic。
+DoD：语料逐字节一致；round-trip 1000 例；畸形输入返回结构化错误、零 panic。三项均已在离线验收。
 红线：不得为「测试跑通」而偏离 `transit.cljc` 的标签定义。
 
-### M2 — `errors` + `config`（3–4 人日）
+### M2 — `errors` + `config`（3–4 人日）✅（2026-11-24）
 
-- T2.1 `errors`：`ErrorType`/`ErrorCode` + `ex-data` → status/body，逐分支对照 `app/http/errors.clj`；429 `:rate-limit`、503 两条 nitrate、405 全部覆盖
-- T2.2 axum `IntoResponse`（transit body + `application/transit+json`）
-- T2.3 `config`：`flags` 解析（`enable-`/`disable-`、默认集来自 `common/flags.cljc`）+ `PENPOT_*` 键表（先覆盖 secret-key、auth-token-cookie-*、objects-storage-*、redis uri、tenant、worker parallelism/queue）
-- T2.4 表驱动 diff 测试：Rust 常量表 vs CLJC 源表逐条对齐
+- T2.1 ✅ `crates/errors`：`ErrorType`/`ErrorCode` + `ex-data` → status/body，逐分支对照
+  `app/http/errors.clj`（401/403/405/400/409/413/429/404/500/503/504 全覆盖）。
+  `Cause` 区分受控错误、PG、IO、`Completion/ExecutionException` 包装与无 `ex-data` 的异常；
+  `:rate-limit` 的 body 固定四键（缺值写 nil），`:concurrency-limit` 走 429 + headers 无 body。
+  请求体统一用 `Value` 保留未知 `ex-data` 键，只删 `errors.clj` 明确删除的键。
+- T2.2 ✅ axum `IntoResponse`：map body 用 `transit::encode_verbose`（对齐
+  `t/encode-str body {:type :json-verbose}`），标 `application/transit+json`；无 body 分支只发状态与 headers。
+  为此给 `transit` 补了 verbose writer（15 条单测 + transit-js 对拍）。
+- T2.3 ✅ `crates/config`：`PENPOT_*` 键表 18 项（secret-key、auth-token-cookie-*、public-uri、
+  host、tenant、is-saas、objects-storage-*、redis-uri、telemetry-enabled、worker-*-parallelism、
+  flags）+ 类型化解码（bool/int/duration/uri/keyword/set）+ `enable-`/`disable-` 有序应用 +
+  HTTP 非 localhost 关闭 secure cookie、telemetry 派生 flag；未识别键进 `Config::unknown`，
+  并由 `Config::pending` / `Config::unrecognized` 区分「schema 已定义、Rust 未接」与真未知。
+- T2.4 ✅ 表驱动 diff：flag 三集合与 `default` 向量对 `common/src/app/common/flags.cljc`；
+  `KNOWN_KEYS` 的名字与 `ValueKind` 对 `schema:config`；schema 其余 143 个键进显式 `PENDING_KEYS`
+  （两边增删都会失败）；PG hint 表与 `strip-internal-fields` 对 `errors.clj`。
 
-DoD：errors 每个 `defmethod` 一条测试；config 未知识别为「有意未接」而非静默忽略。
+DoD ✅：errors 33 条分支测试（每个 `defmethod` 至少一条）+ 2 条源码表对齐；config 18 条单测 +
+5 条源码表对齐。未知 `PENPOT_*` 进 `unknown`，未接的 schema 键进 `PENDING_KEYS`，都不静默丢。
 
 ### M3 — `rpc`（axum 骨架）（5–7 人日）
 
@@ -166,6 +188,22 @@ DoD：errors 每个 `defmethod` 一条测试；config 未知识别为「有意�
 - T3.7 本地可跑：`cargo run -p rpc` 监听 `:6061`（避开后端 `:6060`），只挂 DB-free 的样本命令；**不接 nginx**
 
 DoD：`tower::ServiceExt::oneshot` 测试 ≥20 条（路由、限制、编解码、错误映射、鉴权分支）；测试不依赖 PG/Redis。
+
+落地（2026-11-24）：`crates/rpc` 有 `registry / params / response / router / context` 五个模块与
+`tests/router.rs`（29 条 oneshot）、`tests/clj_contract.rs`（3 条源码契约）。门禁
+`cargo test -p rpc --offline` 为 15 条单测 + 32 条集成测试。
+
+- 已对齐：三组路由与 4 条 308 重定向；GET/HEAD 的 `get-` 前缀检查**早于**命令查找（未知名字也是 405）；
+  默认 `AuthPolicy` 等同 `(::auth mdata true)`；`authentication-required` / `token-auth-required` /
+  `missing-perms` 三支鉴权；query→keyword map、重复键→vector；transit body 与 query 合并、body 优先；
+  薄参数 schema（str/UUID/int/bool/keyword/set/vector、required、closed）；`nil`→204；compact/verbose
+  transit；`x-shared-key`、`x-client`；CORS（allowlist + `Vary: Origin`，预检 204）；
+  `x-session-id`；`inet/parse-request` 的 IP 优先级
+  （`x-real-ip` → `x-forwarded-for` 首跳 → socket peer），服务端用
+  `into_make_service_with_connect_info` 提供 peer。
+- 明确未做：真实 session/access-token 解码（M4）；sqlx 事务（M5）；multipart（axum 的
+  `multipart` feature 依赖 `multer`，本地缓存没有该 crate，需单独批准拉依赖）；长连接 SSE（M7，
+  当前只渲染固定帧）；`Accept: application/json`。
 
 ### M4 — `session`（4–5 人日，含一个外部阻塞）
 
@@ -267,8 +305,11 @@ M0 ▓ → M1 ▓▓▓（关键路径）→ M2 ▓▓ ∥ M3 ▓▓▓ → M4 �
 
 ## 9. 下一步
 
-M0 已完成（2026-11-24）。M1 的 T1.1–T1.5 已落地并可离线跑绿。下一步是 T1.6：devenv 起来后采集真实应答，
-定案 `~u`/`~#uuid`、`~m`/`~#inst` 等写侧形态；之后决定 M2/M3 是否并行。
+M0–M3 已完成（2026-11-24）。M1：103 条语料、round-trip 1000 例、畸形输入与零 panic；
+M2：`errors` 全部状态分支 + verbose transit 应答 + `config` 18 个键与两张源码表对齐；
+M3：`rpc` 的 5 个模块、29 条 oneshot、3 条 `rpc.clj` 契约测试。下一步 M4 `session`：
+HKDF(HMAC-BLAKE2b-512)、A256KW + A256GCM 的 JWE、claims/verify。C2 真实应答到位后，
+按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。
 
 ## 10. 换机器 / devenv 起来之后的采集清单
 

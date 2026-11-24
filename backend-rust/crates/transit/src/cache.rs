@@ -4,7 +4,8 @@
 //! writer's cache codes only resolve against a reader that advances its index
 //! the same way:
 //!
-//! * `MIN_SIZE_CACHEABLE = 3` (so a referent is cacheable when `len > 3`),
+//! * `MIN_SIZE_CACHEABLE = 3` (so a referent is cacheable when its length is
+//!   greater than 3),
 //! * `BASE_CHAR_IDX = 48` (`'0'`), `CACHE_CODE_DIGITS = 44`,
 //!   `MAX_CACHE_ENTRIES = 44 * 44 = 1936`,
 //! * a cache code is `^` plus one char when `idx < 44`, and `^` plus
@@ -36,9 +37,14 @@ pub fn esc_like_referent(s: &str) -> bool {
 /// `caching.isCacheable` — a referent longer than `MIN_SIZE_CACHEABLE`, and
 /// when it is not in map-key position it additionally has to look like transit
 /// syntax (`~:`/`~$`/`~#`).
+///
+/// The length is counted in **UTF-16 code units**, matching JavaScript's
+/// `String.length` and Java's `String.length()`. Counting Rust chars or UTF-8
+/// bytes would disagree for non-ASCII referents (for example `"éé"` is 2 units
+/// but 4 UTF-8 bytes) and desynchronise the reader and writer caches.
 #[must_use]
 pub fn is_cacheable(s: &str, as_map_key: bool) -> bool {
-    if s.len() <= MIN_SIZE_CACHEABLE {
+    if s.encode_utf16().count() <= MIN_SIZE_CACHEABLE {
         return false;
     }
     if as_map_key {
@@ -194,6 +200,24 @@ mod tests {
         assert!(is_cacheable("abcd", true), "plain string as map key");
         assert!(is_cacheable("~:ab", false), "4 chars and looks like syntax");
         assert!(is_cacheable("~:abc", false));
+    }
+
+    #[test]
+    fn length_is_counted_in_utf16_code_units() {
+        // The trap: "éé" is two UTF-16 units but four UTF-8 bytes.
+        assert_eq!("éé".len(), 4);
+        assert_eq!("éé".encode_utf16().count(), 2);
+        assert!(!is_cacheable("éé", true), "2 units is below the threshold");
+        assert!(is_cacheable("éééé", true), "4 units is above it");
+
+        // `~:é` is 3 units, so it is not cached even though it looks like
+        // transit syntax and occupies 4 UTF-8 bytes.
+        assert!(!is_cacheable("~:é", false));
+        assert!(is_cacheable("~:éx", false));
+
+        // Astral characters are one Rust char but two UTF-16 units.
+        assert!(!is_cacheable("😀a", true), "1 + 2 units is still 3");
+        assert!(is_cacheable("😀ab", true), "2 + 1 + 1 units is 4");
     }
 
     #[test]

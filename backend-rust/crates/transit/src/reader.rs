@@ -307,6 +307,9 @@ impl Reader {
                 }),
             },
             "inst" => Ok(Value::VerboseInstant(string_rep(tag, rep)?)),
+            // Penpot's handler id. Kept separate from transit's own `~r`
+            // spelling only until the writer runs; both decode to `Uri` and
+            // re-encode as `~#uri` (see `writer::marshal`).
             "uri" => Ok(Value::Uri(string_rep(tag, rep)?)),
             "duration" => Ok(Value::Duration(match rep {
                 Value::Integer(ms) => ms,
@@ -481,6 +484,9 @@ pub(crate) fn parse_referent(raw: &str) -> Decoded {
             |_| Value::tagged("u", Value::Str(tail.to_owned())),
             Value::Uuid,
         ),
+        // transit's own URI tag. transit-js leaves this as a TaggedValue when
+        // no `r` handler is registered, which is why Penpot writes `~#uri`
+        // instead; accept both and normalise on write.
         'r' => Value::Uri(tail.to_owned()),
         // Unknown single character tag: defaultHandler -> tagged value.
         other => Value::tagged(other.to_string(), Value::Str(tail.to_owned())),

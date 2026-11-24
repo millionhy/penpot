@@ -15,7 +15,9 @@ publish = false
 # access.
 [workspace.dependencies]
 # --- currently used (M1) ---
+axum = { version = "0.8.9", default-features = false }
 base64 = "0.23.1"
+http-body-util = "0.1.5"
 indexmap = "2.14.2"
 # Byte-exact transit round-trips need the parser to recover the same f64 the
 # writer printed. The default fast path can land on a neighbouring float.
@@ -26,11 +28,14 @@ uuid = { version = "1.26.1", features = ["v4", "v5"] }
 # --- test-only, shared by every crate that needs them ---
 proptest = "1.12.0"
 serde = { version = "1.0.229", features = ["derive"] }
+tower = { version = "0.5", features = ["util"] }
+
+# --- M3 rpc ---
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "net", "macros", "signal"] }
+tracing = "0.1.44"
+url = "2.5.8"
 
 # --- reserved for later milestones (added when the crate that needs them exists) ---
-# axum = "0.8.9"
-# tokio = { version = "1.53.1", features = ["full"] }
-# tower = "0.5"
 # tower-http = "0.6.11"
 # sqlx = { version = "0.9.0", features = ["runtime-tokio", "postgres"] }
 # redis = "0.27.6"

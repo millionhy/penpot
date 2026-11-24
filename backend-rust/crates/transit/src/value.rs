@@ -58,6 +58,12 @@ impl Map {
         self.entries.insert(key, value);
     }
 
+    /// Removes `key`, keeping the relative order of the remaining entries
+    /// (`dissoc` in Clojure).
+    pub fn remove(&mut self, key: &Value) -> Option<Value> {
+        self.entries.shift_remove(key)
+    }
+
     #[must_use]
     pub fn get(&self, key: &Value) -> Option<&Value> {
         self.entries.get(key)
@@ -382,7 +388,9 @@ pub enum Value {
     Instant(i64),
     /// `~t`: the verbose (ISO-8601) instant form.
     VerboseInstant(String),
-    /// `~r`: transit's own URI tag.
+    /// A URI. Penpot's handler id is the multi-character `uri` tag, which is
+    /// what the writer emits; transit's own `~r` spelling is accepted on read
+    /// and folded into this variant.
     Uri(String),
     /// `~#duration` (JVM `java.time.Duration`, rep is milliseconds).
     Duration(i64),

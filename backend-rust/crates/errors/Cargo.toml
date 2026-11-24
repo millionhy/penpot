@@ -1,0 +1,15 @@
+[package]
+name = "errors"
+description = "Penpot HTTP error mapping (mirror of app.http.errors)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum.workspace = true
+transit = { path = "../transit" }
+
+[lints]
+workspace = true

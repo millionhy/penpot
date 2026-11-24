@@ -55,12 +55,14 @@ mod error;
 pub mod json;
 mod reader;
 mod value;
+mod verbose;
 mod writer;
 
 pub use cache::{is_cache_code, is_cacheable, MAX_CACHE_ENTRIES, MIN_SIZE_CACHEABLE};
 pub use error::{Error, Result, TagRef};
 pub use reader::{decode, Reader};
 pub use value::{CmapEntry, Map, PathData, PathSegment, SegmentKind, Set, SpecialDouble, Value};
+pub use verbose::encode as encode_verbose;
 pub use writer::{encode, Writer};
 
 /// Encode `value` with a throwaway writer.

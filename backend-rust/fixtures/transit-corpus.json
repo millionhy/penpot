@@ -359,9 +359,9 @@
       "note": "Penpot registers the multi-char tag ~#uri",
       "wire": "[\"~#'\",\"~rhttps://example.com/a\"]",
       "oracle": "transit.writer(\"json\").write(<uri>)",
-      "expect_wire": "[\"~#'\",\"~rhttps://example.com/a\"]",
-      "canonical": true,
-      "expectSource": "oracle read+write"
+      "expect_wire": "[\"~#uri\",\"https://example.com/a\"]",
+      "canonical": false,
+      "expectSource": "hand-pinned (intentional normalisation)"
     },
     {
       "name": "array",
@@ -598,6 +598,33 @@
       "expectSource": "oracle read+write"
     },
     {
+      "name": "cache-utf16-key-length",
+      "note": "a 2-unit non-ASCII key must not take a cache slot",
+      "wire": "[\"^ \",\"éé\",[\"^ \",\"abcd\",1],\"^0\",[\"^ \",\"^0\",2]]",
+      "oracle": "transit.writer(\"json\").write(<cache-utf16-key-length>)",
+      "expect_wire": "[\"^ \",\"éé\",[\"^ \",\"abcd\",1],\"^0\",[\"^ \",\"^0\",2]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-utf16-value-length",
+      "note": "`~:é` is 3 units, so it is never cached",
+      "wire": "[\"^ \",\"~:k1\",\"~:é\",\"~:k2\",\"~:é\"]",
+      "oracle": "transit.writer(\"json\").write(<cache-utf16-value-length>)",
+      "expect_wire": "[\"^ \",\"~:k1\",\"~:é\",\"~:k2\",\"~:é\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "cache-utf16-astral-key",
+      "note": "two astral code points are four UTF-16 units",
+      "wire": "[\"^ \",\"first\",[\"^ \",\"😀😀\",1],\"second\",[\"^ \",\"^1\",2]]",
+      "oracle": "transit.writer(\"json\").write(<cache-utf16-astral-key>)",
+      "expect_wire": "[\"^ \",\"first\",[\"^ \",\"😀😀\",1],\"second\",[\"^ \",\"^1\",2]]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
       "name": "tagged-unknown-long",
       "note": "an unknown multi-char tag stays a tagged value",
       "wire": "[\"~#custom/thing\",[\"^ \",\"~:a\",1]]",
@@ -612,6 +639,15 @@
       "wire": "[\"~#'\",\"~qabc\"]",
       "oracle": "transit.writer(\"json\").write(<tagged-unknown-short>)",
       "expect_wire": "[\"~#'\",\"~qabc\"]",
+      "canonical": true,
+      "expectSource": "oracle read+write"
+    },
+    {
+      "name": "tagged-astral-tag",
+      "note": "a tag with an astral character is 2 UTF-16 units, so it keeps the tagged-array form",
+      "wire": "[\"~#😀\",\"x\"]",
+      "oracle": "transit.writer(\"json\").write(<tagged-astral-tag>)",
+      "expect_wire": "[\"~#😀\",\"x\"]",
       "canonical": true,
       "expectSource": "oracle read+write"
     },
@@ -830,8 +866,17 @@
       "note": "transit's own single-char URI tag must decode like ~#uri",
       "wire": "\"~rhttps://example.com/a\"",
       "oracle": "hand-written",
-      "expect_wire": "[\"~#'\",\"~rhttps://example.com/a\"]",
+      "expect_wire": "[\"~#uri\",\"https://example.com/a\"]",
       "canonical": false,
+      "expectSource": "hand-pinned (intentional normalisation)"
+    },
+    {
+      "name": "uri-penpot-tag",
+      "note": "Penpot's own write form is the multi-char ~#uri tag",
+      "wire": "[\"~#uri\",\"https://example.com/a\"]",
+      "oracle": "hand-written",
+      "expect_wire": "[\"~#uri\",\"https://example.com/a\"]",
+      "canonical": true,
       "expectSource": "oracle read+write"
     },
     {

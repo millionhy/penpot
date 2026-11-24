@@ -1,0 +1,24 @@
+[package]
+name = "rpc"
+description = "Penpot RPC dispatcher and axum service skeleton"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum = { workspace = true, features = ["tokio", "http1"] }
+errors = { path = "../errors" }
+tokio.workspace = true
+tracing.workspace = true
+transit = { path = "../transit" }
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+http-body-util.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

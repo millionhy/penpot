@@ -187,11 +187,13 @@ impl Writer {
             Value::Uuid(u) => self.referent(format!("~u{u}"), as_map_key, out),
             Value::Instant(ms) => self.referent(format!("~m{ms}"), as_map_key, out),
             Value::VerboseInstant(rep) => self.referent(format!("~t{rep}"), as_map_key, out),
-            // Penpot registers `{:id "uri"}`, so a URI may arrive as
-            // `["~#uri","…"]`; both spellings land on the same variant, and the
-            // writer emits transit's own single-char `~r` form (see TODO-ONLINE).
+            // Penpot registers `{:id "uri" :class URI :wfn str}`, so its writer
+            // emits `["~#uri","…"]`. transit's own `~r` spelling is accepted on
+            // read and normalised to this variant; writing `~r` would hand the
+            // JS shell an unresolved TaggedValue, because its reader only
+            // registers the `uri` handler.
             Value::Uri(uri) => {
-                self.referent(format!("~r{uri}"), as_map_key, out);
+                self.tagged_array("uri", &Value::Str(uri.clone()), out);
             }
             // `{:id "duration" :wfn inst-ms}` — rep is a millisecond integer.
             Value::Duration(ms) => self.tagged_array("duration", &Value::Integer(*ms), out),
@@ -265,8 +267,9 @@ impl Writer {
             Value::Tagged { tag, rep } => {
                 // emitEncoded: a 1-character tag with a string rep uses the
                 // escaped-string form; everything else takes the tagged-array
-                // form.
-                if tag.chars().count() == 1 {
+                // form. "1-character" is a UTF-16 length, like the cache rule:
+                // an astral tag is 2 units and therefore takes the array form.
+                if tag.encode_utf16().count() == 1 {
                     if let Value::Str(s) = rep.as_ref() {
                         self.referent(format!("~{tag}{s}"), as_map_key, out);
                         return;
@@ -311,7 +314,7 @@ fn encode_nested(value: &Value) -> Value {
     clippy::match_same_arms,
     reason = "the list is one variant per line for reviewability"
 )]
-fn top_needs_quoting(value: &Value) -> bool {
+pub(crate) fn top_needs_quoting(value: &Value) -> bool {
     match value {
         Value::Nil
         | Value::Bool(_)
@@ -328,11 +331,11 @@ fn top_needs_quoting(value: &Value) -> bool {
         | Value::Uuid(_)
         | Value::Instant(_)
         | Value::VerboseInstant(_) => true,
-        // URIs go out as transit's own single-char `~r`, so they quote too.
-        Value::Uri(_) => true,
+        // URIs go out as the multi-char `~#uri` tag, so they are written bare.
+        Value::Uri(_) => false,
         // A 1-character tag carrying a string rep behaves like a scalar.
         Value::Tagged { tag, rep } => {
-            tag.chars().count() == 1 && matches!(rep.as_ref(), Value::Str(_))
+            tag.encode_utf16().count() == 1 && matches!(rep.as_ref(), Value::Str(_))
         }
         _ => false,
     }

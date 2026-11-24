@@ -11,11 +11,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| HEAD（快照时） | `07eea09660` `:books: Close the G5 common mirror inventory` |
-| 工作区 | 代码/配置/语料未跟踪（`Cargo.*`、`Makefile`、`.gitignore`、`rust-toolchain.toml`、`crates/`、`fixtures/`）；`README/PLAN/HANDOFF` 为已跟踪文档且有本轮改动；`.g2-tmp/` 未跟踪 |
+| HEAD（快照时） | `3eaa566b7f` `:construction: Bootstrap the backend-rust workspace` |
+| 工作区 | M0 已提交。M1 + M2 + M3 改动仍在工作区：transit 的 UTF-16 长度/`~#uri`/verbose writer/语料、`crates/config`、`crates/errors`、`crates/rpc`、`Cargo.lock` 与文档。`.g2-tmp/` 未跟踪 |
 | 阶段 F/G | F 已收口；G0–G5 已完成，见 `rewrite.md` §7.92–§7.96 |
-| 阶段 B | **M0 ✅（2026-11-24）**；M1 `transit` 🔧：reader/writer/value/cache、金样本、畸形输入与 proptest 已落地，T1.6 真实语料待 devenv |
-| `rewrite.md` | §7.96 为 G5 收口记录；backend-rust 里程碑状态见本文与 `PLAN.md` |
+| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；C2 真实应答语料待 devenv |
+| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3；里程碑状态见本文与 `PLAN.md` |
 
 ## 2. 已拍板决策（不要重议，除非用户改口）
 
@@ -57,13 +57,24 @@ aes-kw 0.3.1 / aes-gcm 0.11.1 / hkdf 0.13 / hmac 0.13 / blake2 0.11 / uuid 1.26.
 indexmap 2.14.2 / tracing 0.1.44 / thiserror 2.0.21 / proptest 1.11 / aws-sdk-s3 1.123 / reqwest 0.13.5 /
 base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线构建。依赖只选已验证版本并**提交 `Cargo.lock`**。
 
-**B. 第一个执行切片 = M0 + M1 的 T1.1–T1.5（不需要后端）**
+**B. 已完成切片 = M0 + M1 的 T1.1–T1.6（离线部分）+ M2 + M3（不需要后端）**
 
 - M0：workspace（`members = ["crates/*"]`、`[workspace.dependencies]` 锁版）、`rust-toolchain.toml`（用 `stable`，
   别把 channel 钉死到具体小版本）、`.gitignore`（`target/`、`fixtures/online/`）、`backend-rust/Makefile`
   （`build/test/fmt/lint/check-offline/capture`，**不接 `scripts/ci`**）
 - M1：`crates/transit` reader/writer + `fixtures/gen-transit-corpus.mjs`（用 transit-js 当预言机产样本）
-  + 逐字节对拍 + `proptest` round-trip
+  + 逐字节对拍 + `proptest` round-trip；缓存长度按 UTF-16 code unit 计数；URI 写
+  `["~#uri", …]`；待确认项集中在 `crates/transit/TODO-ONLINE.md`
+- M2：`crates/errors` 的 `ErrorType`/`ErrorCode`/`Cause`/`HttpError`，分支逐条对齐
+  `backend/src/app/http/errors.clj`；`IntoResponse` 用 verbose transit；`crates/config` 的
+  `PENPOT_*` 键表/类型解码/flag 派生/`unknown` → `pending` / `unrecognized`；flag、
+  `schema:config`、PG hint 三张源码表各有 diff 测试。
+- M3：`crates/rpc` 的 `context / registry / params / response / router` 与本地 `main`。三组路由、
+  4 条 308 重定向、GET/HEAD 的 `get-` 检查早于命令查找、默认 `AuthPolicy` 要求登录、三条鉴权错误、
+  query/transit body 合并、薄参数 schema、`nil`→204、compact/verbose transit、SSE 固定帧、
+  `x-shared-key`/`x-client`、CORS（allowlist + 预检 204）、IP 优先级（含 socket peer）。
+  29 条 `oneshot` + 3 条 `tests/clj_contract.rs`；完整 workspace 门禁 142 例通过。multipart 因缺 `multer` 未接，
+  真实会话/事务/长连接 SSE 分别留 M4/M5/M7。
 
 **C. devenv 起来后采集（一次采完，回填 `fixtures/`）**
 
@@ -93,7 +104,8 @@ base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线�
 **HTTP/RPC**（`backend/src/app/rpc.clj`、`http/errors.clj`）
 
 - 路由三组：`/api/main/methods/:name`、别名 `/api/rpc/command/:name`、`/api/management/methods/:name`（shared-key）
-- **GET 只允许 `get-` 前缀**，否则 `restriction/method-not-allowed`；未知命令 → `:not-found`
+- **GET 只允许 `get-` 前缀**，否则 `restriction/method-not-allowed`；该检查早于命令查找，
+  所以 `GET` 未知的非 `get-` 名字也是 405。未知的 `get-` 命令 → `:not-found`
 - 身份优先级：`::session/profile-id` → `::actoken/profile-id` → `auth key-id`（有 key-id 无身份 = 匿名 `uuid/zero`）
 - `nil` → **204**；`::http/status`/`::http/headers` 挂在 meta；stream 缺 content-type 补 `application/octet-stream`；SSE 独立分支
 - 中间件**必须同序**：`authentication → params-validation → nitrate-sso → audit → rlimit → metrics → climit → retry → cond → db-transaction`
@@ -136,7 +148,9 @@ base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线�
 
 ## 7. 未决 / 需要用户点头的事
 
-1. `Cargo.lock` 是否提交进仓库（我建议提交，保证离线可构建）。
-2. `rust-toolchain.toml` 用 `stable` 还是钉版本（建议 `stable`，避免换机器直接编不过）。
-3. M0 完成后要不要顺手把 `rewrite.md` 的 §0 阶段 B 表切到「M 编号」口径（现已同时列 B/M 两套编号）。
-4. C1/C2 采集是否允许用一次性新账号登录（历轮做法如此），以及是否允许 `enable-backend-openapi-doc` 起后端。
+1. C1/C2 采集是否允许用一次性新账号登录（历轮做法如此），以及是否允许
+   `enable-backend-openapi-doc` 起后端。
+2. M3 的 multipart 需要 axum 的 `multipart` feature 与 `multer` crate；本地缓存没有，
+   需要一次联网拉依赖的批准，或推迟到 C2 采集同批处理。
+
+已定（M0）：`Cargo.lock` 入库；`rust-toolchain.toml` 用 `stable`；`rewrite.md` 保留 B/M 双编号。
