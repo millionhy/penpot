@@ -1,0 +1,32 @@
+[package]
+name = "ws"
+description = "Penpot notification msgbus, protocol and axum WebSocket endpoint"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+axum = { workspace = true, features = ["http1", "tokio"] }
+base64.workspace = true
+errors = { path = "../errors" }
+futures-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+sha1.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+tracing.workspace = true
+transit = { path = "../transit" }
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+http-body-util.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

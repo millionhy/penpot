@@ -11,11 +11,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| HEAD（快照时） | `316be2733f` `:construction: Add backend-rust session tokens and cookies` |
-| 工作区 | M0–M4 已提交。M5 `crates/storage`、`Cargo.toml`/`Cargo.lock` 与文档改动在工作区。`.g2-tmp/` 未跟踪 |
+| HEAD（快照时） | `0fc25fe361` `:construction: Add backend-rust storage metadata and backends` |
+| 工作区 | M0–M5 已提交。M6 `crates/worker`、M7 `crates/ws`、`Cargo.toml`/`Cargo.lock` 与文档改动在工作区。`.g2-tmp/` 未跟踪 |
 | 阶段 F/G | F 已收口；G0–G5 已完成，见 `rewrite.md` §7.92–§7.96 |
-| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；**M5 🔧（2026-11-24，工作区）**：`storage` 的 metadata、去重状态机、FS/S3、GC 纯逻辑，45 条 + 1 ignored；真实 S3 桶与 PG 仓储待 devenv；C1/C2 真实向量与应答语料待 devenv |
-| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4，§7.102 为 M5；里程碑状态见本文与 `PLAN.md` |
+| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；**M5 ✅（2026-11-24）**：`storage` 的 metadata、去重状态机、FS/S3、GC 纯逻辑，45 条 + 1 ignored；**M6 🔧（2026-11-24，工作区）**：`worker` 的 Quartz cron、六态状态机、dispatcher、runner 与五个 offline handler，67 条；**M7 🔧（2026-11-24，工作区）**：`ws` 的 msgbus、协议多态、心跳、axum 路由与 33 条测试；真实 PG/Redis 适配器待 devenv；C1/C2 真实向量与应答语料待 devenv |
+| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4，§7.102 为 M5，§7.103 为 M6，§7.104 为 M7；里程碑状态见本文与 `PLAN.md` |
 
 ## 2. 已拍板决策（不要重议，除非用户改口）
 
@@ -55,9 +55,10 @@ psql -h localhost -p 5433 -U penpot -d penpot -c 'select 1'           # C1–C4 
 `static.crates.io` 通）；`axum 0.8.9 / tokio 1.53.1 / sqlx 0.9.0 / redis 0.27.6 / tokio-tungstenite 0.28.0 /
 aes-kw 0.3.1 / aes-gcm 0.11.1 / hkdf 0.13 / hmac 0.13 / blake2 0.11 / uuid 1.26.1 / chrono 0.4.45 /
 indexmap 2.14.2 / tracing 0.1.44 / thiserror 2.0.21 / proptest 1.11 / aws-sdk-s3 1.123 / reqwest 0.13.5 /
-base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线构建。依赖只选已验证版本并**提交 `Cargo.lock`**。
+base64 0.23.1 / mime / url / hex` 为旧机清单。当前机器实测 M0–M7 实际声明的依赖均可离线构建，
+但缓存没有 `redis` crate，所以 M7 只落 `RedisBus` trait。依赖只选已验证版本并**提交 `Cargo.lock`**。
 
-**B. 已完成切片 = M0 + M1 的 T1.1–T1.6（离线部分）+ M2 + M3 + M4 + M5（不需要后端）**
+**B. 已完成切片 = M0 + M1 的 T1.1–T1.6（离线部分）+ M2 + M3 + M4 + M5 + M6 + M7（不需要后端）**
 
 - M0：workspace（`members = ["crates/*"]`、`[workspace.dependencies]` 锁版）、`rust-toolchain.toml`（用 `stable`，
   别把 channel 钉死到具体小版本）、`.gitignore`（`target/`、`fixtures/online/`）、`backend-rust/Makefile`
@@ -87,6 +88,19 @@ base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线�
   的写入顺序、dedup hit/repair/miss/skip、软删除与过期读取、FS 原子替换、S3 环境变量与 presign、
   GC 三态阈值与 SQL 常量。crate 45 条通过 + 1 ignored；workspace 237 条通过 + 2 ignored。
   真实 S3 桶用 `PENPOT_TEST_S3_BUCKET` + AWS 凭证解锁；`sqlx` 仓储与 GC 执行器留到 live PG。
+- M6：`crates/worker` 的 `cron / dispatcher / error / handler / repository / runner / task /
+  tasks`。Quartz 六段加可选 year、六态 task 状态机、Transit JSONB props、5 分钟丢失重排、
+  24 小时 orphan 失败、按优先级认领、`tenant:queue` 分组与 Transit payload；runner 复核
+  scheduled 时间、按 `retry_num` 指数退避，未知 handler 按 Clojure 行为完成。五个 offline
+  handler 全部经 trait 注入。crate 67 条通过；workspace 304 条通过 + 2 ignored。
+  `sqlx`/Redis 适配器与混合集群验证留到 live devenv。
+- M7：`crates/ws` 的 `bus / error / heartbeat / protocol / server`。`prefix_topic` 为
+  `<tenant>.<topic>`；`InMemoryBus` 复刻首订阅/末退订与幂等清理；协议覆盖
+  subscribe-file/subscribe-team/unsubscribe-file/pointer-update/broadcast/keepalive，
+  team 组织 topic、presence、发送者字段与回环过滤；服务端校验 session-id、鉴权、
+  RFC 6455 accept、Transit 文本帧与 5 秒心跳（3 个未答 ping 后 8802 关闭）。
+  crate 33 条通过（协议 10 条）；workspace 337 条通过 + 2 ignored。
+  真实 Redis 适配器与浏览器联调待 live devenv，设计见 `crates/ws/tests/DESIGN.md`。
 
 **C. devenv 起来后采集（一次采完，回填 `fixtures/`）**
 
@@ -145,6 +159,16 @@ base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线�
 - **file data blob = Fressian v4/v5（`app.common.fressian`，JVM 专有，无 Rust 实现）→ 本阶段不碰**；
   因此 `add-file-transient-changes`、binfile、files 写路径、thumbnails、nitrate 全列入 M8 永久排除
 
+**ws / msgbus**
+
+- 路由 `/ws/notifications`，query 必须带合法 `session-id`；无 profile → 401，非 upgrade → 400。
+- 客户端类型 `subscribe-file`/`subscribe-team`/`unsubscribe-file`/`pointer-update`/`broadcast`/
+  `keepalive`；服务端事件 `join-file`/`leave-file`/`presence`/`disconnect`/`error`。
+- 订阅 `profile-id` 与 `uuid/zero`（profile 通道），team 加组织 topic，file 单独 topic；
+  本 session 的消息不回流。缓冲 profile 16、scope 64、输出/输入 64；入站上限
+  1 MiB/消息、256 KiB/帧。
+- 心跳 5 秒，payload 是 8 字节大端序号；最多 3 个未答 ping，关闭码 8802。
+
 **体量参考**：`backend/src` 171 文件 / 46,151 行；`common/src` 156 CLJC / 55,433 行；RPC 189 命令
 （160 需鉴权 / 29 公开；183 有 params schema，**仅 50 有 result schema**）；168 个 SQL 迁移文件。
 
@@ -170,6 +194,8 @@ base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线�
    `enable-backend-openapi-doc` 起后端。
 2. M3 的 multipart 需要 axum 的 `multipart` feature 与 `multer` crate；本地缓存没有，
    需要一次联网拉依赖的批准，或推迟到 C2 采集同批处理。
+3. M7 的真实 `RedisBus` 适配器与 live 集成测试需要 `redis` crate；当前机器缓存没有，
+   已按 M6 口径延后。设计见 `crates/ws/tests/DESIGN.md`。
 
 已定（M0）：`Cargo.lock` 入库；`rust-toolchain.toml` 用 `stable`；`rewrite.md` 保留 B/M 双编号。
 

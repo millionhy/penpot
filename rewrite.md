@@ -59,8 +59,8 @@
 | B3 | M3 | `rpc` crate（axum 骨架） | ✅ | 三组路由 + 中间件同序 + Registry；本地 `cargo run`，不接 nginx；2026-11-24 完成 |
 | B4 | M4 | `session` crate | ✅ | JWE `a256kw`+`a256gcm` + HKDF-BLAKE2b-512；会话查 **`http_session_v2`**（旧表已由 `0155` 删除）；buddy 兼容性待 C1 向量 |
 | B5 | M5 | `storage` crate | 🔧 | `storage_object`/bucket/去重/GC；`:fs`/`:s3`；离线部分完成，真实 S3 桶/PG 待 devenv |
-| B6 | M6 | `worker` crate | ⬜ | Quartz 6 段 cron、task 状态机、`FOR UPDATE SKIP LOCKED` 认领、Redis `tenant:queue`；`task.props` = **jsonb transit**（不是 Fressian） |
-| B7 | M7 | `ws` crate | ⬜ | axum WebSocket + msgbus topic；RedisBus trait + InMemoryBus（离线测试） |
+| B6 | M6 | `worker` crate | 🔧 | Quartz 6 段 cron、task 状态机、`FOR UPDATE SKIP LOCKED` 认领、Redis `tenant:queue`；`task.props` = **jsonb transit**（不是 Fressian）；离线部分完成，live PG/Redis 待 devenv |
+| B7 | M7 | `ws` crate | 🔧 | axum WebSocket + msgbus topic；RedisBus trait + InMemoryBus；协议/心跳/路由 33 条测试；真实 Redis 适配器待 devenv |
 | B8 | M8 | `rpc` 只读命令承接 | ⛔ | 前置：C3 DDL + C4 OpenAPI + 补齐 `::sm/result` + 可用 devenv。永久排除：`add-file-transient-changes`/binfile/files 写路径/thumbnails/nitrate（`file.data` blob = Fressian v4/v5，JVM 专有） |
 | — | — | `render-native` | ⬜ 暂缓 | `render-wasm` 无 headless-native API（24 处 `cfg(target_arch="wasm32")` + GL `gpu_state`），需先抽 core 且要 file-data 解码 |
 
@@ -3662,6 +3662,79 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 边界：没有 live PG，`sqlx` 仓储与 GC 执行器未实现；真实 S3 桶集成测试以
   `PENPOT_TEST_S3_BUCKET` + AWS 凭证解锁；`x-accel-redirect` 只登记路径，不接 HTTP。
 - 下一步：M6 `worker`——Quartz 6 段 cron、task 状态机、dispatcher 与 runner。
+- 提交：未提交（等用户明确要求）。
+
+---
+
+### 7.103 本轮（2026-11-24，第一百零二批：backend-rust M6 worker）
+
+- 口径：仍是「实现但不接入部署」；不改 `backend/`/`common/`/`docker/`/`scripts/ci`，
+  未获授权不 commit。
+- 新增 `crates/worker` 八个模块：`cron`、`task`、`tasks`、`repository`、`dispatcher`、
+  `runner`、`handler`、`error`。边界分为纯解析/状态机、PG/Redis trait、编排循环与 handler 注入；
+  离线测试全部使用内存 fake。
+- cron：六段加可选 year；支持 `*`、`?`、列表、范围、步长、月份与星期名称、`L`、`W`、`#`。
+  `#penpot/cron` 现有 10 条表达式逐条从 `main.clj` 取源码对拍；时间计算按显式时区，
+  夏令时重叠取最早有效时刻。
+- task：状态为 `new/retry/scheduled/running/completed/failed`；`props` 按 Transit JSONB
+  处理，提交默认 queue `default`、priority `100`、max_retries `3`、首延迟 1 秒；
+  dedupe 只删尚未 due 的 `new` 行；所有时间落库前按毫秒截断。
+- dispatcher：每轮先重排超过 5 分钟的 `scheduled` 行，再把超过 24 小时的 `running` 行
+  标为 `failed` 且 error 为 `orphan with running status`；随后按
+  `priority DESC, scheduled_at` 认领 due 的 `new`/`retry` 行。按 `tenant:queue` 分组
+  RPUSH 到 `penpot.worker.queue:<tenant>:<queue>`，成功后才标 `scheduled`。
+- Redis payload：Transit `[uuid scheduled-at]`；编码复用 transit crate，解码严格检查
+  vector 长度、UUID 与 instant 范围。
+- runner：先查行、核对 scheduled 毫秒，再标 `running`；handler 未注册时按 Clojure 行为
+  完成任务。未捕获失败在达到 `max_retries` 前转 `retry`：首次延迟取配置值，后续按新的
+  `retry_num` 指数增长；`::noop` 失败不增加计数。completed/retry/failed 都持久化后返回。
+- handlers：注册 `sendmail`、`objects-gc`、`tasks-gc`、`session-gc`、`run-webhook` 五个
+  offline 任务。邮件、对象 GC、任务 GC、session GC、webhook 都是 trait 边界；dispatcher、
+  GC 与 webhook 的 SQL 以常量保存，并由契约测试断言锁定顺序、`FOR UPDATE SKIP LOCKED`、
+  5 分钟/24 小时阈值与 orphan 文案。
+- 兼容设计：`crates/worker/tests/DESIGN.md` 记录 Clojure↔Rust 双向兼容测试的进程、
+  数据准备、payload 与恢复场景；代码等 live devenv。
+- 依赖与门禁：Tokio 增加 `time` feature。`cargo fmt`、`clippy -D warnings`、`test`、
+  `build`、`doc` 全部退出 0；workspace 304 条通过 + 2 ignored（worker 67 条）。
+- 边界：没有 live PG/Redis，`sqlx` 仓储与 Redis `TaskQueue` 适配器未实现；
+  `scripts/db-schema` 的 DDL 快照未到位，SQL 常量仍需在 devenv 对真表复核。
+- 下一步：M7 `ws`——msgbus topic、订阅计数、消息多态与 axum WebSocket。
+- 提交：未提交（等用户明确要求）。
+
+---
+
+### 7.104 本轮（2026-11-24，第一百零三批：backend-rust M7 ws）
+
+- 口径：仍是「实现但不接入部署」；不改 `backend/`/`common/`/`docker/`/`scripts/ci`，
+  未获授权不 commit。
+- 新增 `crates/ws` 五个模块：`bus`、`error`、`heartbeat`、`protocol`、`server`。
+  离线测试全部走 `InMemoryBus` 与 `FixedIdentity`，不依赖 Redis、PG 或浏览器。
+- bus：`prefix_topic` 复刻 `app.msgbus/prefix-topic` 的 `<tenant>.<topic>`。本地状态按逻辑
+  topic 计数；第一个订阅才真正打开，最后一个退订才关闭；重复退订幂等；发布补逻辑
+  `:topic`，慢订阅丢弃，已关闭的 sender 自动移除并释放计数。
+- protocol：解码 `subscribe-team`、`subscribe-file`、`unsubscribe-file`、`pointer-update`、
+  `broadcast`、`keepalive` 与未知类型；file/team id 必须是 Transit UUID，字符串 id 拒绝。
+  open 订阅 profile 与 `uuid/zero`；team 经 `AccessControl` 校验并加组织 topic；file 订阅
+  发布 `join-file`，退订发布 `leave-file`，收到他人的 join/leave/disconnect 后再发 presence；
+  pointer/broadcast 补 `subs-id`/`profile-id`/`session-id`；本 session 的消息不回流；
+  shutdown 发布不带 `file-id` 的 disconnect 并清理全部订阅。
+- server：`/ws/notifications?session-id=<uuid>` 缺 id 或非法 UUID → 400，未认证 → 401，
+  非 upgrade → 400；合法握手返回 101 与 RFC 6455 accept key。升级后由
+  `hyper::upgrade` + `tokio-tungstenite` 读写，文本帧走 `transit::encode`，
+  二进制帧忽略并告警，客户端 Ping 回 Pong；入站上限 1 MiB/消息、256 KiB/帧。
+- heartbeat：8 字节大端序号；默认 profile 16、scope 64、输出/输入 64、5 秒、最多 3 个
+  未答 ping；第三个 ping 后仍无 pong 即按 Clojure 的 8802 关闭。
+- 契约：`tests/clj_contract.rs` 从 `http/websocket.clj`、`msgbus.clj`、
+  `util/websocket.clj` 锁定路由、`session-id`、tenant 前缀、缓冲/心跳默认值与八种客户端
+  消息处理分支。
+- 验证：`cargo fmt --all --check`、`clippy --workspace --all-targets -D warnings`、
+  `test`、`build`、`doc` 全部退出 0；workspace 337 条通过 + 2 ignored（ws 33 条，
+  其中 protocol 10 条、server 7 条、heartbeat 4 条、bus 7 条、clj_contract 5 条）。
+- 边界：没有 live Redis，真实 `RedisBus` 适配器未实现；`crates/ws/tests/DESIGN.md`
+  记录单连接订阅管理、重连重订阅、live 集成与两标签页联调用例。前端 F8 客户端已在
+  `rewrite.md` §7.46–§7.48 完成，本轮只补后端边界。
+- 下一步：本阶段 M0–M7 代码交付收口；devenv 起来后补 M6/M7 的 live PG/Redis 适配器、
+  C1–C4 采集与真实浏览器对拍。M8 仍不交付。
 - 提交：未提交（等用户明确要求）。
 
 ---

@@ -1,7 +1,7 @@
 # backend-rust 开发计划（**已批准** · 实现但不接入部署）
 
-本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M5 已完成（2026-11-24），下一步 M6
-`worker`。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
+本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 已完成（2026-11-24），
+本阶段代码交付收口，M8 不交付。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
 
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | rustc / cargo | 1.98.0（`~/.cargo/bin`） | 可用 |
 | registry | `.cargo/config.toml` 把 crates-io 换到 `sparse+https://rsproxy.cn/index/`；crates.io 直连 TLS 被拦，`static.crates.io` 通 | 依赖必须优先选用**本地已缓存版本**，并锁进 `Cargo.lock` |
-| 已缓存关键依赖 | axum 0.8.9、tokio 1.53.1、tower-http 0.6.11、sqlx 0.9.0/0.8.6、redis 0.27.6、tokio-tungstenite 0.28.0、uuid 1.26.1、chrono 0.4.45、indexmap 2.14.2、tracing 0.1.44、thiserror 2.0.21、proptest 1.11、aws-sdk-s3 1.123、reqwest 0.13.5、mime、url、hex、base64 0.23.1；密码学以 digest-0.10 一代为准：aes 0.8.4、aes-gcm 0.10.3、hkdf 0.12.4、blake2 0.10.6、hmac 0.12.1、httpdate 1.0.3、zeroize 1.8 | M0–M7 依赖全在缓存内，可离线构建；`aes-kw 0.3.1` 虽在缓存但需要未缓存的 `aes 0.9`/`cipher 0.5`，故 AES-KW 自带实现 |
+| 已缓存关键依赖 | axum 0.8.9、tokio 1.53.1、tower-http 0.6.11、sqlx 0.9.0/0.8.6、redis 0.27.6（旧机清单）、tokio-tungstenite 0.28.0、uuid 1.26.1、chrono 0.4.45、indexmap 2.14.2、tracing 0.1.44、thiserror 2.0.21、proptest 1.11、aws-sdk-s3 1.123、reqwest 0.13.5、mime、url、hex、base64 0.23.1；密码学以 digest-0.10 一代为准：aes 0.8.4、aes-gcm 0.10.3、hkdf 0.12.4、blake2 0.10.6、hmac 0.12.1、httpdate 1.0.3、zeroize 1.8 | M0–M7 实际声明的依赖均可离线构建；当前机器未检出 `redis` crate，故 M7 只落 `RedisBus` trait 与 `InMemoryBus`。`aes-kw 0.3.1` 虽在旧机缓存但需要未缓存的 `aes 0.9`/`cipher 0.5`，故 AES-KW 自带实现 |
 | docker | **不存在**（`docker: command not found`） | devenv 起不来 |
 | PostgreSQL | `localhost:5433` 拒绝连接 | S3（DDL 快照）、任何 sqlx/`query!` 编译期校验受阻 |
 | Clojure CLI / JVM | 未见可用 | S2（OpenAPI 快照）、JWE 测试向量生成受阻 |
@@ -261,24 +261,62 @@ repository / s3 / service / store` 十一个模块。测试为 crate 内 45 条�
 - 明确未做：`sqlx` 仓储/GC 执行器（本阶段没有 live PG）；真实 S3 桶与真实 PG 的集成验证；
   `x-accel-redirect` 接线。S3 集成测试用 `PENPOT_TEST_S3_BUCKET` + AWS 凭证解锁。
 
-### M6 — `worker`（6–9 人日）
+### M6 — `worker`（✅ 2026-11-24，真实 PG/Redis 适配器待 devenv）
 
-- T6.1 Quartz 6 段 cron 解析 + `#penpot/cron` 语义（与 `app.util.cron` 表对拍）
-- T6.2 task 行模型（props = transit jsonb）+ 状态机（`new/scheduled/processing/completed/error`、`retry_num/max_retries`、`label`、`tenant:queue`）
-- T6.3 dispatcher SQL 复刻（`FOR UPDATE SKIP LOCKED`、丢失重排、in-flight 失败判定）——本轮只落 SQL 常量 + 文本断言测试
-- T6.4 runner 循环（BLPOP、parallelism、`::retry` 分类、超时）+ 注册 5 个不依赖 Fressian 的任务（sendmail / objects-gc / tasks-gc / session-gc / run-webhook）
-- T6.5 混合集群（Clojure↔Rust）双向兼容测试设计文档 `crates/worker/tests/DESIGN.md`，代码待 devenv
+- T6.1 ✅ Quartz 6 段 cron 解析 + `#penpot/cron` 语义（与 `app.util.cron` 表对拍）
+- T6.2 ✅ task 行模型（props = transit jsonb）+ 状态机（`new/retry/scheduled/running/completed/failed`、`retry_num/max_retries`、`label`、`tenant:queue`）
+- T6.3 ✅ dispatcher SQL 复刻（`FOR UPDATE SKIP LOCKED`、丢失重排、in-flight 失败判定）；本轮落 SQL 常量 + 文本断言
+- T6.4 ✅ runner 循环（BLPOP、parallelism、`::retry` 分类、超时）+ 注册 5 个不依赖 Fressian 的任务（sendmail / objects-gc / tasks-gc / session-gc / run-webhook）
+- T6.5 ✅ 混合集群（Clojure↔Rust）双向兼容测试设计文档 `crates/worker/tests/DESIGN.md`，代码待 devenv
 
 DoD：状态机与 cron 全表单测；无 live DB/Redis 依赖。
 
-### M7 — `ws`（5–7 人日）
+落地（2026-11-24）：`crates/worker` 有 `cron / dispatcher / error / handler / repository / runner /
+task / tasks` 八个模块。测试为 crate 内 67 条通过（`tests/{cron,task,dispatcher,runner,tasks,
+clj_contract}.rs`），整个 workspace 304 条通过 + 2 ignored。
 
-- T7.1 msgbus topic 约定 + `prefix-topic` 复刻（profile-id / file-id / team topics / `uuid/zero` 系统 topic）
-- T7.2 订阅计数状态机（首订阅真订阅、末退订真退订）+ 单测
-- T7.3 消息多态（`subscribe-team`/`subscribe-file`/`unsubscribe-file`/presence/心跳）
-- T7.4 axum WebSocket upgrade + `RedisBus` trait + `InMemoryBus`（离线测试用）
+- cron：六段加可选 year，支持 `*`、`?`、列表、范围、步长、月份/星期名称、`L`、`W`、`#`；
+  `#penpot/cron` 当前 10 条表达式逐条通过源码契约测试。
+- task：`task.props` 按 Transit JSONB 处理；提交默认 queue `default`、priority `100`、
+  max_retries `3`、首延迟 1 秒；每次落库前按毫秒截断时间。
+- dispatcher：先重排超过 5 分钟的 `scheduled` 行，再将超过 24 小时的 `running` 行标为
+  `orphan with running status`，随后按 `priority DESC, scheduled_at` 认领 due 行；
+  按 `tenant:queue` 分组 RPUSH，Redis key 为 `penpot.worker.queue:<tenant>:<queue>`。
+- runner：payload 为 Transit `[uuid scheduled-at]`；先校验行存在与 scheduled 时间，再标记
+  `running`；handler 缺失按 Clojure 行为完成任务；未捕获失败在达到 `max_retries` 前转
+  `retry`，首次延迟取配置值，后续按新 `retry_num` 指数增长。
+- handlers：五个 offline 任务均由 trait 边界注入，测试使用内存 fake，不依赖真实邮件、
+  webhook、PG 或 Redis。
+- 明确未做：`sqlx` 仓储、Redis `TaskQueue` 适配器与 live PG/Redis 集成；混合集群兼容测试
+  代码等 devenv。SQL 常量已覆盖 dispatcher、GC 与 webhook 的三类写入路径。
 
-DoD：InMemoryBus 下 ≥8 条协议测试；真实 Redis `#[ignore]`。
+### M7 — `ws`（✅ 2026-11-24，离线部分；真实 Redis 适配器待 devenv）
+
+- T7.1 ✅ msgbus topic 约定 + `prefix-topic` 复刻（profile-id / file-id / team topics / `uuid/zero` 系统 topic）
+- T7.2 ✅ 订阅计数状态机（首订阅真订阅、末退订真退订）+ 单测
+- T7.3 ✅ 消息多态（`subscribe-team`/`subscribe-file`/`unsubscribe-file`/presence/心跳）
+- T7.4 ✅ axum WebSocket upgrade + `RedisBus` trait + `InMemoryBus`（离线测试用）
+
+DoD：InMemoryBus 下 ≥8 条协议测试（实测协议 10 条）。真实 Redis 适配器与 `#[ignore]`
+集成测试按 M6 同一口径延后：本机 cargo 缓存没有 `redis` crate，等 devenv 一并验证。
+
+落地（2026-11-24）：`crates/ws` 有 `bus / error / heartbeat / protocol / server` 五个模块。
+测试为 crate 内 33 条通过（`tests/{bus,clj_contract,heartbeat,protocol,server}.rs`），
+整个 workspace 337 条通过 + 2 ignored。
+
+- bus：`prefix_topic` 按 `<tenant>.<topic>` 拼接；`InMemoryBus` 复刻本地订阅计数，
+  首订阅打开、末退订关闭，退订幂等；发布补逻辑 `:topic`，慢订阅丢弃，关闭的发送端自动清理。
+- protocol：解码 `subscribe-team`/`subscribe-file`/`unsubscribe-file`/`pointer-update`/
+  `broadcast`/`keepalive`；id 必须是 Transit UUID；team 订阅经 `AccessControl` 解析组织并
+  同时订阅组织 topic；open 订阅 profile 与 zero topic；join/leave/presence/disconnect 与
+  pointer 的发送者字段按 `websocket.clj` 补齐；本 session 消息回环过滤。
+- server：`/ws/notifications?session-id=<uuid>` 的查询参数校验、401 鉴权边界、
+  RFC 6455 accept key、101 响应与 `hyper::upgrade` 接线；升级后由
+  `tokio-tungstenite` 读写，文本帧走 Transit verbose；入站上限 1 MiB/消息、256 KiB/帧。
+- heartbeat：8 字节大端序号；profile 16、scope 64、输出/输入 64、5 秒、最多 3 个未答
+  ping；超时用 Clojure 的关闭码 8802。`clj_contract` 锁定路由、tenant 前缀、缓冲与消息类型。
+- 明确未做：真实 Redis `RedisBus` 适配器、浏览器到真实 Redis 的端到端联调。设计边界见
+  `crates/ws/tests/DESIGN.md`。
 
 ### M8 — `rpc` 只读命令承接：**本阶段不交付**
 
@@ -341,13 +379,18 @@ M0 ▓ → M1 ▓▓▓（关键路径）→ M2 ▓▓ ∥ M3 ▓▓▓ → M4 �
 
 ## 9. 下一步
 
-M0–M5 已完成（2026-11-24）。M1：103 条语料、round-trip 1000 例、畸形输入与零 panic；
+M0–M7 已完成（2026-11-24）。M1：103 条语料、round-trip 1000 例、畸形输入与零 panic；
 M2：`errors` 全部状态分支 + verbose transit 应答 + `config` 18 个键与两张源码表对齐；
 M3：`rpc` 的 5 个模块、29 条 oneshot、3 条 `rpc.clj` 契约测试；
 M4：`session` 的 HKDF 键、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie 策略，
 50 条 crate 测试（含 OpenSSL 交叉向量），C1 只差真实 buddy token；
 M5：`storage` 的 metadata 双编码、BLAKE2b 去重、pending→valid 状态机、FS/S3 后端与 GC 纯逻辑，
-45 条 crate 测试 + 1 ignored（真实桶）。下一步 M6 `worker`。C2 真实应答到位后，
+45 条 crate 测试 + 1 ignored（真实桶）；
+M6：`worker` 的 Quartz cron、六态 task 状态机、dispatcher 认领/恢复、runner 重试与五个
+offline handler，67 条 crate 测试；
+M7：`ws` 的 msgbus 前缀/订阅计数、协议多态、presence、心跳、鉴权与 axum WebSocket 路由，
+33 条 crate 测试（协议 10 条），整个 workspace 337 条通过 + 2 ignored。
+本阶段代码交付到此收口；下一步是 devenv 的 live PG/Redis 适配器与 C1–C4 采集。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。
 
 ## 10. 换机器 / devenv 起来之后的采集清单
