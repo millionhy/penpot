@@ -343,7 +343,7 @@ mod tests {
             sso_provider_id: None,
             sso_session_id: None,
         };
-        let claims = SessionClaims::for_session(&identity, Duration::from_secs(30 * 86_400));
+        let claims = SessionClaims::for_session(&identity, Duration::from_hours(720));
         assert_eq!(claims.iat_ms, Some(2_000));
         assert_eq!(claims.exp_ms, Some(1_000 + 30 * 86_400 * 1_000));
 

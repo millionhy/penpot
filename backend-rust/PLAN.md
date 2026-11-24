@@ -1,7 +1,7 @@
 # backend-rust 开发计划（**已批准** · 实现但不接入部署）
 
-本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M4 已完成（2026-11-24），下一步 M5
-`storage`。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
+本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M5 已完成（2026-11-24），下一步 M6
+`worker`。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
 
@@ -227,15 +227,39 @@ DoD：`tower::ServiceExt::oneshot` 测试 ≥20 条（路由、限制、编解�
 DoD 已达成：round-trip、五段任一处篡改均拒绝、错误 alg/enc/kid/ver 拒绝、nonce/tag/密文长度自洽。
 诚实标注：**「与 buddy 逐字节兼容」在 C1 向量到位前不视为完成**；已验证的是 RFC 语义与第二实现互通。
 
-### M5 — `storage`（6–9 人日）
+### M5 — `storage`（✅ 2026-11-24，真实 S3 桶待 devenv）
 
-- T5.1 metadata 闭包 schema（11 bucket + `bucket-requirements` 存在性校验 + legacy `:reference/:upload-id/:chunk-index` 归一化 + verbose-transit 历史形态判定）
-- T5.2 hash 去重语义 + `status/deletion_attempts` 状态机（纯逻辑 + 快照测试）
-- T5.3 `ObjectStore` trait + Fs 实现（`object->relative-path` 规则一致；`x-accel-redirect` 只登记不接线）
-- T5.4 S3 实现（`aws-sdk-s3`，键位对齐 `storage-assets-s3-*` / `objects-storage-*`）；集成测试 `#[ignore]`
-- T5.5 GC 三态（deleted/touched/pending）纯逻辑
+- T5.1 ✅ metadata 闭包 schema（11 bucket + `bucket-requirements` 存在性校验 + legacy `:reference/:upload-id/:chunk-index` 归一化 + verbose-transit 历史形态判定）
+- T5.2 ✅ hash 去重语义 + `status/deletion_attempts` 状态机（纯逻辑 + 快照测试）
+- T5.3 ✅ `ObjectStore` trait + Fs 实现（`object->relative-path` 规则一致；`x-accel-redirect` 只登记不接线）
+- T5.4 ✅ S3 实现（`aws-sdk-s3`，键位对齐 `storage-assets-s3-*` / `objects-storage-*`）；集成测试 `#[ignore]`
+- T5.5 ✅ GC 三态（deleted/touched/pending）纯逻辑
 
 DoD：schema 与 CLJ 版逐条 diff 测试；fake store 单测全覆盖；真实 I/O 待 devenv。
+
+落地（2026-11-24）：`crates/storage` 有 `content / error / fs / gc / metadata / object / path /
+repository / s3 / service / store` 十一个模块。测试为 crate 内 45 条通过 + 1 条 ignored
+（`tests/{metadata,path_and_hash,gc,service,fs_store,s3}.rs`），整个 workspace 237 条通过 + 2 ignored。
+
+- metadata：11 bucket 与 `requirements` 表；必填 `bucket`/`content-type`，未知键拒绝；
+  旧 `reference` 提升为 bucket，空 bucket 回退 reference，最后回退 `file-media-object`；
+  `upload-id`/`chunk-index` 归一化时丢弃；verbose transit 与 plain JSON 双读双写，
+  sniff 只看文档开头，避免值里的 `"~:` 误判。
+- hash：`BLAKE2b-256` + `blake2b:` 前缀；`content`/空串向量与独立 digest 对齐。
+- 生命周期：写入前先校验 bucket 必填键，再插 `pending`、写 blob、提升 `valid`；dedup 只查 valid 且 `deleted_at IS NULL`；
+  `tempfile`/`upload-session` 不去重；命中但 blob 缺失时按同 id 修复；`expired_at == now` 不可读，
+  重复软删返回 false。
+- FS：UUID 路径为 `aa/bb/<剩余 28 hex>`；先写同目录临时文件再 rename，覆盖已有 blob；
+  `file://` URL 与 `x-accel-redirect` 路径规则只登记，不接 HTTP。
+- S3：`aws-config` 默认凭证链 + 显式 region；自定义 endpoint 强制 path-style；
+  读旧 `PENPOT_STORAGE_ASSETS_S3_*` 再读 `PENPOT_OBJECTS_STORAGE_S3_*`；put/head/get/delete/
+  bulk delete（1000 条一批，整批请求失败按全部失败上报）与 presigned GET（`max_age` +
+  `content-disposition`）。
+- GC：pending 24h/100 条、touched 默认 2h/10 条、deleted 25 条、删除失败 7 次放弃并延后 1 天；
+  三条 SQL 常量保留 `FOR UPDATE SKIP LOCKED`；poison metadata 延后 1 天。
+- 依赖：`aws-sdk-s3 1.123` 与 `aws-config 1.8` 声明 Rust 1.91，workspace MSRV 从 1.85 提到 1.91。
+- 明确未做：`sqlx` 仓储/GC 执行器（本阶段没有 live PG）；真实 S3 桶与真实 PG 的集成验证；
+  `x-accel-redirect` 接线。S3 集成测试用 `PENPOT_TEST_S3_BUCKET` + AWS 凭证解锁。
 
 ### M6 — `worker`（6–9 人日）
 
@@ -317,12 +341,13 @@ M0 ▓ → M1 ▓▓▓（关键路径）→ M2 ▓▓ ∥ M3 ▓▓▓ → M4 �
 
 ## 9. 下一步
 
-M0–M4 已完成（2026-11-24）。M1：103 条语料、round-trip 1000 例、畸形输入与零 panic；
+M0–M5 已完成（2026-11-24）。M1：103 条语料、round-trip 1000 例、畸形输入与零 panic；
 M2：`errors` 全部状态分支 + verbose transit 应答 + `config` 18 个键与两张源码表对齐；
 M3：`rpc` 的 5 个模块、29 条 oneshot、3 条 `rpc.clj` 契约测试；
 M4：`session` 的 HKDF 键、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie 策略，
-50 条 crate 测试（含 OpenSSL 交叉向量），C1 只差真实 buddy token。下一步 M5 `storage`：
-metadata 闭包 schema、hash 去重与状态机、`ObjectStore` 的 fs 实现。C2 真实应答到位后，
+50 条 crate 测试（含 OpenSSL 交叉向量），C1 只差真实 buddy token；
+M5：`storage` 的 metadata 双编码、BLAKE2b 去重、pending→valid 状态机、FS/S3 后端与 GC 纯逻辑，
+45 条 crate 测试 + 1 ignored（真实桶）。下一步 M6 `worker`。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。
 
 ## 10. 换机器 / devenv 起来之后的采集清单

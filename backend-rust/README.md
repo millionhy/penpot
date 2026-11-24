@@ -5,7 +5,7 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 ## 当前状态
 
 **M0 工作区基线、M1 `transit`（离线部分）、M2 `errors` + `config`、M3 `rpc` 骨架、
-M4 `session` 完成（2026-11-24）。**
+M4 `session`、M5 `storage`（离线部分）完成（2026-11-24）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -34,6 +34,13 @@ M4 `session` 完成（2026-11-24）。**
   `Comment="Renewal at: …"`、清除写 `Max-Age=0`）。50 条通过 + 1 条 ignored；RFC 3394 三条标准向量，
   另有 `fixtures/gen-jwe-vector.mjs` 用 Node/OpenSSL 生成第二实现向量，编码端逐字节匹配。
   `tests/buddy_vector.rs` 是 C1 钩子（`#[ignore]`，等真实 token）。
+- M5 已有：`crates/storage` 的 11 bucket 闭包 metadata（verbose transit / plain JSON 双读双写，
+  旧 `reference`/`upload-id`/`chunk-index` 归一化）、BLAKE2b-256 内容 hash、`pending → valid`
+  写入状态机、dedup 命中/修复/未命中/跳过、软删除与过期读取、`ObjectStore` trait 的 FS 与 S3
+  实现、GC 三态阈值与三条 `FOR UPDATE SKIP LOCKED` SQL 常量。FS 先写临时文件再原子替换；
+  S3 走 `aws-config` 默认凭证链，读新旧两组 `PENPOT_*_S3_*` 环境变量，presigned GET 支持
+  `max_age` 与 `content-disposition`。45 条通过 + 1 条 ignored（真实 S3 桶）。
+  `sqlx` 仓储与 GC 执行器、真实桶/PG 验证留到有 devenv 时补。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 
@@ -64,7 +71,7 @@ backend-rust/
     ├── config/           ✅ PENPOT_* env + flags（enable-/disable-）
     ├── session/          ✅ JWE a256kw+a256gcm + HKDF-BLAKE2b-512 + claims/verify + cookie
     ├── db/               sqlx 池、kebab→snake 命名、事务包装（运行时查询）
-    ├── storage/          storage_object 闭包 metadata、bucket、去重、GC、fs/s3
+    ├── storage/          ✅ storage_object 闭包 metadata、bucket、去重、GC、fs/s3（S3 真实桶待验）
     ├── worker/           cron、task 状态机、dispatcher 认领、runner 循环
     ├── ws/               msgbus topic/订阅计数、消息多态、axum WebSocket
     └── rpc/              ✅ axum 服务：路由 + 中间件管道 + 命令 Registry（DB-free 骨架）
@@ -73,7 +80,7 @@ backend-rust/
 依赖方向：`rpc → {transit, errors, config, session, db, storage, worker, ws}`，下层互不引用。
 
 顺序（`PLAN.md` §5）：`M0 workspace → M1 transit（关键路径）→ M2 errors+config ∥ M3 rpc(axum) → M4 session
-→ M5 storage → M6 worker → M7 ws`。M0–M4 已完成；`transit` 先做，因为 RPC 请求体、应答体、
+→ M5 storage → M6 worker → M7 ws`。M0–M5 已完成；`transit` 先做，因为 RPC 请求体、应答体、
 `task.props`、session payload 全是 transit。
 
 ## 本地验证（不接 CI）
@@ -89,6 +96,9 @@ make check-offline  # cargo build/test --workspace --offline
 Windows 没有 `make` 时直接跑括号里的 cargo 命令。M0 验收等价于
 `cargo fmt --all --check`、上面的 `clippy`、`cargo test --workspace` 与
 `cargo build --workspace --offline` 全部退出 0。
+
+M5 起依赖 `aws-sdk-s3 1.123` / `aws-config 1.8`，二者声明 Rust 1.91，因此 workspace
+`rust-version` 同步为 1.91。当前本机 rustc 1.98 已验证。
 
 ## 不在范围内
 

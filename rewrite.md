@@ -55,10 +55,10 @@
 | B0.1 | — | 阶段 B 执行计划 | ✅ | `PLAN.md` + `HANDOFF.md`；决策：axum、crate 名无前缀、`transit` 自建 enum、实现但不接入部署 |
 | B0.2 | M0 | Cargo workspace + Makefile | ✅ | 2026-11-24：workspace、`Cargo.lock`、stable 工具链、`.gitignore` 与本地 Makefile 就位；cargo 等价命令全绿，不接 `scripts/ci` |
 | B1 | M1 | `transit` crate | 🔧 | reader/writer/value/cache + 金样本 + malformed/proptest 已落地；T1.6 真实应答语料待 devenv |
-| B2 | M2 | `errors` + `config` crate | ⬜ | `ex-data` → HTTP status/body；`PENPOT_*` env + flags |
-| B3 | M3 | `rpc` crate（axum 骨架） | ⬜ | 三组路由 + 中间件同序 + Registry；本地 `cargo run`，不接 nginx |
-| B4 | M4 | `session` crate | ⬜ | JWE `a256kw`+`a256gcm` + HKDF-BLAKE2b-512；会话查 **`http_session_v2`**（旧表已由 `0155` 删除）；兼容性待 C1 向量 |
-| B5 | M5 | `storage` crate | ⬜ | `storage_object`/bucket/去重/GC；`:fs`/`:s3`；对齐 `backend/src/app/storage` |
+| B2 | M2 | `errors` + `config` crate | ✅ | `ex-data` → HTTP status/body；`PENPOT_*` env + flags；2026-11-24 完成 |
+| B3 | M3 | `rpc` crate（axum 骨架） | ✅ | 三组路由 + 中间件同序 + Registry；本地 `cargo run`，不接 nginx；2026-11-24 完成 |
+| B4 | M4 | `session` crate | ✅ | JWE `a256kw`+`a256gcm` + HKDF-BLAKE2b-512；会话查 **`http_session_v2`**（旧表已由 `0155` 删除）；buddy 兼容性待 C1 向量 |
+| B5 | M5 | `storage` crate | 🔧 | `storage_object`/bucket/去重/GC；`:fs`/`:s3`；离线部分完成，真实 S3 桶/PG 待 devenv |
 | B6 | M6 | `worker` crate | ⬜ | Quartz 6 段 cron、task 状态机、`FOR UPDATE SKIP LOCKED` 认领、Redis `tenant:queue`；`task.props` = **jsonb transit**（不是 Fressian） |
 | B7 | M7 | `ws` crate | ⬜ | axum WebSocket + msgbus topic；RedisBus trait + InMemoryBus（离线测试） |
 | B8 | M8 | `rpc` 只读命令承接 | ⛔ | 前置：C3 DDL + C4 OpenAPI + 补齐 `::sm/result` + 可用 devenv。永久排除：`add-file-transient-changes`/binfile/files 写路径/thumbnails/nitrate（`file.data` blob = Fressian v4/v5，JVM 专有） |
@@ -410,7 +410,8 @@ M5 storage → M6 worker → M7 ws`。`transit` 先做的理由：RPC 请求体�
   `HKDF(HMAC-BLAKE2b-512, salt="tokens", 32B)`；会话状态在 **`http_session_v2`**（旧 `http_session` 已由
   迁移 `0155` 删除）。兼容性验证需真 token 向量（`PLAN.md` §10 C1）。
 - M5 `storage`：对齐 `backend/src/app/storage`（`storage_object` 闭包 metadata、11 canonical bucket、
-  hash 去重、`status/deletion_attempts`、`:fs`/`:s3` + 遗留别名）。
+  hash 去重、`status/deletion_attempts`、`:fs`/`:s3` + 遗留别名）。离线部分已完成：双编码
+  metadata、BLAKE2b-256、`pending → valid`、FS/S3、GC 三态；真实桶与 PG 仓储待 devenv。
 - M6 `worker`：`task.props` = jsonb transit；`FOR UPDATE SKIP LOCKED` + `tenant:queue` + Quartz 6 段 cron；
   17 任务 / 10 条 cron。
 - M7 `ws`：axum WebSocket + msgbus（`profile-id`/`file-id`/team topics/`uuid/zero` 系统 topic）。
@@ -3624,6 +3625,43 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`cargo fmt --all`、`clippy -D warnings`、`test`、`build`、`doc` 全部退出 0；
   workspace 192 例通过 + 1 ignored（session 自身 50 例）。`Cargo.lock` 已更新。
 - 下一步：M5 `storage`——metadata 闭包 schema、hash 去重与状态机、`ObjectStore` 的 fs 实现。
+- 提交：未提交（等用户明确要求）。
+
+---
+
+### 7.102 本轮（2026-11-24，第一百零一批：backend-rust M5 storage）
+
+- 口径：仍是「实现但不接入部署」；不改 `backend/`/`common/`/`docker/`/`scripts/ci`，
+  未获授权不 commit。
+- 新增 `crates/storage` 十一个模块：`content`（BLAKE2b-256 与 `blake2b:` 前缀）、`metadata`
+  （11 bucket 闭包 schema）、`path`（UUID 路径与 FS URL）、`object`（backend/status/row）、
+  `error`、`repository`（trait + 内存 fake）、`service`（写入/去重/读取/软删）、`store`
+  （`ObjectStore` trait）、`fs`、`s3`、`gc`。
+- metadata：verbose transit 与 plain JSON 双读双写，sniff 锚定文档开头的 `{"~:`；必填
+  `bucket`/`content-type`，未知键拒绝；旧 `reference` 提升为 bucket，空 bucket 回退
+  reference，再回退 `file-media-object`；`upload-id`/`chunk-index` 归一化时丢弃；
+  `organization` 要 `organization-id`，`file-data` 要 `file-id` 与 `id`。
+- 生命周期：写入前校验 metadata，再插 `pending`、写 blob、提升 `valid`；普通读取只认 valid 且未过期；
+  dedup 只查 valid、`deleted_at IS NULL`，`tempfile`/`upload-session` 不参与；命中且 blob
+  存在则复用，缺失则按同 id 重写修复；`expired_at == now` 不可读，重复软删返回 false。
+- 后端：FS 用同目录临时文件 + rename 覆盖，UUID 路径 `aa/bb/<剩余 28 hex>`；S3 用
+  `aws-config` 默认凭证链，显式 region，自定义 endpoint 强制 path-style，读旧
+  `PENPOT_STORAGE_ASSETS_S3_*` 再读新 `PENPOT_OBJECTS_STORAGE_S3_*`；bulk delete 每批
+  1000 条，整批请求失败按全部失败上报；presigned GET 支持 `max_age` 与
+  `content-disposition`。
+- GC：pending 24h/100 条、touched 默认 2h/10 条、deleted 25 条、失败 7 次放弃并延后
+  1 天；三条 SQL 常量保留 `FOR UPDATE SKIP LOCKED`；有引用 freeze（清 `touched_at`），
+  无引用 delete；poison metadata 延后 1 天；`file-data-fragment`/`file-change` 在 touched
+  收集器中报错。
+- 依赖与门禁：新增 `async-trait`/`aws-config`/`aws-sdk-s3`/`bytes`/`chrono`/`tempfile`；
+  `aws-sdk-s3 1.123` 与 `aws-config 1.8` 声明 Rust 1.91，workspace MSRV 从 1.85 提到 1.91。
+  同时修掉当前 clippy 新增的 `duration_suboptimal_units` 与 `manual_is_multiple_of` 告警
+  （config/session/transit，仅等价改写）。
+- 验证：`cargo fmt --all`、`clippy -D warnings`、`test`、`build`、`doc` 全部退出 0；
+  workspace 237 条通过 + 2 ignored（storage 45 + 1 ignored；session buddy 向量 1 ignored）。
+- 边界：没有 live PG，`sqlx` 仓储与 GC 执行器未实现；真实 S3 桶集成测试以
+  `PENPOT_TEST_S3_BUCKET` + AWS 凭证解锁；`x-accel-redirect` 只登记路径，不接 HTTP。
+- 下一步：M6 `worker`——Quartz 6 段 cron、task 状态机、dispatcher 与 runner。
 - 提交：未提交（等用户明确要求）。
 
 ---

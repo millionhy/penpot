@@ -18,11 +18,11 @@ use crate::error::{Result, SessionError};
 /// `cf/get :auth-token-cookie-name` default.
 pub const DEFAULT_COOKIE_NAME: &str = "auth-token";
 /// `default-cookie-max-age`: seven days.
-pub const DEFAULT_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+pub const DEFAULT_MAX_AGE: Duration = Duration::from_hours(168);
 /// `default-renewal-max-age`: six hours.
-pub const DEFAULT_RENEWAL_MAX_AGE: Duration = Duration::from_secs(6 * 60 * 60);
+pub const DEFAULT_RENEWAL_MAX_AGE: Duration = Duration::from_hours(6);
 /// `default-cookie-max-age-absolute`: thirty days.
-pub const DEFAULT_ABSOLUTE_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+pub const DEFAULT_ABSOLUTE_MAX_AGE: Duration = Duration::from_hours(720);
 
 /// `SameSite` attribute values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

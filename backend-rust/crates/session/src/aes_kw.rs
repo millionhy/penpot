@@ -23,7 +23,7 @@ type Block = GenericArray<u8, U16>;
 /// `kek` must be 16, 24, or 32 bytes, and `key` must be a multiple of eight
 /// bytes with at least two blocks, as RFC 3394 §2 requires.
 pub(crate) fn wrap(kek: &[u8], key: &[u8]) -> Result<Vec<u8>> {
-    if key.len() < 16 || key.len() % 8 != 0 {
+    if key.len() < 16 || !key.len().is_multiple_of(8) {
         return Err(malformed());
     }
     match kek.len() {
@@ -39,7 +39,7 @@ pub(crate) fn wrap(kek: &[u8], key: &[u8]) -> Result<Vec<u8>> {
 /// A wrong key or a tampered block fails the constant-time IV check and comes
 /// back as [`InvalidReason::IntegrityFailed`].
 pub(crate) fn unwrap(kek: &[u8], wrapped: &[u8]) -> Result<Vec<u8>> {
-    if wrapped.len() < 24 || wrapped.len() % 8 != 0 {
+    if wrapped.len() < 24 || !wrapped.len().is_multiple_of(8) {
         return Err(malformed());
     }
     match kek.len() {

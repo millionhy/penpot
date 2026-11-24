@@ -176,7 +176,7 @@ impl Reader {
     /// `decodeArrayHash`: `["^ ", k1, v1, k2, v2, …]`.
     fn array_map(&mut self, items: &[Json], depth: usize) -> Result<Value> {
         let rest = &items[1..];
-        if rest.len() % 2 != 0 {
+        if !rest.len().is_multiple_of(2) {
             return Err(Error::OddMapEntries(rest.len()));
         }
         let mut map = Map::new();
@@ -362,7 +362,7 @@ fn flat_pairs(tag: &str, rep: Value) -> Result<Vec<(Value, Value)>> {
             })
         }
     };
-    if items.len() % 2 != 0 {
+    if !items.len().is_multiple_of(2) {
         return Err(Error::OddMapEntries(items.len()));
     }
     let count = items.len();

@@ -11,11 +11,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| HEAD（快照时） | `94c38e3634` `:construction: Add backend-rust transit, errors, config and RPC layers` |
-| 工作区 | M0–M3 已提交。M4 `crates/session`、`Cargo.toml`/`Cargo.lock` 与文档改动在工作区。`.g2-tmp/` 未跟踪 |
+| HEAD（快照时） | `316be2733f` `:construction: Add backend-rust session tokens and cookies` |
+| 工作区 | M0–M4 已提交。M5 `crates/storage`、`Cargo.toml`/`Cargo.lock` 与文档改动在工作区。`.g2-tmp/` 未跟踪 |
 | 阶段 F/G | F 已收口；G0–G5 已完成，见 `rewrite.md` §7.92–§7.96 |
-| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；C1/C2 真实向量与应答语料待 devenv |
-| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4；里程碑状态见本文与 `PLAN.md` |
+| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；**M5 🔧（2026-11-24，工作区）**：`storage` 的 metadata、去重状态机、FS/S3、GC 纯逻辑，45 条 + 1 ignored；真实 S3 桶与 PG 仓储待 devenv；C1/C2 真实向量与应答语料待 devenv |
+| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4，§7.102 为 M5；里程碑状态见本文与 `PLAN.md` |
 
 ## 2. 已拍板决策（不要重议，除非用户改口）
 
@@ -57,7 +57,7 @@ aes-kw 0.3.1 / aes-gcm 0.11.1 / hkdf 0.13 / hmac 0.13 / blake2 0.11 / uuid 1.26.
 indexmap 2.14.2 / tracing 0.1.44 / thiserror 2.0.21 / proptest 1.11 / aws-sdk-s3 1.123 / reqwest 0.13.5 /
 base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线构建。依赖只选已验证版本并**提交 `Cargo.lock`**。
 
-**B. 已完成切片 = M0 + M1 的 T1.1–T1.6（离线部分）+ M2 + M3（不需要后端）**
+**B. 已完成切片 = M0 + M1 的 T1.1–T1.6（离线部分）+ M2 + M3 + M4 + M5（不需要后端）**
 
 - M0：workspace（`members = ["crates/*"]`、`[workspace.dependencies]` 锁版）、`rust-toolchain.toml`（用 `stable`，
   别把 channel 钉死到具体小版本）、`.gitignore`（`target/`、`fixtures/online/`）、`backend-rust/Makefile`
@@ -82,6 +82,11 @@ base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线�
   cookie 走 Java 的 RFC 1123（日不补零）。`fixtures/gen-jwe-vector.mjs` 产 Node/OpenSSL 向量，
   Rust 编码端逐字节匹配、解码端解出 claims；`tests/buddy_vector.rs` 是 C1 钩子（`#[ignore]`）。
   50 条 crate 测试；workspace 全量 192 条通过 + 1 ignored。真实 buddy 向量仍待 C1。
+- M5：`crates/storage` 的 `content / error / fs / gc / metadata / object / path / repository /
+  s3 / service / store`。11 bucket 闭包 metadata 与双编码、BLAKE2b-256、先 `pending` 后 `valid`
+  的写入顺序、dedup hit/repair/miss/skip、软删除与过期读取、FS 原子替换、S3 环境变量与 presign、
+  GC 三态阈值与 SQL 常量。crate 45 条通过 + 1 ignored；workspace 237 条通过 + 2 ignored。
+  真实 S3 桶用 `PENPOT_TEST_S3_BUCKET` + AWS 凭证解锁；`sqlx` 仓储与 GC 执行器留到 live PG。
 
 **C. devenv 起来后采集（一次采完，回填 `fixtures/`）**
 
@@ -132,11 +137,11 @@ base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线�
   清除只写 `Path=/` + `Max-Age=0`。RFC1123 的日号 CLJ 不补零（`Sun, 5 Nov …`），CLJS 补零
 - 会话表是 **`http_session_v2`**（`0155-drop-http-session-table.sql` 已删旧表）——旧文档写 `http_session` 是过期措辞
 
-**worker / storage（后续里程碑）**
+**worker / storage**
 
 - `task.props` 是 **jsonb + transit**（`db/tjson`），**不是 Fressian** → worker 只需 transit
 - dispatcher `FOR UPDATE SKIP LOCKED` + `tenant:queue` RPUSH + 丢失重排；runner BLPOP + parallelism + `::retry`；17 任务 / 10 条 Quartz 6 段 cron
-- `storage_object`：统一闭包 metadata schema、11 canonical bucket、hash 去重、`status/deletion_attempts`、`:fs`/`:s3` + 遗留别名 `:assets-fs`/`:assets-s3`
+- `storage_object`：统一闭包 metadata schema、11 canonical bucket、hash 去重、`status/deletion_attempts`、`:fs`/`:s3` + 遗留别名 `:assets-fs`/`:assets-s3`；Rust 侧已落 `crates/storage`（真实桶/PG 待验）
 - **file data blob = Fressian v4/v5（`app.common.fressian`，JVM 专有，无 Rust 实现）→ 本阶段不碰**；
   因此 `add-file-transient-changes`、binfile、files 写路径、thumbnails、nitrate 全列入 M8 永久排除
 
@@ -167,3 +172,5 @@ base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线�
    需要一次联网拉依赖的批准，或推迟到 C2 采集同批处理。
 
 已定（M0）：`Cargo.lock` 入库；`rust-toolchain.toml` 用 `stable`；`rewrite.md` 保留 B/M 双编号。
+
+M5 起 workspace `rust-version = "1.91"`：`aws-sdk-s3 1.123` 与 `aws-config 1.8` 的声明下限。

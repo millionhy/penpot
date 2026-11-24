@@ -643,11 +643,11 @@ mod tests {
         assert_eq!(config.redis_uri(), "redis://valkey/2");
         assert_eq!(
             config.auth_token_cookie_max_age(),
-            Some(Duration::from_secs(604_800))
+            Some(Duration::from_hours(168))
         );
         assert_eq!(
             config.auth_token_cookie_max_age_absolute(),
-            Some(Duration::from_secs(2_592_000))
+            Some(Duration::from_hours(720))
         );
         assert_eq!(config.objects_storage_backend(), "s3");
         assert_eq!(config.objects_storage_s3_bucket(), Some("penpot"));

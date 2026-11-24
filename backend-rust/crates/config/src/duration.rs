@@ -92,18 +92,18 @@ mod tests {
 
     #[test]
     fn parses_the_units_used_by_penpot_config() {
-        assert_eq!(parse_duration("15m"), Ok(Duration::from_secs(900)));
-        assert_eq!(parse_duration("3h"), Ok(Duration::from_secs(10_800)));
-        assert_eq!(parse_duration("168h"), Ok(Duration::from_secs(604_800)));
-        assert_eq!(parse_duration("24h"), Ok(Duration::from_secs(86_400)));
+        assert_eq!(parse_duration("15m"), Ok(Duration::from_mins(15)));
+        assert_eq!(parse_duration("3h"), Ok(Duration::from_hours(3)));
+        assert_eq!(parse_duration("168h"), Ok(Duration::from_hours(168)));
+        assert_eq!(parse_duration("24h"), Ok(Duration::from_hours(24)));
         assert_eq!(parse_duration("30s"), Ok(Duration::from_secs(30)));
         assert_eq!(parse_duration("500ms"), Ok(Duration::from_millis(500)));
     }
 
     #[test]
     fn parses_combinations_and_fractions() {
-        assert_eq!(parse_duration("1h30m"), Ok(Duration::from_secs(5_400)));
-        assert_eq!(parse_duration("1.5h"), Ok(Duration::from_secs(5_400)));
+        assert_eq!(parse_duration("1h30m"), Ok(Duration::from_mins(90)));
+        assert_eq!(parse_duration("1.5h"), Ok(Duration::from_mins(90)));
     }
 
     #[test]

@@ -183,7 +183,7 @@ fn session_claims_expire_from_created_at() {
         sso_provider_id: None,
         sso_session_id: None,
     };
-    let claims = SessionClaims::for_session(&identity, Duration::from_secs(30 * 86_400));
+    let claims = SessionClaims::for_session(&identity, Duration::from_hours(720));
     let encoded = token().encode_at(&claims, NOW).unwrap();
     let verified = token()
         .verify(&encoded, Some(AUTHENTICATION_ISSUER), NOW)

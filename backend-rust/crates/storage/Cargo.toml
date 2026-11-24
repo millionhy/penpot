@@ -1,0 +1,28 @@
+[package]
+name = "storage"
+description = "Penpot storage metadata, object lifecycle, filesystem and S3 backends"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+aws-config.workspace = true
+aws-sdk-s3.workspace = true
+blake2.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+hex.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+transit = { path = "../transit" }
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
