@@ -50,7 +50,10 @@ function rectShape(extra: Record<string, unknown> = {}): WorkspaceShape {
 function patchOf(change: UpdateFileModObjChange | null): Record<string, unknown> {
   if (change === null) return {};
   const patch: Record<string, unknown> = {};
-  for (const operation of change.operations) patch[operation.attr] = operation.val;
+  for (const operation of change.operations) {
+    if (operation.type !== "set") continue;
+    patch[operation.attr] = operation.val;
+  }
   return patch;
 }
 

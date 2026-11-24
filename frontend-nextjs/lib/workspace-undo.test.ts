@@ -389,6 +389,25 @@ describe("applyUpdateChanges", () => {
     expect(next[FRAME_A]).toBe(before[FRAME_A]);
   });
 
+  it("skips the component-sync operations of a remote mod-obj", () => {
+    const before = model();
+    const next = applyUpdateChanges(before, [
+      {
+        type: "mod-obj",
+        "page-id": PAGE_ID,
+        id: RECT,
+        operations: [
+          { type: "set-touched", touched: ["fill"] },
+          { type: "set-remote-synced", "remote-synced": false },
+          { type: "set", attr: "x", val: 30 },
+        ],
+      },
+    ]);
+
+    expect(next[RECT].x).toBe(30);
+    expect("undefined" in next[RECT]).toBe(false);
+  });
+
   it("deletes an attribute on a nil set and treats a missing one as a no-op", () => {
     const before = model();
     const flagged = applyUpdateChanges(before, [

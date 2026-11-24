@@ -142,7 +142,11 @@ export function invertChanges(
         if (shape === undefined || shape === null) break;
         const operations: UpdateFileSetOperation[] = [];
         for (let op = change.operations.length - 1; op >= 0; op -= 1) {
-          const attr = change.operations[op].attr;
+          const operation = change.operations[op];
+          // The component-sync operations have no per-attribute inverse in
+          // this page model; only the set operations are inverted.
+          if (operation.type !== "set") continue;
+          const attr = operation.attr;
           // A missing (or nil) attribute inverts to a nil val, i.e. a
           // dissoc: the F9.3 companions add hide-in-viewer and
           // component-root this way, and their undo must remove them.
@@ -304,6 +308,10 @@ export function applyUpdateChanges(
         const updated: WorkspaceShape = { ...shape };
         let changed = false;
         for (const operation of change.operations) {
+          // A remote mod-obj may carry component-sync operations
+          // (assign / set-touched / set-remote-synced). This model applies
+          // the attribute sets only; the others have no shape field here.
+          if (operation.type !== "set") continue;
           if (operation.val === null || operation.val === undefined) {
             if (!(operation.attr in updated)) continue;
             delete updated[operation.attr];

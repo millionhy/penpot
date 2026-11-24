@@ -376,6 +376,7 @@ import {
   type WorkspaceState,
 } from "@/lib/workspace-store";
 import { planRemoteChanges, type RemoteFileChange } from "@/lib/workspace-collab";
+import { applyPageChanges } from "@/lib/workspace-file-change";
 import { createPointerThrottle, sendPresencePointer } from "@/lib/workspace-presence";
 import {
   clientToWorld,
@@ -1642,6 +1643,31 @@ function WorkspaceWasmCanvasImpl({
           });
           if (kept.length !== selection.length) setSelection(kept);
         }
+        // F8.2/G5.3: page-level changes keep the sitemap's file slice in
+        // step. They never rewrite the open page's objects, so a rename or a
+        // page order change leaves the canvas alone. Deleting the open page
+        // moves pageId to the first remaining page in the same store write,
+        // so no render sees a dangling page id; the load effect then reads
+        // that page and resets the per-page undo stack.
+        if (plan.pageChanges.length > 0) {
+          const currentFile = getWorkspaceState().file;
+          if (currentFile !== null) {
+            const nextFile = applyPageChanges(currentFile, plan.pageChanges, {
+              root: before[ZERO_UUID] ?? null,
+            });
+            if (nextFile !== currentFile) {
+              const patch: Partial<WorkspaceState> = { file: nextFile };
+              const openPageId = pageIdRef.current;
+              if (
+                openPageId !== null &&
+                !(nextFile.data.pages ?? []).includes(openPageId)
+              ) {
+                patch.pageId = (nextFile.data.pages ?? [])[0] ?? null;
+              }
+              setWorkspaceState(patch);
+            }
+          }
+        }
         // The message carries the values after the commit (the HTTP response
         // of the author carries the ones before it), so they only advance.
         revnRef.current = Math.max(revnRef.current, event.revn);
@@ -1732,11 +1758,17 @@ function WorkspaceWasmCanvasImpl({
     // guards. The session id is not minted here: config.sessionId must match
     // the RPC header and the socket URL for the server to filter this
     // client's own broadcasts.
+    // A remote page change can touch the load key (a background edit, or a
+    // delete of the open page) without advancing file.revn, which stays the
+    // value of the last full load. Keep the guard monotonic for the same
+    // file, so the reload does not rewind the revn/vern a later commit
+    // sends; a real file switch starts from that file's values.
+    const sameFile = fileIdRef.current === fileId;
     fileIdRef.current = fileId;
     pageIdRef.current = pageId;
     canEditRef.current = canvasCanEdit;
-    revnRef.current = canvasRevn;
-    vernRef.current = canvasVern;
+    revnRef.current = sameFile ? Math.max(revnRef.current, canvasRevn) : canvasRevn;
+    vernRef.current = sameFile ? Math.max(vernRef.current, canvasVern) : canvasVern;
 
     void (async () => {
       try {

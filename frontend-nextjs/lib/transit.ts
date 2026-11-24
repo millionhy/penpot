@@ -436,7 +436,23 @@ export interface UpdateFileSetOperation {
   type: "set";
   attr: string;
   val: unknown;
+  "ignore-touched"?: boolean;
+  "ignore-geometry"?: boolean;
 }
+
+// The component-sync operations of schema:operation. The shell does not
+// apply them yet, but a remote mod-obj may carry one beside its set
+// operations, so the type and the validator must accept them. attr / val
+// are declared as undefined so code that walks the union uniformly reads
+// undefined instead of failing to compile.
+export interface UpdateFileComponentOperation {
+  type: "assign" | "set-touched" | "set-remote-synced";
+  attr?: undefined;
+  val?: undefined;
+  [key: string]: unknown;
+}
+
+export type UpdateFileOperation = UpdateFileSetOperation | UpdateFileComponentOperation;
 
 // {:type :mod-obj :page-id <uuid> :id <uuid> :operations [<set>...]}:
 // replaces attributes of one shape.
@@ -444,7 +460,7 @@ export interface UpdateFileModObjChange {
   type: "mod-obj";
   "page-id": string;
   id: string;
-  operations: UpdateFileSetOperation[];
+  operations: UpdateFileOperation[];
 }
 
 // {:type :add-obj :id <uuid> :obj <shape> :page-id <uuid> :frame-id <uuid>
@@ -506,19 +522,29 @@ export interface UpdateFileDelObjChange {
 // {:type :add-page :id <uuid> :name <string>}: adds an empty page (F9.13).
 // The backend process-change :add-page builds ctp/make-empty-page from the
 // name, so the change carries no objects and the shell clones the root it
-// already knows for its local model.
+// already knows for its local model. An import flow may send the whole
+// :page map instead (id + name + objects); the shell only reads that form
+// from the wire and never writes it.
 export interface UpdateFileAddPageChange {
   type: "add-page";
   id: string;
-  name: string;
+  name?: string;
+  page?: Readonly<Record<string, unknown>>;
 }
 
-// {:type :mod-page :id <uuid> :name <string>}: renames a page. Only the name
-// is sent; the background and pixel-grid keys stay untouched.
+// {:type :mod-page :id <uuid> ...}: changes page attributes. Every attribute
+// is optional; an absent key keeps the current value and an explicit null
+// removes it (background, background-token, pixel-grid-color and
+// pixel-grid-opacity). The shell writes the name today; the other attrs are
+// consumed from remote changes.
 export interface UpdateFileModPageChange {
   type: "mod-page";
   id: string;
-  name: string;
+  name?: string;
+  background?: string | null;
+  "background-token"?: string | null;
+  "pixel-grid-color"?: string | null;
+  "pixel-grid-opacity"?: number | null;
 }
 
 // {:type :del-page :id <uuid>}: removes the page and its pages-index entry.
@@ -527,10 +553,20 @@ export interface UpdateFileDelPageChange {
   id: string;
 }
 
+// {:type :mov-page :id <uuid> :index <int>}: relocates a page. process-change
+// :mov-page runs d/insert-at-index, so the index counts the list after the id
+// leaves it and an out-of-range index appends or prepends.
+export interface UpdateFileMovPageChange {
+  type: "mov-page";
+  id: string;
+  index: number;
+}
+
 export type UpdateFilePageChange =
   | UpdateFileAddPageChange
   | UpdateFileModPageChange
-  | UpdateFileDelPageChange;
+  | UpdateFileDelPageChange
+  | UpdateFileMovPageChange;
 
 export type UpdateFileChange =
   | UpdateFileAddObjChange
@@ -730,6 +766,12 @@ export function encodeAttrValue(value: unknown): unknown {
 
 function encodeUpdateChange(change: UpdateFileChange): unknown {
   if (change.type === "add-page") {
+    // The writer only builds the empty-page form. A page-carrying add-page
+    // arrives from imports; encoding a whole page map here would need the
+    // shape and objects-map writers, which the shell does not drive.
+    if (typeof change.name !== "string") {
+      throw new Error("add-page needs a name; the page-carrying form is read-only");
+    }
     return keywordMap({
       type: keyword("add-page"),
       id: uuid(change.id),
@@ -741,12 +783,23 @@ function encodeUpdateChange(change: UpdateFileChange): unknown {
       type: keyword("mod-page"),
       id: uuid(change.id),
       name: change.name,
+      background: change.background,
+      "background-token": change["background-token"],
+      "pixel-grid-color": change["pixel-grid-color"],
+      "pixel-grid-opacity": change["pixel-grid-opacity"],
     });
   }
   if (change.type === "del-page") {
     return keywordMap({
       type: keyword("del-page"),
       id: uuid(change.id),
+    });
+  }
+  if (change.type === "mov-page") {
+    return keywordMap({
+      type: keyword("mov-page"),
+      id: uuid(change.id),
+      index: change.index,
     });
   }
   if (change.type === "add-obj") {
@@ -793,7 +846,14 @@ function encodeUpdateChange(change: UpdateFileChange): unknown {
     type: keyword("mod-obj"),
     "page-id": uuid(change["page-id"]),
     id: uuid(change.id),
-    operations: change.operations.map(encodeSetOperation),
+    operations: change.operations.map((operation) => {
+      // The shell writes attribute sets; a component-sync operation has no
+      // encoder here, so reject it instead of writing a half-valid change.
+      if (operation.type !== "set") {
+        throw new Error(`mod-obj operation ${operation.type} is not a shell write form`);
+      }
+      return encodeSetOperation(operation);
+    }),
   });
 }
 

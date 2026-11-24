@@ -996,4 +996,42 @@ describe("encodeUpdateFile page changes", () => {
     const params = pageParams();
     expect(decodeTransit<UpdateFileParams>(encodeUpdateFile(params))).toEqual(params);
   });
+
+  it("writes the remaining mod-page attributes and the mov-page index", () => {
+    const params: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 12,
+      vern: 3,
+      changes: [
+        {
+          type: "mod-page",
+          id: PAGE_ID,
+          name: "Home",
+          background: "#ffffff",
+          "background-token": "surface.base",
+          "pixel-grid-color": null,
+          "pixel-grid-opacity": 0.35,
+        },
+        { type: "mov-page", id: PAGE_ID, index: 2 },
+      ],
+    };
+    const doc = encodeUpdateFile(params);
+    expect(doc).toContain('"~:background","#ffffff"');
+    expect(doc).toContain('"~:background-token","surface.base"');
+    expect(doc).toContain('"~:pixel-grid-opacity",0.35');
+    expect(doc).toContain('"~:mov-page"');
+    expect(decodeTransit<UpdateFileParams>(doc)).toEqual(params);
+  });
+
+  it("refuses to write an add-page that carries a page map", () => {
+    const params: UpdateFileParams = {
+      id: FILE_ID,
+      "session-id": SESSION_ID,
+      revn: 11,
+      vern: 3,
+      changes: [{ type: "add-page", id: PAGE_ID, page: { id: PAGE_ID } }],
+    };
+    expect(() => encodeUpdateFile(params)).toThrow(/read-only/);
+  });
 });

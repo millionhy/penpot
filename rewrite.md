@@ -9,7 +9,7 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G4 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换、G4 渲染引擎移植与旧前端删除，G4.7 见 7.92），G5 进行中（G5.1 颜色镜像见 7.93，G5.2 几何/路径镜像见 7.94）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G4 完成（G1 新端入口、G2 exporter TS、G3 library TS 与构建切换、G4 渲染引擎移植与旧前端删除，G4.7 见 7.92），G5 进行中（G5.1 颜色镜像见 7.93，G5.2 几何/路径镜像见 7.94，G5.3 schema/文件变更适配见 7.95）；阶段 B（backend-rust）**计划已批准**，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
 | 最后更新 | 2026-11-24 |
@@ -87,7 +87,7 @@
 | G2 | exporter TS 重写（P1） | ✅ | 2026-11-19：`exporter/src-ts/` 全量取代 CLJS，CLJS 树与 shadow-cljs 已删（G2.1–G2.10，7.65–7.78）；本机联调对拍 svg/png/pdf |
 | G3 | library TS 重写（P2） | ✅ | 2026-11-19：G3.1 基础层、G3.2 导出、G3.3a tokens、G3.3b bool、G3.4 构建切换全部完成（7.79–7.83）。`library/src-ts/` 21 文件全量取代 CLJS，esbuild 产出 `target/library/penpot.js`（版本由 `package.json` 注入），72 例通过；`out`/`out2` 与 tokens 金样本逐文档一致，四种布尔与 1.2.0-RC1 对拍（difference 只差两段零长曲线）；CLJS 源码、shadow-cljs 与 cljfmt 管线已删 |
 | G4 | frontend 旧端收尾（P3） | ✅ | 2026-11-23：G4.1 引擎核心（7.84）、G4.2 画布与视口（7.85）、G4.3 上传与 modifiers（7.86）、G4.4 文本/图片/svg-derived（7.87）、G4.5 viewer 切线（7.88/7.89）、G4.6a 缩略图 worker 切线（7.90）、G4.6b workspace 画布切线（7.91）、G4.7 删 CLJS 树与前端产物目标（7.92）完成。新端三个画布运行时（workspace/viewer/缩略图）都走 TS 引擎；旧 `frontend/src`/`test`、Shadow、Storybook、Playwright 与静态资源已删 |
-| G5 | common 前端分支镜像（P4） | 🔧 | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管。G5.1 `types.color` 镜像完成（7.93），G5.2 几何/路径镜像与调用点收拢完成（7.94）；schema 与文件变更分片待做 |
+| G5 | common 前端分支镜像（P4） | 🔧 | 仅前端/Node 侧 TS 等价实现；后端 Clojure 分支保留至 backend-rust 接管。G5.1 `types.color` 镜像完成（7.93），G5.2 几何/路径镜像与调用点收拢完成（7.94），G5.3 schema 基础谓词与页面变更适配完成（7.95）；完整 change 族仍随消费者后补 |
 
 ### 支撑任务（阶段 B 契约前置，只读后端，可与阶段 F 并行）
 
@@ -432,7 +432,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 4. **G4 / P3 frontend 旧端收尾**：按命名空间切片，不按目录一次性重写。每片迁移后删除旧 `.cljs` 与对应测试，禁止新增 CLJS；已由新端覆盖的 `auth`/`dashboard`/`settings`/`viewer`/`inspect`/`workspace` 主体逐项核对后删除。最后停 `shadow-cljs`、移除旧 `frontend/src` 与 CLJS lint/test 入口。
    - 前置结论（2026-11-19）：新端 viewer/workspace/缩略图 worker 经 `lib/render-wasm/bridge.ts` 加载未入库的 `public/js/main.js` 与 `shared.js`，并通过 `$APP` 调用 `app.render_wasm.api/*`；直接删 `frontend/src` 会失去可重建的运行时。因此先移植渲染引擎到 `frontend-nextjs/lib/render-wasm/engine/`，再删 CLJS。
    - 分片：G4.1 引擎核心（模块生命周期/内存/调用/枚举，✅ 见 7.84）→ G4.2 画布与视口（`init-canvas-context`、`initialize-viewport`、`resize-canvas`、`clear-canvas`、`set-view-box`、渲染循环与 rulers，✅ 见 7.85）→ G4.3 形状上传与 modifiers（`set-objects` 批量上传、结构/几何 modifier，✅ 见 7.86）→ G4.4 字体/文本/图片与 svg-derived（✅ 见 7.87）→ G4.5 viewer 整片切换（✅ 见 7.88/7.89）→ G4.6a 缩略图 worker（✅ 见 7.90）→ G4.6b workspace 画布切线（✅ 见 7.91）→ G4.7 删 CLJS 树与前端产物目标（✅ 见 7.92）。
-5. **G5 / P4 common 前端分支镜像**：只对前端/Node 用到的 `common` 逻辑做 TS 等价实现（类型、几何、schema、file-change 已部分由 F1.2 完成）；不改 `.cljc` 的 Clojure 分支。等 backend-rust 接管后再整体去掉 Clojure 依赖。分片：G5.1 颜色工具与 `inspect-css` 接线（✅ 见 7.93）→ G5.2 几何/路径与调用点收拢（✅ 见 7.94）→ G5.3 schema 与文件变更适配。
+5. **G5 / P4 common 前端分支镜像**：只对前端/Node 用到的 `common` 逻辑做 TS 等价实现（类型、几何、schema、file-change 已部分由 F1.2 完成）；不改 `.cljc` 的 Clojure 分支。等 backend-rust 接管后再整体去掉 Clojure 依赖。分片：G5.1 颜色工具与 `inspect-css` 接线（✅ 见 7.93）→ G5.2 几何/路径与调用点收拢（✅ 见 7.94）→ G5.3 schema 与页面变更适配（✅ 见 7.95）。
 
 **范围边界**
 
@@ -465,7 +465,7 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
         | F6 viewer | F7 plugins | F8 ws | F9 workspace
 阶段 B  ▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  计划已批准（不接入部署）；M0/M1 待开工
         M0 workspace | M1 transit | M2 errors+config | M3 rpc(axum) | M4 session | M5 storage | M6 worker | M7 ws
-阶段 G  █████████████████████░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）；G2 exporter 全量 TypeScript（7.65–7.78）；G3 library 全量 TS（7.79–7.83）；G4 渲染引擎移植与旧前端删除（7.84–7.92）；G5.1 颜色镜像（7.93）；G5.2 几何/路径镜像（7.94）
+阶段 G  █████████████████████░░░░░░░░░░░░░░░░░░░░  G0 完成（口径/盘点）；G1 收口（integrations、subscribe-nitrate、release notes、导出入口）；G2 exporter 全量 TypeScript（7.65–7.78）；G3 library 全量 TS（7.79–7.83）；G4 渲染引擎移植与旧前端删除（7.84–7.92）；G5.1 颜色镜像（7.93）；G5.2 几何/路径镜像（7.94）；G5.3 schema/文件变更适配（7.95）
         G1 入口 4/4（render-sprite 死路由剔除） | G2 exporter | G3 library | G4 frontend ✅ | G5 common
 支撑    ▒▒▒▒▒▒▒▒  S1 RPC 清单 → F1.2 ; S2 OpenAPI ⛔ ; S3 DB schema → B5/B6 ; S4 transit 金样本 → B1 ; S5 JWE 向量 ⛔
 图例： █ 进行中/完成　▒ 可并行　░ 未开始
@@ -3467,6 +3467,19 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 验证：`pnpm exec vitest run lib/common/geom lib/common/path lib/workspace-path.test.ts lib/render-wasm/engine/path.test.ts lib/render-wasm/engine/bounds.test.ts` 0（8 文件 104 例）；`pnpm run typecheck` 0；`pnpm run lint` 0（余既有 warning）；`pnpm test` 0（137 文件 2,599 例，新增 51 例）；`pnpm build` 0（全部 34 个静态页生成）。
 - 边界：本轮只镜像纯几何/路径函数，不改 `backend/`，不修改 `CHANGES.md`。schema 与 file-change 的读写适配、以及仍依赖文件数据形状的 common 接口留到 G5.3。
 - 下一步：G5.3 schema 与文件变更适配——先盘点前端/Node 实际消费的 `common.schema` 与 `file-change` 入口，按调用面补 TS 类型守卫、变更构造与反演测试，再收口 README 与阶段状态。
+
+### 7.95 本轮（2026-11-24，第九十四批：G5.3 schema 与文件变更适配）
+
+- 口径：G5 第三片。只补前端/Node 实际消费的 `app.common.schema` 基础谓词与 `app.common.files.changes` 的页面变更面；components、tokens、media、guide、flow 等完整 change 族不移植，`.cljc` 与后端分支不动。
+- 新增 schema 镜像：`lib/common/schema.ts` 覆盖 UUID、`Integer/MAX_VALUE` 边界的 safe-int/safe-number、非空文本、email、one-of 与 map 判定。`workspace-file-change.ts` 的变更校验复用这些谓词。
+- 新增变更适配：`lib/workspace-file-change.ts` 在 socket 边界验证整条 change vector——已知类型深检 UUID、页码、操作、枚举与页面属性，未知类型保留为可跳过项，避免别的客户端提交的组件/令牌/媒体变更被判成坏消息。形状变更的 `page-id`/`component-id` 按 schema 记为可选，组件目标的变更校验后由页面过滤器跳过；`mod-obj` 的 assign/set-touched/set-remote-synced 操作被接受，应用器只消费 set。`applyPageChanges` 纯函数应用 `add-page`/`mod-page`/`del-page`/`mov-page`，复用 `lib/workspace-pages` 的 file 重写。
+- 页面模型：`workspace-pages.ts` 新增 `WorkspacePagePatch`、`withPageModified`、`withPageMoved`；`withPageRenamed` 委托前者。`mod-page` 区分“缺省保留”和“显式 null 删除”，`mov-page` 按 `d/insert-at-index` 的移除后索引定位，越界按 split-at 追加/前置。
+- 接线：`workspace-collab.ts` 的 `classifyMessage` 先校验再投递；`isPageChange` 移入变更模块并纳入 `mov-page`；workspace canvas 的 `applyRemoteFileChange` 把 `plan.pageChanges` 写入 store 的 file 切片，远端删除当前页时在同一次 store 写入切到剩余首页。load effect 的 revn/vern 守卫改为同文件单调 max，页面重载不会回退版本号。
+- Transit：`UpdateFileModPageChange` 扩为可选 `name`/`background`/`background-token`/`pixel-grid-color`/`pixel-grid-opacity`，新增 `UpdateFileMovPageChange`；writer 支持 `mov-page` 与 `mod-page` 全属性。携带整页 map 的 `add-page` 只读，shell 写入时明确报错。
+- 语义与偏差：重复 `add-page` 视为 no-op（避免重放擦掉本地页）；未知 id 的 `mod-page`/`mov-page` 忽略；open page 的 background 仍走 canvas load key 重载（引擎需要新颜色），其余页面变更不重载画布。
+- 验证：聚焦 6 文件 139 例；新增 `common/schema.test.ts`（9 例）与 `workspace-file-change.test.ts`（23 例），并在 pages/collab/undo/transit 补页面与操作类型用例；`pnpm run typecheck` 0；`pnpm run lint` 0（仅既有 warning）；`pnpm test` 0（139 文件 2,638 例）；`pnpm build` 0。
+- 边界：不改 `backend/`，不修改 `CHANGES.md`。浏览器冒烟未做（dev 栈未运行）；G5 剩余完整 change 族与 common 读写接口按消费者后补。
+- 下一步：G5 收口盘点——列清 `lib/common/` 的调用面与剩余 common 依赖，再转阶段 B（backend-rust）或补 Next 生产部署片。
 
 ---
 

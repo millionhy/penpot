@@ -25,6 +25,7 @@
 import { config } from "@/lib/config";
 import { ZERO_UUID } from "@/lib/file-data";
 import type { UpdateFileChange, UpdateFilePageChange } from "@/lib/transit";
+import { isPageChange, validateFileChanges } from "@/lib/workspace-file-change";
 import {
   createWorkspaceSocket,
   workspaceSocketUri,
@@ -176,9 +177,20 @@ export function classifyMessage(raw: unknown, scope: CollabScope): CollabNotice 
       if (!Array.isArray(changes)) {
         return { kind: "malformed", reason: "file-change without changes" };
       }
+      // Validate at the socket boundary: the canvas applies the vector
+      // directly, and a malformed entry would throw in the render path. The
+      // check keeps unknown change types, which the appliers skip.
+      const validation = validateFileChanges(changes);
+      if (!validation.ok) {
+        const first = validation.errors[0];
+        return {
+          kind: "malformed",
+          reason: `file-change change ${first.index}: ${first.reason}`,
+        };
+      }
       return {
         kind: "file-change",
-        event: { fileId, revn, vern, changes: changes as UpdateFileChange[] },
+        event: { fileId, revn, vern, changes: validation.changes },
       };
     }
     case "file-deleted": {
@@ -256,21 +268,12 @@ export function classifyMessage(raw: unknown, scope: CollabScope): CollabNotice 
 export interface RemoteChangePlan {
   // The shape changes of the open page, in wire order.
   changes: UpdateFileChange[];
-  // The page-level changes (add-page / mod-page / del-page). The canvas holds
-  // one page, so it drops them; the file slice that reacts to them is later.
+  // The page-level changes (add-page / mod-page / del-page / mov-page). The
+  // canvas applies these to the store's file slice, never to its open page
+  // objects (lib/workspace-file-change).
   pageChanges: UpdateFilePageChange[];
   // Shape changes of other pages; a commit may carry several pages at once.
   skipped: number;
-}
-
-function isPageChange(
-  change: UpdateFileChange,
-): change is UpdateFilePageChange {
-  return (
-    change.type === "add-page" ||
-    change.type === "mod-page" ||
-    change.type === "del-page"
-  );
 }
 
 // The page filter of dch/commit: the model of this canvas is one page, so a

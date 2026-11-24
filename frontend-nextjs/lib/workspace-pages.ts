@@ -11,9 +11,9 @@
 // page / mod-page / del-page); lib/transit encodes them for update-file.
 //
 // Deviations from the CLJS original, documented:
-// - Only add, rename and delete: the CLJS also relocates pages by drag
-//   (:mov-page) and creates separator pages, which the sitemap slice leaves
-//   for a later pass.
+// - The sitemap has no drag-to-relocate UI, but withPageMoved exists for the
+//   remote :mov-page application (lib/workspace-file-change). Separator
+//   pages still wait for a later pass.
 // - A page change is committed outside the undo stack: the F9.7 stack
 //   inverts shape changes from the model and has no page inverse, so the
 //   sidebar sends these changes with recordUndo false.
@@ -31,6 +31,17 @@ import type {
 export interface WorkspacePageInfo {
   id: string;
   name: string;
+}
+
+// The page attributes a :mod-page change may carry. A null value removes the
+// attribute, matching the explicit-nil half of changes.cljc process-change
+// :mod-page; an absent key keeps the current value.
+export interface WorkspacePagePatch {
+  name?: string;
+  background?: string | null;
+  "background-token"?: string | null;
+  "pixel-grid-color"?: string | null;
+  "pixel-grid-opacity"?: number | null;
 }
 
 // The pages of the file in file order; a page missing from pages-index keeps
@@ -120,14 +131,90 @@ export function withPageRenamed(
   id: string,
   name: string,
 ): WorkspaceFile {
+  return withPageModified(file, id, { name });
+}
+
+// process-change :mod-page: name is assoc-only, while the background and
+// pixel-grid attrs also accept an explicit nil to remove the override. The
+// page map is copied but its objects map keeps the same reference, so a
+// rename or a background edit does not reload the canvas model.
+export function withPageModified(
+  file: WorkspaceFile,
+  id: string,
+  patch: WorkspacePagePatch,
+): WorkspaceFile {
   const index = file.data["pages-index"] ?? {};
   const page = index[id];
-  if (page === undefined || page === null || page.name === name) return file;
+  if (page === undefined || page === null) return file;
+
+  const draft: WorkspacePageData = { ...page };
+  const attrs = draft as Record<string, unknown>;
+  let changed = false;
+  const has = (key: keyof WorkspacePagePatch): boolean =>
+    Object.prototype.hasOwnProperty.call(patch, key);
+
+  if (has("name") && typeof patch.name === "string" && patch.name !== page.name) {
+    draft.name = patch.name;
+    changed = true;
+  }
+
+  const removeOrSet = (
+    key: "background" | "background-token" | "pixel-grid-color" | "pixel-grid-opacity",
+    value: string | number | null | undefined,
+  ): void => {
+    if (value === undefined) return;
+    if (value === null) {
+      if (!Object.prototype.hasOwnProperty.call(attrs, key)) return;
+      delete attrs[key];
+      changed = true;
+      return;
+    }
+    if (attrs[key] === value) return;
+    attrs[key] = value;
+    changed = true;
+  };
+
+  if (has("background")) removeOrSet("background", patch.background);
+  if (has("background-token")) removeOrSet("background-token", patch["background-token"]);
+  if (has("pixel-grid-color")) removeOrSet("pixel-grid-color", patch["pixel-grid-color"]);
+  if (has("pixel-grid-opacity")) {
+    removeOrSet("pixel-grid-opacity", patch["pixel-grid-opacity"]);
+  }
+
+  if (!changed) return file;
   return {
     ...file,
     data: {
       ...file.data,
-      "pages-index": { ...index, [id]: { ...page, name } },
+      "pages-index": { ...index, [id]: draft },
+    },
+  };
+}
+
+// d/insert-at-index: the id leaves the list first, the index counts on the
+// remaining ids, and an out-of-range index appends or prepends like split-at.
+export function withPageMoved(
+  file: WorkspaceFile,
+  id: string,
+  index: number,
+): WorkspaceFile {
+  const pages = file.data.pages ?? [];
+  if (!pages.includes(id)) return file;
+  const kept = pages.filter((pageId) => pageId !== id);
+  const at = Math.max(0, Math.min(index, kept.length));
+  const moved = [...kept.slice(0, at), id, ...kept.slice(at)];
+  // A move to the position the page already holds is a store no-op.
+  if (
+    moved.length === pages.length &&
+    moved.every((pageId, position) => pageId === pages[position])
+  ) {
+    return file;
+  }
+  return {
+    ...file,
+    data: {
+      ...file.data,
+      pages: moved,
     },
   };
 }

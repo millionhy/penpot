@@ -16,6 +16,8 @@ import {
   validPageName,
   withPageAdded,
   withPageDeleted,
+  withPageModified,
+  withPageMoved,
   withPageRenamed,
 } from "@/lib/workspace-pages";
 import type { WorkspaceFile, WorkspaceObjects } from "@/lib/workspace";
@@ -148,6 +150,42 @@ describe("file rewrites", () => {
     expect(next.data["pages-index"]?.p1).toBeUndefined();
     expect(next.data["pages-index"]?.p2).toBe(file.data["pages-index"]?.p2);
     expect(withPageDeleted(next, "p1")).toBe(next);
+  });
+
+  it("patches page attributes and keeps absent ones", () => {
+    const file = makeFile();
+    const next = withPageModified(file, "p1", {
+      name: "Home",
+      background: "#ffffff",
+    });
+
+    expect(next.data["pages-index"]?.p1).toMatchObject({
+      name: "Home",
+      background: "#ffffff",
+    });
+    expect(next.data["pages-index"]?.p1.objects).toBe(
+      file.data["pages-index"]?.p1.objects,
+    );
+    expect(withPageModified(next, "p1", { name: "Home" })).toBe(next);
+    expect(withPageModified(next, "missing", { name: "Home" })).toBe(next);
+  });
+
+  it("removes a page attribute only on an explicit null", () => {
+    const file = makeFile();
+    const withBackground = withPageModified(file, "p1", { background: "#ffffff" });
+    expect(withPageModified(withBackground, "p1", { name: "Home" })).toHaveProperty(
+      "data.pages-index.p1.background",
+      "#ffffff",
+    );
+    const cleared = withPageModified(withBackground, "p1", { background: null });
+    expect(cleared.data["pages-index"]?.p1).not.toHaveProperty("background");
+  });
+
+  it("reorders pages with the after-removal index", () => {
+    const file = makeFile();
+    expect(withPageMoved(file, "p1", 1).data.pages).toEqual(["p2", "p1"]);
+    expect(withPageMoved(file, "p1", 0)).toBe(file);
+    expect(withPageMoved(file, "missing", 0)).toBe(file);
   });
 });
 

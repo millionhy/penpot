@@ -204,6 +204,24 @@ describe("classifyMessage", () => {
     expect(notice).toEqual({ kind: "malformed", reason: "file-change without changes" });
   });
 
+  it("reports a malformed change entry instead of passing it to the canvas", () => {
+    const notice = classifyMessage(
+      {
+        type: "file-change",
+        topic: FILE_ID,
+        "file-id": FILE_ID,
+        revn: 2,
+        vern: 1,
+        changes: [{ type: "del-obj", "page-id": PAGE_ID, id: "not-a-uuid" }],
+      },
+      SCOPE,
+    );
+    expect(notice).toEqual({
+      kind: "malformed",
+      reason: "file-change change 0: id must be a uuid",
+    });
+  });
+
   it("classifies file-deleted and file-restored", () => {
     expect(
       classifyMessage({ type: "file-deleted", topic: FILE_ID, "file-id": FILE_ID }, SCOPE),
@@ -329,6 +347,7 @@ describe("planRemoteChanges", () => {
     { type: "del-obj", "page-id": OTHER_PAGE, id: "eeeeeeee-ffff-0000-1111-222222222222" },
     { type: "add-obj", "page-id": PAGE_ID, id: SHAPE_ID, obj: {}, "frame-id": SHAPE_ID, "parent-id": SHAPE_ID },
     { type: "add-page", id: "ffffffff-0000-1111-2222-333333333333", name: "Page 2" },
+    { type: "mov-page", id: OTHER_PAGE, index: 0 },
     { type: "mov-objects", "page-id": PAGE_ID, "parent-id": SHAPE_ID, shapes: [SHAPE_ID] },
   ];
 
@@ -346,6 +365,7 @@ describe("planRemoteChanges", () => {
     expect(plan.skipped).toBe(1);
     expect(plan.pageChanges).toEqual([
       { type: "add-page", id: "ffffffff-0000-1111-2222-333333333333", name: "Page 2" },
+      { type: "mov-page", id: OTHER_PAGE, index: 0 },
     ]);
   });
 
