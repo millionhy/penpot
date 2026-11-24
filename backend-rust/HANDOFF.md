@@ -11,11 +11,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| HEAD（快照时） | `3eaa566b7f` `:construction: Bootstrap the backend-rust workspace` |
-| 工作区 | M0 已提交。M1 + M2 + M3 改动仍在工作区：transit 的 UTF-16 长度/`~#uri`/verbose writer/语料、`crates/config`、`crates/errors`、`crates/rpc`、`Cargo.lock` 与文档。`.g2-tmp/` 未跟踪 |
+| HEAD（快照时） | `94c38e3634` `:construction: Add backend-rust transit, errors, config and RPC layers` |
+| 工作区 | M0–M3 已提交。M4 `crates/session`、`Cargo.toml`/`Cargo.lock` 与文档改动在工作区。`.g2-tmp/` 未跟踪 |
 | 阶段 F/G | F 已收口；G0–G5 已完成，见 `rewrite.md` §7.92–§7.96 |
-| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；C2 真实应答语料待 devenv |
-| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3；里程碑状态见本文与 `PLAN.md` |
+| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；C1/C2 真实向量与应答语料待 devenv |
+| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4；里程碑状态见本文与 `PLAN.md` |
 
 ## 2. 已拍板决策（不要重议，除非用户改口）
 
@@ -75,6 +75,13 @@ base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线�
   `x-shared-key`/`x-client`、CORS（allowlist + 预检 204）、IP 优先级（含 socket peer）。
   29 条 `oneshot` + 3 条 `tests/clj_contract.rs`；完整 workspace 门禁 142 例通过。multipart 因缺 `multer` 未接，
   真实会话/事务/长连接 SSE 分别留 M4/M5/M7。
+- M4：`crates/session` 的 `key / aes_kw / jwe / claims / cookie / error`。
+  HKDF 用 `SimpleHkdf<Blake2b512>`（BLAKE2b 非 eager hash），输出与 OpenSSL
+  `hkdfSync("blake2b512", …)` 一致；RFC 3394 三条标准向量通过；JWE 五段严格校验、AAD 为
+  protected 段、IV 12B、tag 16B；`Token::verify` 先 `exp` 后 `iss` 且 `exp == now` 有效；
+  cookie 走 Java 的 RFC 1123（日不补零）。`fixtures/gen-jwe-vector.mjs` 产 Node/OpenSSL 向量，
+  Rust 编码端逐字节匹配、解码端解出 claims；`tests/buddy_vector.rs` 是 C1 钩子（`#[ignore]`）。
+  50 条 crate 测试；workspace 全量 192 条通过 + 1 ignored。真实 buddy 向量仍待 C1。
 
 **C. devenv 起来后采集（一次采完，回填 `fixtures/`）**
 
@@ -116,7 +123,13 @@ base64 0.23.1 / mime / url / hex` **均已在本地缓存**，M0–M7 可离线�
 - claims `{:iss "authentication" :aud "penpot" :sid :iat :uid :sso-provider-id? :sso-session-id? :exp?}`，header `{:kid 1 :ver 1}`
 - payload = transit 编码 → `jwe/encrypt` `:alg :a256kw :enc :a256gcm`
 - key = `HKDF(alg :hkdf, digest :blake2b-512, key=secret-key, salt="tokens", size=32)`
+- HKDF 的 `info` 为空；BLAKE2b-512 的 BlockSize 是 128、Output 是 64。Rust 侧用 `SimpleHkdf`
+  （`SimpleHmac`），输出已与 OpenSSL `hkdfSync("blake2b512", …)` 对齐
 - verify：`exp` 已过 → `:validation/:invalid-token :reason :token-expired`；`iss` 不符 → `:invalid-issuer`
+- `exp == now` 仍有效（Clojure 用严格 `is-before?`）；`exp` 检查先于 `iss`；缺 `exp` 不判过期
+- cookie：idle 7 天、absolute 30 天、renewal 6 小时；`Expires = modified-at + idle`；
+  `Comment = "Renewal at: <RFC1123>"`；`SameSite` 是 `cors → None`、否则 `strict → Strict`、否则 `Lax`；
+  清除只写 `Path=/` + `Max-Age=0`。RFC1123 的日号 CLJ 不补零（`Sun, 5 Nov …`），CLJS 补零
 - 会话表是 **`http_session_v2`**（`0155-drop-http-session-table.sql` 已删旧表）——旧文档写 `http_session` 是过期措辞
 
 **worker / storage（后续里程碑）**

@@ -3603,6 +3603,31 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 
 ---
 
+### 7.101 本轮（2026-11-24，第一百批：backend-rust M4 session）
+
+- 口径：仍是「实现但不接入部署」；不改 `backend/`/`common/`/`docker/`/`scripts/ci`，
+  未获授权不 commit。
+- 新增 `crates/session` 六个模块：`key`（HKDF-HMAC-BLAKE2b-512，salt `"tokens"`，空 `info`，
+  32B）、`aes_kw`（RFC 3394，建在 `aes 0.8` 上，因为 `aes-kw 0.3.1` 需要未缓存的 `aes 0.9`）、
+  `jwe`（A256KW + A256GCM，五段 compact，AAD = protected 段 ASCII，IV 12B、tag 16B、CEK 32B）、
+  `claims`、`cookie`、`error`。
+- claims：按 Clojure 键序写、nil 省略、`iat` 缺省补当前时间、未知 claim 原样保留；
+  `exp` 只接受 transit Instant，类型不符直接拒绝（比 Clojure 的 `inst?` 守卫更保守）。
+- verify：先 `exp` 再 `iss`；`exp == now` 仍有效（严格早于才算过期）；`iss` 只在调用方给出时检查。
+- cookie：默认 idle 7 天、absolute 30 天、renewal 6 小时；`Expires = modified-at + idle`；
+  `SameSite` 为 cors→None、strict→Strict、否则 Lax；`Comment="Renewal at: …"`；清除只写
+  `Path=/` 与 `Max-Age=0`。RFC1123 按 Java 的「日号不补零」（`httpdate` 会补，去掉一个 `0`）。
+- 交叉验证：`fixtures/gen-jwe-vector.mjs` 用 Node/OpenSSL 独立产出 HKDF、AES-KW、GCM；
+  Rust 编码端逐字节相同，解码端解出同一份 claims。RFC 3394 的 128/192/256 位 KEK 三条标准向量通过。
+- 边界：**buddy 逐字节兼容仍待 C1**。`tests/buddy_vector.rs` 以 `#[ignore]` 挂起，
+  解锁条件是 `PENPOT_TOKEN` 与 `PENPOT_SECRET`。
+- 验证：`cargo fmt --all`、`clippy -D warnings`、`test`、`build`、`doc` 全部退出 0；
+  workspace 192 例通过 + 1 ignored（session 自身 50 例）。`Cargo.lock` 已更新。
+- 下一步：M5 `storage`——metadata 闭包 schema、hash 去重与状态机、`ObjectStore` 的 fs 实现。
+- 提交：未提交（等用户明确要求）。
+
+---
+
 ## 8. 开发环境备注（本机）
 
 | 工具 | 状态 | 备注 |

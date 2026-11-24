@@ -1,7 +1,7 @@
 # backend-rust 开发计划（**已批准** · 实现但不接入部署）
 
-本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M3 已完成（2026-11-24），下一步 M4
-`session`。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
+本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M4 已完成（2026-11-24），下一步 M5
+`storage`。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
 
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | rustc / cargo | 1.98.0（`~/.cargo/bin`） | 可用 |
 | registry | `.cargo/config.toml` 把 crates-io 换到 `sparse+https://rsproxy.cn/index/`；crates.io 直连 TLS 被拦，`static.crates.io` 通 | 依赖必须优先选用**本地已缓存版本**，并锁进 `Cargo.lock` |
-| 已缓存关键依赖 | axum 0.8.9、tokio 1.53.1、tower-http 0.6.11、sqlx 0.9.0/0.8.6、redis 0.27.6、tokio-tungstenite 0.28.0、aes-kw 0.3.1、aes-gcm 0.11.1、hkdf 0.13、hmac 0.13、blake2 0.11、uuid 1.26.1、chrono 0.4.45、indexmap 2.14.2、tracing 0.1.44、thiserror 2.0.21、proptest 1.11、aws-sdk-s3 1.123、reqwest 0.13.5、mime、url、hex、base64 0.23.1 | M0–M7 依赖全在缓存内，可离线构建 |
+| 已缓存关键依赖 | axum 0.8.9、tokio 1.53.1、tower-http 0.6.11、sqlx 0.9.0/0.8.6、redis 0.27.6、tokio-tungstenite 0.28.0、uuid 1.26.1、chrono 0.4.45、indexmap 2.14.2、tracing 0.1.44、thiserror 2.0.21、proptest 1.11、aws-sdk-s3 1.123、reqwest 0.13.5、mime、url、hex、base64 0.23.1；密码学以 digest-0.10 一代为准：aes 0.8.4、aes-gcm 0.10.3、hkdf 0.12.4、blake2 0.10.6、hmac 0.12.1、httpdate 1.0.3、zeroize 1.8 | M0–M7 依赖全在缓存内，可离线构建；`aes-kw 0.3.1` 虽在缓存但需要未缓存的 `aes 0.9`/`cipher 0.5`，故 AES-KW 自带实现 |
 | docker | **不存在**（`docker: command not found`） | devenv 起不来 |
 | PostgreSQL | `localhost:5433` 拒绝连接 | S3（DDL 快照）、任何 sqlx/`query!` 编译期校验受阻 |
 | Clojure CLI / JVM | 未见可用 | S2（OpenAPI 快照）、JWE 测试向量生成受阻 |
@@ -82,7 +82,11 @@
 - 密钥 = `HKDF(alg :hkdf, digest :blake2b-512, key=secret-key, salt="tokens", size=32)`。
 - `verify`：`exp` 已过 → `:validation/:invalid-token :reason :token-expired`；`iss` 不符 → `:invalid-issuer`。
 - 会话状态在 **`http_session_v2`**（`0155-drop-http-session-table.sql` 已删旧表）→ `rewrite.md` 与本目录 README 的 `http_session` 措辞需订正。
-- **风险**：仓库内无 JWE 测试向量（grep `eyJ` 无命中），Rust 侧「与 buddy 逐字节兼容」无法离线自证。
+- 已落地细节（M4）：HKDF 的 `info` 为空、BLAKE2b-512 的 BlockSize 为 128；`exp == now` 仍算有效
+  （Clojure 用严格早于）；`exp` 检查先于 `iss`；cookie 默认 idle 7 天、absolute 30 天、renewal 6 小时，
+  `SameSite` 由 `cors > strict > lax` 决定，`Expires = modified-at + idle`，`Comment = "Renewal at: …"`。
+- 兼容性现状：HKDF 与 A256KW/A256GCM 往返已用 **Node/OpenSSL 第二实现**逐字节对拍
+  （`crates/session/fixtures/gen-jwe-vector.mjs`）。**buddy 逐字节兼容仍待 C1**，仓库内没有真实向量。
 
 ### 2.4 后续里程碑相关（先登记，不在本轮实现）
 
@@ -201,19 +205,27 @@ DoD：`tower::ServiceExt::oneshot` 测试 ≥20 条（路由、限制、编解�
   `x-session-id`；`inet/parse-request` 的 IP 优先级
   （`x-real-ip` → `x-forwarded-for` 首跳 → socket peer），服务端用
   `into_make_service_with_connect_info` 提供 peer。
-- 明确未做：真实 session/access-token 解码（M4）；sqlx 事务（M5）；multipart（axum 的
+- 明确未做：把 M4 `session` 接进 rpc 的鉴权中间件（crate 已就绪，接线随 M5/M8）；sqlx 事务（M5）；multipart（axum 的
   `multipart` feature 依赖 `multer`，本地缓存没有该 crate，需单独批准拉依赖）；长连接 SSE（M7，
   当前只渲染固定帧）；`Accept: application/json`。
 
-### M4 — `session`（4–5 人日，含一个外部阻塞）
+### M4 — `session`（✅ 2026-11-24，buddy 向量待 C1）
 
-- T4.1 HKDF(HMAC-BLAKE2b-512) → 32B key，参数逐一对齐 `app/setup/keys.clj`
-- T4.2 JWE compact：A256KW（`aes-kw`）+ A256GCM（`aes-gcm`），protected header `{alg,enc,kid,ver}`，payload = transit bytes
-- T4.3 claims 模型 + `verify` 语义（exp/iss 两支）+ cookie 属性（path、max-age、secure/same-site 由 flags 决定）
-- T4.4 兼容性测试向量：`#[ignore]` + 解锁条件（起 devenv 抓一枚 token，或后端 REPL 生成向量）
+- T4.1 ✅ `TokenKey::derive`：HKDF-HMAC-BLAKE2b-512，salt `"tokens"`、空 `info`、32B；
+  `SimpleHkdf`（BLAKE2b 不是 eager hash，`SimpleHmac` 走同一条 RFC 2104 构造）。
+  输出与 OpenSSL 的 `hkdfSync("blake2b512", …)` 逐字节一致。
+- T4.2 ✅ `crates/session` 的 `jwe`：RFC 7516 compact，A256KW（本地 RFC 3394 实现，`aes 0.8`）
+  + A256GCM；protected header `{"alg":"A256KW","enc":"A256GCM","kid":1,"ver":1}`，payload = transit bytes。
+  五段严格检查、无填充 base64url、AAD = protected 段 ASCII、IV 12B、tag 16B、CEK 32B。
+- T4.3 ✅ `claims`：`SessionClaims` 按 Clojure 键序写、nil 省略、`iat` 缺省补当前时间；
+  `Claims` 保留未知 claim。`Token::verify` 先判 `exp < now` 再判 `iss`，`exp == now` 仍有效。
+  `cookie`：name/`Path=/`/`HttpOnly`/`Expires`/`Comment`/`SameSite`（cors→None、strict→Strict、否则 Lax）
+  /`Secure`；清除只写 `Path=/` 与 `Max-Age=0`。RFC 1123 用 Java 的日不补零形态。
+- T4.4 ✅ `tests/buddy_vector.rs`（`#[ignore]`）：`PENPOT_TOKEN` + `PENPOT_SECRET` 解码真 token；
+  另有 `fixtures/gen-jwe-vector.mjs` 生成 Node/OpenSSL 向量，Rust 编码端逐字节匹配、解码端解出 claims。
 
-DoD：round-trip、篡改 header/tag/nonce 一律拒绝、nonce 尺寸与密文长度自洽。
-诚实标注：**「与 buddy 逐字节兼容」在拿到向量前不视为完成**。
+DoD 已达成：round-trip、五段任一处篡改均拒绝、错误 alg/enc/kid/ver 拒绝、nonce/tag/密文长度自洽。
+诚实标注：**「与 buddy 逐字节兼容」在 C1 向量到位前不视为完成**；已验证的是 RFC 语义与第二实现互通。
 
 ### M5 — `storage`（6–9 人日）
 
@@ -305,10 +317,12 @@ M0 ▓ → M1 ▓▓▓（关键路径）→ M2 ▓▓ ∥ M3 ▓▓▓ → M4 �
 
 ## 9. 下一步
 
-M0–M3 已完成（2026-11-24）。M1：103 条语料、round-trip 1000 例、畸形输入与零 panic；
+M0–M4 已完成（2026-11-24）。M1：103 条语料、round-trip 1000 例、畸形输入与零 panic；
 M2：`errors` 全部状态分支 + verbose transit 应答 + `config` 18 个键与两张源码表对齐；
-M3：`rpc` 的 5 个模块、29 条 oneshot、3 条 `rpc.clj` 契约测试。下一步 M4 `session`：
-HKDF(HMAC-BLAKE2b-512)、A256KW + A256GCM 的 JWE、claims/verify。C2 真实应答到位后，
+M3：`rpc` 的 5 个模块、29 条 oneshot、3 条 `rpc.clj` 契约测试；
+M4：`session` 的 HKDF 键、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie 策略，
+50 条 crate 测试（含 OpenSSL 交叉向量），C1 只差真实 buddy token。下一步 M5 `storage`：
+metadata 闭包 schema、hash 去重与状态机、`ObjectStore` 的 fs 实现。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。
 
 ## 10. 换机器 / devenv 起来之后的采集清单

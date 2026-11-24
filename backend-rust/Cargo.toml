@@ -35,6 +35,21 @@ tokio = { version = "1.53.1", features = ["rt-multi-thread", "net", "macros", "s
 tracing = "0.1.44"
 url = "2.5.8"
 
+# --- M4 session ---
+# A single digest-0.10 generation: hkdf 0.12 / hmac 0.12 / blake2 0.10 /
+# aes-gcm 0.10 / aes 0.8. Mixing them with the 0.13 line does not typecheck,
+# and `aes-kw` 0.3.1 needs an `aes 0.9` that is not in the local cache, so
+# RFC 3394 lives in `crates/session` on top of `aes 0.8` instead (PLAN.md §1).
+aes = "0.8.4"
+aes-gcm = "0.10.3"
+blake2 = "0.10.6"
+hex = "0.4.3"
+hkdf = "0.12.4"
+httpdate = "1.0.3"
+rand = "0.8.8"
+subtle = "2.6.1"
+zeroize = { version = "1.8.2", default-features = false }
+
 # --- reserved for later milestones (added when the crate that needs them exists) ---
 # tower-http = "0.6.11"
 # sqlx = { version = "0.9.0", features = ["runtime-tokio", "postgres"] }
@@ -47,12 +62,12 @@ url = "2.5.8"
 # url = (cached, verify version when wiring ws/rpc)
 #
 # M4 crypto note: the cache holds a *consistent* digest-0.10 crypto set
-# (hkdf 0.12.4 + hmac 0.12.1 + blake2 0.10.6 + aes-gcm 0.10.3 + aes 0.8.4).
-# PLAN.md §1 listed hkdf 0.13 / hmac 0.13 / blake2 0.11 / aes-gcm 0.11.1 /
-# aes-kw 0.3.1; blake2 0.11 and aes-kw are NOT cached, and hkdf 0.13 requires
-# hmac 0.13's `Mac` while blake2 0.10.6 implements hmac 0.12's — mixing the two
-# does not typecheck. Pin the 0.12 set unless a fetch of the newer crates is
-# verified. See backend-rust/PLAN.md §1.
+# (hkdf 0.12.4 -> hmac 0.12.1, blake2 0.10.6, aes-gcm 0.10.3, aes 0.8.4).
+# `aes-kw 0.3.1` is cached but needs `aes 0.9`/`cipher 0.5`, which are not, so
+# RFC 3394 AES-KW is implemented in `crates/session` on top of `aes 0.8`.
+# BLAKE2b is not an eager hash, so the HKDF call uses `SimpleHkdf`, which picks
+# `SimpleHmac`; that is the same RFC 2104 construction over a variable-output
+# digest. See backend-rust/PLAN.md §1.
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -4,7 +4,8 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 
 ## 当前状态
 
-**M0 工作区基线、M1 `transit`（离线部分）、M2 `errors` + `config`、M3 `rpc` 骨架完成（2026-11-24）。**
+**M0 工作区基线、M1 `transit`（离线部分）、M2 `errors` + `config`、M3 `rpc` 骨架、
+M4 `session` 完成（2026-11-24）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -25,8 +26,14 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
   合并、compact/verbose transit 应答、`nil`→204、SSE 固定帧、`x-shared-key`/`x-client` 检查、
   CORS（allowlist + 预检 204）、`inet/parse-request` 的 IP 优先级。本地 `cargo run -p rpc`
   起 `127.0.0.1:6061` 的 DB-free 服务。29 条 `oneshot` 测试加 3 条 `rpc.clj` 源码契约测试。
-  真实会话解码、sqlx 事务、multipart 与
-  长连接 SSE 分别留给 M4/M5/M7；multipart 还缺本地缓存的 `multer` 依赖。
+  sqlx 事务、multipart 与长连接 SSE 分别留给 M5/M7；multipart 还缺本地缓存的 `multer` 依赖。
+- M4 已有：`crates/session` 的 `TokenKey`（HKDF-HMAC-BLAKE2b-512，salt `"tokens"`，空 `info`，32B）、
+  `TokenCodec`（RFC 7516 compact，A256KW + A256GCM，`{alg,enc,kid,ver}` 头，IV 12B、tag 16B）、
+  `SessionClaims`/`Claims`（保留未知 claim，`exp` 严格早于才过期，`exp` 先于 `iss`）与
+  `CookiePolicy`/`SessionCookie`（7/30 天与 6 小时默认、CORS→SameSite=None、Strict/Lax、Secure、
+  `Comment="Renewal at: …"`、清除写 `Max-Age=0`）。50 条通过 + 1 条 ignored；RFC 3394 三条标准向量，
+  另有 `fixtures/gen-jwe-vector.mjs` 用 Node/OpenSSL 生成第二实现向量，编码端逐字节匹配。
+  `tests/buddy_vector.rs` 是 C1 钩子（`#[ignore]`，等真实 token）。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 
@@ -55,7 +62,7 @@ backend-rust/
     ├── transit/          ✅ Transit+JSON reader/writer + Penpot 标签 + 缓存语义（含 verbose）
     ├── errors/           ✅ ex-data(:type/:code/:hint) → HTTP status/body（axum IntoResponse）
     ├── config/           ✅ PENPOT_* env + flags（enable-/disable-）
-    ├── session/          JWE a256kw+a256gcm + HKDF-BLAKE2b-512 + claims/verify
+    ├── session/          ✅ JWE a256kw+a256gcm + HKDF-BLAKE2b-512 + claims/verify + cookie
     ├── db/               sqlx 池、kebab→snake 命名、事务包装（运行时查询）
     ├── storage/          storage_object 闭包 metadata、bucket、去重、GC、fs/s3
     ├── worker/           cron、task 状态机、dispatcher 认领、runner 循环
@@ -66,7 +73,7 @@ backend-rust/
 依赖方向：`rpc → {transit, errors, config, session, db, storage, worker, ws}`，下层互不引用。
 
 顺序（`PLAN.md` §5）：`M0 workspace → M1 transit（关键路径）→ M2 errors+config ∥ M3 rpc(axum) → M4 session
-→ M5 storage → M6 worker → M7 ws`。M0–M3 已完成；`transit` 先做，因为 RPC 请求体、应答体、
+→ M5 storage → M6 worker → M7 ws`。M0–M4 已完成；`transit` 先做，因为 RPC 请求体、应答体、
 `task.props`、session payload 全是 transit。
 
 ## 本地验证（不接 CI）
