@@ -59,7 +59,7 @@
 | B3 | M3 | `rpc` crate（axum 骨架） | ✅ | 三组路由 + 中间件同序 + Registry；本地 `cargo run`，不接 nginx；2026-11-24 完成 |
 | B4 | M4 | `session` crate | ✅ | JWE `a256kw`+`a256gcm` + HKDF-BLAKE2b-512；会话查 **`http_session_v2`**（旧表已由 `0155` 删除）；buddy 兼容性待 C1 向量 |
 | B5 | M5 | `storage` crate | 🔧 | `storage_object`/bucket/去重/GC；`:fs`/`:s3`；离线部分完成，真实 S3 桶/PG 待 devenv |
-| B6 | M6 | `worker` crate | 🔧 | Quartz 6 段 cron、task 状态机、`FOR UPDATE SKIP LOCKED` 认领、Redis `tenant:queue`；`task.props` = **jsonb transit**（不是 Fressian）；离线部分完成，live PG/Redis 待 devenv |
+| B6 | M6 | `worker` crate | 🔧 | Quartz 6 段 cron、task 状态机、dispatcher/runner、Redis `TaskQueue`；`task.props` = **jsonb transit**；Redis live 已验，PG 仓储与混合集群待 devenv |
 | B7 | M7 | `ws` crate | ✅ | axum WebSocket + msgbus；RedisBusClient + InMemoryBus；协议/心跳/路由 33 条默认测试 + 7 条 Redis live |
 | B8 | M8 | `rpc` 只读命令承接 | ⛔ | 前置：C3 DDL + C4 OpenAPI + 补齐 `::sm/result` + 可用 devenv。永久排除：`add-file-transient-changes`/binfile/files 写路径/thumbnails/nitrate（`file.data` blob = Fressian v4/v5，JVM 专有） |
 | — | — | `render-native` | ⬜ 暂缓 | `render-wasm` 无 headless-native API（24 处 `cfg(target_arch="wasm32")` + GL `gpu_state`），需先抽 core 且要 file-data 解码 |
@@ -3765,6 +3765,30 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 边界：未做浏览器两标签页联调、Clojure/Rust 混合集群对拍、强制断线重连的自动化；
   Redis Cluster/Sentinel、消息持久化与断线补发仍不在本阶段。M8 仍不交付。
 - 提交：本条目随实现单独提交；不 push。
+
+---
+
+### 7.106 本轮（2026-11-25，第一百零五批：backend-rust M6 Redis 队列）
+
+- 口径不变：只改 `backend-rust/`，不接部署、不改 `backend/`/`common/`/`docker/`/
+  `scripts/ci`。本机 Redis 可用；PostgreSQL 5432/5433 与 Docker daemon 仍不可用，M8
+  继续不启动。
+- 新增 `crates/worker/src/queue.rs`：`RedisTaskQueue::connect(url)` 实现 `TaskQueue`。
+  `push` 用独立多路复用连接一次 `RPUSH` 整个批次；`pop` 用可复用连接池执行阻塞
+  `BLPOP`，每条连接一次只服务一个 pop，保证多个 runner 并行等待而 dispatcher 不被阻塞。
+- 键和值完全沿用 `penpot.worker.queue:<tenant>:<queue>` 与 Transit `[uuid scheduled-at]`；
+  adapter 不改写调用方传入的完整 key，避免和 Clojure dispatcher/runner 的格式分叉。
+- Redis 错误映射为 `WorkerError::Queue`，配合现有 runner/dispatcher 的退避循环；空批次
+  不写 Redis。无效 URI 在连接阶段返回结构化 queue 错误。
+- live 测试：`tests/redis_queue.rs` 5 条 `#[ignore]`，默认
+  `redis://127.0.0.1:6379/15`，可用 `PENPOT_TEST_REDIS_URL` 覆盖。覆盖 FIFO、批量追加
+  顺序、超时 `None`、阻塞 pop 不挡 push、并发 pop 共享同一列表；连续 5 轮通过。另有 1 条
+  默认测试锁定无效 URI 的错误类型。
+- 验证：`cargo fmt --all --check`、clippy `-D warnings`、workspace `test`、`build`、`doc`
+  均退出 0。默认 workspace 为 338 passed + 14 ignored；worker 为 68 passed + 5 ignored。
+- 边界：PG `TaskRepository`、真实 task 表、Clojure↔Rust 混合集群与 Redis 故障后的 5 分钟
+  重排仍未验；这些需要 live PostgreSQL。M8 不交付。
+- 提交：未提交（等用户明确要求）。
 
 ---
 

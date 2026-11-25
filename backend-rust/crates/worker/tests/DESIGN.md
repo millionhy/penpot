@@ -1,7 +1,8 @@
 # Mixed Clojure and Rust worker cluster
 
-This document defines the compatibility checks that need a live PostgreSQL
-and Redis instance. The offline Rust gate does not start either service.
+The Redis `TaskQueue` adapter and its list-level tests now run against a live
+Redis. The compatibility checks below still need a live PostgreSQL instance
+and a mixed Clojure/Rust cluster.
 
 ## Shared row and queue contract
 
@@ -30,6 +31,10 @@ The runner catches a handler error as follows:
   Clojure runner.
 
 ## Live compatibility matrix
+
+The Redis-only part is checked in `tests/redis_queue.rs`: FIFO order, one
+`RPUSH` per batch, `BLPOP` timeout, blocked pops not blocking pushes, and
+parallel pops sharing one list.
 
 1. Clojure dispatcher, Rust runner: submit one `sendmail`, one
    `objects-gc`, one `tasks-gc`, one `session-gc`, and one `run-webhook`

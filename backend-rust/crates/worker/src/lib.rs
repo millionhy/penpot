@@ -16,6 +16,7 @@ pub mod cron;
 pub mod dispatcher;
 pub mod error;
 pub mod handler;
+pub mod queue;
 pub mod repository;
 pub mod runner;
 pub mod task;
@@ -33,6 +34,7 @@ pub use handler::{
     penpot_registry, Mailer, ObjectsGc, PenpotTaskServices, SessionGc, TaskHandler, TaskRegistry,
     TasksGc, WebhookRunner,
 };
+pub use queue::RedisTaskQueue;
 pub use repository::{TaskQueue, TaskRepository};
 pub use runner::{ProcessOutcome, Runner, RunnerConfig, RUNNER_QUEUE_TIMEOUT};
 pub use task::{

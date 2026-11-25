@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+redis.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

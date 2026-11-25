@@ -14,8 +14,8 @@
 | HEAD（快照时） | `5c67c5a129` `:construction: Add backend-rust worker and WebSocket crates` |
 | 工作区 | M0–M7 已提交（含 M7 Redis 适配器与 live 测试）；`.g2-tmp/` 未跟踪 |
 | 阶段 F/G | F 已收口；G0–G5 已完成，见 `rewrite.md` §7.92–§7.96 |
-| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；**M5 ✅（2026-11-24）**：`storage` 的 metadata、去重状态机、FS/S3、GC 纯逻辑，45 条 + 1 ignored；**M6 ✅（2026-11-24）**：`worker` 的 Quartz cron、六态状态机、dispatcher、runner 与五个 offline handler，67 条；**M7 ✅（2026-11-24）**：`ws` 的 msgbus、协议多态、心跳、axum 路由与 Redis 适配器，33 条默认测试 + 7 条 Redis live；M8 不交付；C1/C2 真实向量与应答语料待 devenv |
-| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4，§7.102 为 M5，§7.103 为 M6，§7.104 为 M7，§7.105 为 M7 Redis 适配器；里程碑状态见本文与 `PLAN.md` |
+| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；**M5 ✅（2026-11-24）**：`storage` 的 metadata、去重状态机、FS/S3、GC 纯逻辑，45 条 + 1 ignored；**M6 🔧（2026-11-25）**：`worker` 的 cron、状态机、dispatcher、runner、五个 handler 与 Redis 队列，68 条默认测试 + 5 条 Redis live；PG 仓储与混合集群待 devenv；**M7 ✅（2026-11-24）**：`ws` 的 msgbus、协议多态、心跳、axum 路由与 Redis 适配器，33 条默认测试 + 7 条 Redis live；M8 不交付；C1/C2 真实向量与应答语料待 devenv |
+| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4，§7.102 为 M5，§7.103 为 M6，§7.104 为 M7，§7.105 为 M7 Redis 适配器，§7.106 为 M6 Redis 队列；里程碑状态见本文与 `PLAN.md` |
 
 ## 2. 已拍板决策（不要重议，除非用户改口）
 
@@ -88,12 +88,13 @@ base64 0.23.1 / mime / url / hex` 为旧机清单。当前机器实测 M0–M7 �
   的写入顺序、dedup hit/repair/miss/skip、软删除与过期读取、FS 原子替换、S3 环境变量与 presign、
   GC 三态阈值与 SQL 常量。crate 45 条通过 + 1 ignored；workspace 237 条通过 + 2 ignored。
   真实 S3 桶用 `PENPOT_TEST_S3_BUCKET` + AWS 凭证解锁；`sqlx` 仓储与 GC 执行器留到 live PG。
-- M6：`crates/worker` 的 `cron / dispatcher / error / handler / repository / runner / task /
-  tasks`。Quartz 六段加可选 year、六态 task 状态机、Transit JSONB props、5 分钟丢失重排、
+- M6：`crates/worker` 的 `cron / dispatcher / error / handler / queue / repository / runner /
+  task / tasks`。Quartz 六段加可选 year、六态 task 状态机、Transit JSONB props、5 分钟丢失重排、
   24 小时 orphan 失败、按优先级认领、`tenant:queue` 分组与 Transit payload；runner 复核
   scheduled 时间、按 `retry_num` 指数退避，未知 handler 按 Clojure 行为完成。五个 offline
-  handler 全部经 trait 注入。crate 67 条通过；workspace 304 条通过 + 2 ignored。
-  `sqlx`/Redis 适配器与混合集群验证留到 live devenv。
+  handler 全部经 trait 注入。`RedisTaskQueue` 用 RPUSH 发布连接与 BLPOP 连接池支持并行
+  runner。crate 68 条默认测试 + 5 条 Redis live；workspace 338 条通过 + 14 ignored。
+  `sqlx` 与混合集群验证仍留到 live PG/devenv。
 - M7：`crates/ws` 的 `bus / error / heartbeat / protocol / redis / server`。`prefix_topic` 为
   `<tenant>.<topic>`；`InMemoryBus` 复刻首订阅/末退订与幂等清理；协议覆盖
   subscribe-file/subscribe-team/unsubscribe-file/pointer-update/broadcast/keepalive，
@@ -197,6 +198,8 @@ base64 0.23.1 / mime / url / hex` 为旧机清单。当前机器实测 M0–M7 �
    需要一次联网拉依赖的批准，或推迟到 C2 采集同批处理。
 3. M7 的 Redis live 用例已落地；浏览器两标签页、Clojure/Rust 混合集群与强制断线重连
    的自动化仍未验。设计见 `crates/ws/tests/DESIGN.md`。
+4. M6 的 Redis `TaskQueue` 已落地并验过 FIFO、超时、并行 pop 与 push 不阻塞；PG 仓储和
+   Clojure/Rust 混合集群仍缺 live PostgreSQL。
 
 已定（M0）：`Cargo.lock` 入库；`rust-toolchain.toml` 用 `stable`；`rewrite.md` 保留 B/M 双编号。
 

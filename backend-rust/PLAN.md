@@ -1,7 +1,8 @@
 # backend-rust 开发计划（**已批准** · 实现但不接入部署）
 
-本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 已完成（2026-11-24），
-本阶段代码交付收口，M8 不交付。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
+本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干已落地
+（2026-11-25），M6 的 PG 仓储与 M8 仍不交付。换机器后的上下文快照见
+`backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
 
@@ -261,19 +262,20 @@ repository / s3 / service / store` 十一个模块。测试为 crate 内 45 条�
 - 明确未做：`sqlx` 仓储/GC 执行器（本阶段没有 live PG）；真实 S3 桶与真实 PG 的集成验证；
   `x-accel-redirect` 接线。S3 集成测试用 `PENPOT_TEST_S3_BUCKET` + AWS 凭证解锁。
 
-### M6 — `worker`（✅ 2026-11-24，真实 PG/Redis 适配器待 devenv）
+### M6 — `worker`（2026-11-25，Redis live 已验证；真实 PG 待 devenv）
 
 - T6.1 ✅ Quartz 6 段 cron 解析 + `#penpot/cron` 语义（与 `app.util.cron` 表对拍）
 - T6.2 ✅ task 行模型（props = transit jsonb）+ 状态机（`new/retry/scheduled/running/completed/failed`、`retry_num/max_retries`、`label`、`tenant:queue`）
 - T6.3 ✅ dispatcher SQL 复刻（`FOR UPDATE SKIP LOCKED`、丢失重排、in-flight 失败判定）；本轮落 SQL 常量 + 文本断言
 - T6.4 ✅ runner 循环（BLPOP、parallelism、`::retry` 分类、超时）+ 注册 5 个不依赖 Fressian 的任务（sendmail / objects-gc / tasks-gc / session-gc / run-webhook）
 - T6.5 ✅ 混合集群（Clojure↔Rust）双向兼容测试设计文档 `crates/worker/tests/DESIGN.md`，代码待 devenv
+- T6.6 ✅ `RedisTaskQueue`：独立 `RPUSH` 连接 + 可复用 `BLPOP` 连接池，支持并行 runner
 
-DoD：状态机与 cron 全表单测；无 live DB/Redis 依赖。
+DoD：状态机与 cron 全表单测；Redis 队列 live 用例通过；PG 仓储与混合集群仍待 devenv。
 
-落地（2026-11-24）：`crates/worker` 有 `cron / dispatcher / error / handler / repository / runner /
-task / tasks` 八个模块。测试为 crate 内 67 条通过（`tests/{cron,task,dispatcher,runner,tasks,
-clj_contract}.rs`），整个 workspace 304 条通过 + 2 ignored。
+落地（2026-11-24）：`crates/worker` 有 `cron / dispatcher / error / handler / queue / repository /
+runner / task / tasks` 九个模块。默认测试为 crate 内 68 条通过 + 5 ignored；
+整个 workspace 338 条通过 + 14 ignored。Redis live 5 条独立跑通。
 
 - cron：六段加可选 year，支持 `*`、`?`、列表、范围、步长、月份/星期名称、`L`、`W`、`#`；
   `#penpot/cron` 当前 10 条表达式逐条通过源码契约测试。
@@ -287,8 +289,12 @@ clj_contract}.rs`），整个 workspace 304 条通过 + 2 ignored。
   `retry`，首次延迟取配置值，后续按新 `retry_num` 指数增长。
 - handlers：五个 offline 任务均由 trait 边界注入，测试使用内存 fake，不依赖真实邮件、
   webhook、PG 或 Redis。
-- 明确未做：`sqlx` 仓储、Redis `TaskQueue` 适配器与 live PG/Redis 集成；混合集群兼容测试
-  代码等 devenv。SQL 常量已覆盖 dispatcher、GC 与 webhook 的三类写入路径。
+- queue：`RedisTaskQueue` 用 `RPUSH` 原子追加一批 Transit payload；`BLPOP` 使用独立连接池，
+  不让阻塞 pop 串行化多个 runner，也不阻塞 dispatcher 的 publish 连接。
+- Redis live：FIFO、单次批量追加、超时返回 `None`、阻塞 pop 不挡 push、并发 pop 共享同一
+  列表，以及无效 URI 的 `WorkerError::Queue`，共 5 条 live + 1 条默认测试。
+- 明确未做：`sqlx` 仓储、live PG、Clojure↔Rust 混合集群；SQL 常量已覆盖 dispatcher、
+  GC 与 webhook 的三类写入路径。
 
 ### M7 — `ws`（✅ 2026-11-24，Redis live 已验证）
 
@@ -385,15 +391,15 @@ M0 ▓ → M1 ▓▓▓（关键路径）→ M2 ▓▓ ∥ M3 ▓▓▓ → M4 �
 
 ## 9. 下一步
 
-M0–M7 已完成（2026-11-24）。M1：103 条语料、round-trip 1000 例、畸形输入与零 panic；
+M0–M7 代码主干已落地（2026-11-25）。M1：103 条语料、round-trip 1000 例、畸形输入与零 panic；
 M2：`errors` 全部状态分支 + verbose transit 应答 + `config` 18 个键与两张源码表对齐；
 M3：`rpc` 的 5 个模块、29 条 oneshot、3 条 `rpc.clj` 契约测试；
 M4：`session` 的 HKDF 键、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie 策略，
 50 条 crate 测试（含 OpenSSL 交叉向量），C1 只差真实 buddy token；
 M5：`storage` 的 metadata 双编码、BLAKE2b 去重、pending→valid 状态机、FS/S3 后端与 GC 纯逻辑，
 45 条 crate 测试 + 1 ignored（真实桶）；
-M6：`worker` 的 Quartz cron、六态 task 状态机、dispatcher 认领/恢复、runner 重试与五个
-offline handler，67 条 crate 测试；
+M6：`worker` 的 Quartz cron、六态 task 状态机、dispatcher 认领/恢复、runner 重试、
+五个 offline handler 与 Redis 队列适配器，68 条默认 crate 测试 + 5 条 Redis live；
 M7：`ws` 的 msgbus 前缀/订阅计数、协议多态、presence、心跳、鉴权、axum WebSocket 路由
 与真实 Redis 适配器，33 条默认 crate 测试 + 7 条 Redis live 用例，整个 workspace
 337 条通过 + 9 ignored。

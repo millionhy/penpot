@@ -5,8 +5,8 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 ## 当前状态
 
 **M0 工作区基线、M1 `transit`（离线部分）、M2 `errors` + `config`、M3 `rpc` 骨架、
-M4 `session`、M5 `storage`（离线部分）、M6 `worker`（离线部分）、M7 `ws`
-完成（2026-11-24）。**
+M4 `session`、M5 `storage`（离线部分）、M6 `worker`（Redis 队列已验、PG 待验）、
+M7 `ws` 完成（2026-11-25）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -46,8 +46,9 @@ M4 `session`、M5 `storage`（离线部分）、M6 `worker`（离线部分）、
   范围/步长）、六态 task 状态机、Transit JSONB props、5 分钟丢失重排、24 小时 orphan
   失败、`FOR UPDATE SKIP LOCKED` 认领、`tenant:queue` 分组与 Redis payload 编解码；
   runner 覆盖 scheduled 时间复核、重试指数增长、未知 handler 完成语义；注册 sendmail、
-  objects-gc、tasks-gc、session-gc、run-webhook 五个 handler。67 条通过。
-  `sqlx`/Redis 适配器与 Clojure↔Rust 混合集群验证留到有 devenv 时补。
+  objects-gc、tasks-gc、session-gc、run-webhook 五个 handler。`RedisTaskQueue` 使用独立
+  RPUSH 连接与 BLPOP 连接池。68 条默认测试 + 5 条 Redis live；`sqlx` 与 Clojure↔Rust
+  混合集群验证留到有 PG/devenv 时补。
 - M7 已有：`crates/ws` 的 msgbus 前缀与本地订阅计数、`RedisBus`/`InMemoryBus`、
   `subscribe-file`/`subscribe-team`/`unsubscribe-file`/`pointer-update`/`broadcast`/
   `keepalive` 多态、presence 与心跳；`/ws/notifications?session-id=<uuid>` 的鉴权、
@@ -85,7 +86,7 @@ backend-rust/
     ├── session/          ✅ JWE a256kw+a256gcm + HKDF-BLAKE2b-512 + claims/verify + cookie
     ├── db/               sqlx 池、kebab→snake 命名、事务包装（运行时查询）
     ├── storage/          ✅ storage_object 闭包 metadata、bucket、去重、GC、fs/s3（S3 真实桶待验）
-    ├── worker/           ✅ Quartz cron、task 状态机、dispatcher 认领、runner 循环
+    ├── worker/           ✅ Quartz cron、task 状态机、dispatcher、runner、Redis 队列
     ├── ws/               ✅ msgbus、消息多态、axum WebSocket、Redis 适配器
     └── rpc/              ✅ axum 服务：路由 + 中间件管道 + 命令 Registry（DB-free 骨架）
 ```
@@ -93,7 +94,8 @@ backend-rust/
 依赖方向：`rpc → {transit, errors, config, session, db, storage, worker, ws}`，下层互不引用。
 
 顺序（`PLAN.md` §5）：`M0 workspace → M1 transit（关键路径）→ M2 errors+config ∥ M3 rpc(axum) → M4 session
-→ M5 storage → M6 worker → M7 ws`。M0–M7 已完成；`transit` 先做，因为 RPC 请求体、应答体、
+→ M5 storage → M6 worker → M7 ws`。M0–M7 已落地；M6 的 PG 仓储仍待 live PostgreSQL。
+`transit` 先做，因为 RPC 请求体、应答体、
 `task.props`、session payload 全是 transit。
 
 ## 本地验证（不接 CI）
