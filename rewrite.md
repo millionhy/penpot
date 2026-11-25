@@ -60,7 +60,7 @@
 | B4 | M4 | `session` crate | ✅ | JWE `a256kw`+`a256gcm` + HKDF-BLAKE2b-512；会话查 **`http_session_v2`**（旧表已由 `0155` 删除）；buddy 兼容性待 C1 向量 |
 | B5 | M5 | `storage` crate | 🔧 | `storage_object`/bucket/去重/GC；`:fs`/`:s3`；离线部分完成，真实 S3 桶/PG 待 devenv |
 | B6 | M6 | `worker` crate | 🔧 | Quartz 6 段 cron、task 状态机、`FOR UPDATE SKIP LOCKED` 认领、Redis `tenant:queue`；`task.props` = **jsonb transit**（不是 Fressian）；离线部分完成，live PG/Redis 待 devenv |
-| B7 | M7 | `ws` crate | 🔧 | axum WebSocket + msgbus topic；RedisBus trait + InMemoryBus；协议/心跳/路由 33 条测试；真实 Redis 适配器待 devenv |
+| B7 | M7 | `ws` crate | ✅ | axum WebSocket + msgbus；RedisBusClient + InMemoryBus；协议/心跳/路由 33 条默认测试 + 7 条 Redis live |
 | B8 | M8 | `rpc` 只读命令承接 | ⛔ | 前置：C3 DDL + C4 OpenAPI + 补齐 `::sm/result` + 可用 devenv。永久排除：`add-file-transient-changes`/binfile/files 写路径/thumbnails/nitrate（`file.data` blob = Fressian v4/v5，JVM 专有） |
 | — | — | `render-native` | ⬜ 暂缓 | `render-wasm` 无 headless-native API（24 处 `cfg(target_arch="wasm32")` + GL `gpu_state`），需先抽 core 且要 file-data 解码 |
 
@@ -3736,6 +3736,35 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 下一步：本阶段 M0–M7 代码交付收口；devenv 起来后补 M6/M7 的 live PG/Redis 适配器、
   C1–C4 采集与真实浏览器对拍。M8 仍不交付。
 - 提交：未提交（等用户明确要求）。
+
+---
+
+### 7.105 本轮（2026-11-24，第一百零四批：backend-rust M7 Redis 适配器）
+
+- 口径不变：只写 `backend-rust/`，不接部署、不改 `backend/`/`common/`/`docker/`/
+  `scripts/ci`。本机 Redis `127.0.0.1:6379` 可用，PostgreSQL 与 Clojure 仍不可用。
+- 依赖：加入 `redis 0.27.6`（`tokio-comp`，关闭默认 feature）。该 crate 原先不在缓存，
+  联网拉取一次后已锁进 `Cargo.lock`；后续 `--offline` 门禁可复现。
+- 新增 `crates/ws/src/redis.rs`：`RedisBusClient::connect(url, tenant)` 建一条多路复用
+  PUBLISH 连接和一条独立 Pub/Sub 连接。后台监听任务持有通道集合；首个本地订阅发送
+  `SUBSCRIBE <tenant>.<topic>`，最后一个退订发送 `UNSUBSCRIBE`，订阅确认后才向调用方返回。
+- 发布只走 Redis，payload 是 transit map，并补逻辑 `:topic`；监听端解码后交给
+  `InMemoryBus::deliver`，因此同一进程的多个 sender 各收一次，不会重复投递。
+  关闭的 sender 在投递时清理，返回的空 topic 会同步释放 Redis 通道。
+- 容错：Pub/Sub 断线后按 100ms 到 5s 退避重连，并对仍活跃的通道重发订阅；坏 channel、
+  非法 UTF-8/Transit、非 map payload 只记告警并跳过，不终止监听。取消订阅后迟到消息
+  找不到本地 sender，直接丢弃。
+- live 测试：`tests/redis.rs` 7 条 `#[ignore]`，默认地址
+  `redis://127.0.0.1:6379/15`，可用 `PENPOT_TEST_REDIS_URL` 覆盖；每个用例使用随机
+  tenant。覆盖发布往返、同 topic 两个本地订阅共享一个 Redis 订阅、外部连接直投前缀
+  通道、租户隔离、退订后重订阅、坏 payload 后继续投递、单次发布不重复投递。7 条全过。
+- 验证：`cargo test -p ws --test redis -- --ignored` 7 passed；
+  `cargo fmt --all --check`、`clippy --workspace --all-targets -D warnings`、
+  `test`、`build`、`doc` 均退出 0。默认 workspace 为 337 passed + 9 ignored
+  （ws 33 passed + 7 ignored）。
+- 边界：未做浏览器两标签页联调、Clojure/Rust 混合集群对拍、强制断线重连的自动化；
+  Redis Cluster/Sentinel、消息持久化与断线补发仍不在本阶段。M8 仍不交付。
+- 提交：本条目随实现单独提交；不 push。
 
 ---
 

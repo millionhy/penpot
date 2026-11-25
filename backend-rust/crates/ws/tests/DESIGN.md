@@ -1,8 +1,8 @@
 # ws live compatibility test design
 
-The offline crate stops at the `RedisBus` trait and `InMemoryBus`. This file
-records what the live adapter and its tests must prove once a devenv is
-available.
+`RedisBusClient` implements the live adapter. The cases below that have a
+check mark run against `PENPOT_TEST_REDIS_URL`; the remaining cases need a
+second process, a mixed Clojure/Rust cluster or a browser.
 
 ## Adapter shape
 
@@ -27,14 +27,16 @@ available.
 Gate the tests on `PENPOT_TEST_REDIS_URL` and mark them `#[ignore]` so the
 offline workspace stays green.
 
-1. Publish on `acme.file-1`; a subscriber opened for `file-1` receives the map
+1. ✅ Publish on `acme.file-1`; a subscriber opened for `file-1` receives the map
    once, with logical `:topic` equal to `file-1`.
-2. Two local subscriptions to one topic produce one Redis `SUBSCRIBE`; removing
-   the first keeps it open, removing the second closes it.
-3. A second process (or a second connection acting as the remote side) can
+2. ✅ Two local subscriptions to one topic keep one Redis subscriber;
+   removing the first keeps it open, removing the second closes it.
+3. ✅ A second connection acting as the remote side can
    publish to the prefixed topic and reach the local sender.
-4. A malformed payload does not stop later deliveries.
-5. Kill and restart the pub/sub connection; subscribed topics are reopened and
+4. ✅ A malformed payload does not stop later deliveries.
+5. A second process publishes while both sides share the same tenant. This is
+   the Clojure/Rust mixed-cluster check.
+6. Kill and restart the pub/sub connection; subscribed topics are reopened and
    a later publish arrives.
 
 ## Browser flow

@@ -4,6 +4,7 @@ mod bus;
 mod error;
 mod heartbeat;
 mod protocol;
+mod redis;
 mod server;
 
 pub use bus::{prefix_topic, InMemoryBus, RedisBus, Subscription};
@@ -13,4 +14,5 @@ pub use protocol::{
     decode_client_message, AccessControl, AllowAllAccess, ClientMessage, Protocol, ProtocolOptions,
     Scope, ServerFrame, ZERO_TOPIC,
 };
+pub use redis::RedisBusClient;
 pub use server::{build_router, websocket_accept_key, FixedIdentity, WebSocketAuth, WsState};

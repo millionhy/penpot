@@ -93,6 +93,101 @@ impl InMemoryBus {
         self.subscriber_count(topic) > 0
     }
 
+    pub(crate) fn tenant(&self) -> &str {
+        &self.tenant
+    }
+
+    pub(crate) fn topics_for(&self, subscription: Subscription) -> Vec<String> {
+        self.state()
+            .subscriptions
+            .get(&subscription)
+            .map_or_else(Vec::new, |topics| topics.iter().cloned().collect())
+    }
+
+    /// Insert a local subscription and report the topics it opened.
+    pub(crate) fn insert_subscription(
+        &self,
+        topics: &[String],
+        capacity: usize,
+        sender: mpsc::Sender<Map>,
+    ) -> Result<(Subscription, Vec<String>)> {
+        let topics: BTreeSet<_> = topics.iter().cloned().collect();
+        if topics.is_empty() {
+            return Err(WsError::Bus("subscription needs at least one topic".into()));
+        }
+        if capacity == 0 {
+            return Err(WsError::Bus(
+                "subscription capacity must be positive".into(),
+            ));
+        }
+
+        let subscription = Subscription(Uuid::new_v4());
+        let mut state = self.state();
+        let opened = topics
+            .iter()
+            .filter(|topic| state.topics.get(*topic).is_none_or(BTreeMap::is_empty))
+            .cloned()
+            .collect();
+        for topic in &topics {
+            state
+                .topics
+                .entry(topic.clone())
+                .or_default()
+                .insert(subscription, sender.clone());
+        }
+        state.subscriptions.insert(subscription, topics);
+        Ok((subscription, opened))
+    }
+
+    /// Deliver to the local senders and return every topic that became empty.
+    pub(crate) fn deliver(&self, topic: &str, message: Map) -> Vec<String> {
+        let mut state = self.state();
+        let mut removed = BTreeSet::new();
+        let (closed, empty) = {
+            let Some(subscribers) = state.topics.get_mut(topic) else {
+                return Vec::new();
+            };
+
+            let mut closed = Vec::new();
+            for (subscription, sender) in subscribers.iter() {
+                match sender.try_send(message.clone()) {
+                    Ok(()) => {}
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        tracing::warn!(
+                            topic,
+                            tenant = %self.tenant,
+                            "dropping msgbus message for a slow subscriber"
+                        );
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => closed.push(*subscription),
+                }
+            }
+            for subscription in &closed {
+                subscribers.remove(subscription);
+            }
+            (closed, subscribers.is_empty())
+        };
+        for subscription in closed {
+            if let Some(topics) = state.subscriptions.remove(&subscription) {
+                for topic in topics {
+                    let remove_topic = state.topics.get_mut(&topic).is_some_and(|subscribers| {
+                        subscribers.remove(&subscription);
+                        subscribers.is_empty()
+                    });
+                    if remove_topic {
+                        state.topics.remove(&topic);
+                        removed.insert(topic);
+                    }
+                }
+            }
+        }
+        if empty {
+            state.topics.remove(topic);
+            removed.insert(topic.to_owned());
+        }
+        removed.into_iter().collect()
+    }
+
     fn state(&self) -> std::sync::MutexGuard<'_, BusState> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -106,27 +201,8 @@ impl RedisBus for InMemoryBus {
         capacity: usize,
         sender: mpsc::Sender<Map>,
     ) -> Result<Subscription> {
-        let topics: BTreeSet<_> = topics.iter().cloned().collect();
-        if topics.is_empty() {
-            return Err(WsError::Bus("subscription needs at least one topic".into()));
-        }
-        if capacity == 0 {
-            return Err(WsError::Bus(
-                "subscription capacity must be positive".into(),
-            ));
-        }
-
-        let subscription = Subscription(Uuid::new_v4());
-        let mut state = self.state();
-        for topic in &topics {
-            state
-                .topics
-                .entry(topic.clone())
-                .or_default()
-                .insert(subscription, sender.clone());
-        }
-        state.subscriptions.insert(subscription, topics);
-        Ok(subscription)
+        self.insert_subscription(topics, capacity, sender)
+            .map(|(subscription, _opened)| subscription)
     }
 
     async fn unsubscribe(&self, subscription: Subscription) -> Result<()> {
@@ -150,38 +226,7 @@ impl RedisBus for InMemoryBus {
 
     async fn publish(&self, topic: &str, mut message: Map) -> Result<()> {
         message.insert(Value::kw("topic"), Value::str(topic));
-
-        let mut state = self.state();
-        let (closed, empty) = {
-            let Some(subscribers) = state.topics.get_mut(topic) else {
-                return Ok(());
-            };
-
-            let mut closed = Vec::new();
-            for (subscription, sender) in subscribers.iter() {
-                match sender.try_send(message.clone()) {
-                    Ok(()) => {}
-                    Err(mpsc::error::TrySendError::Full(_)) => {
-                        tracing::warn!(
-                            topic,
-                            tenant = %self.tenant,
-                            "dropping msgbus message for a slow subscriber"
-                        );
-                    }
-                    Err(mpsc::error::TrySendError::Closed(_)) => closed.push(*subscription),
-                }
-            }
-            for subscription in &closed {
-                subscribers.remove(subscription);
-            }
-            (closed, subscribers.is_empty())
-        };
-        for subscription in closed {
-            state.subscriptions.remove(&subscription);
-        }
-        if empty {
-            state.topics.remove(topic);
-        }
+        let _ = self.deliver(topic, message);
         Ok(())
     }
 }

@@ -15,6 +15,7 @@ errors = { path = "../errors" }
 futures-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
+redis.workspace = true
 sha1.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

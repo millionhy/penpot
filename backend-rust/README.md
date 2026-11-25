@@ -5,7 +5,7 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 ## 当前状态
 
 **M0 工作区基线、M1 `transit`（离线部分）、M2 `errors` + `config`、M3 `rpc` 骨架、
-M4 `session`、M5 `storage`（离线部分）、M6 `worker`（离线部分）、M7 `ws`（离线部分）
+M4 `session`、M5 `storage`（离线部分）、M6 `worker`（离线部分）、M7 `ws`
 完成（2026-11-24）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
@@ -51,8 +51,9 @@ M4 `session`、M5 `storage`（离线部分）、M6 `worker`（离线部分）、
 - M7 已有：`crates/ws` 的 msgbus 前缀与本地订阅计数、`RedisBus`/`InMemoryBus`、
   `subscribe-file`/`subscribe-team`/`unsubscribe-file`/`pointer-update`/`broadcast`/
   `keepalive` 多态、presence 与心跳；`/ws/notifications?session-id=<uuid>` 的鉴权、
-  RFC 6455 upgrade、Transit 文本帧与 8802 超时关闭。33 条 crate 测试，其中协议 10 条；
-  真实 Redis 适配器与 live 对拍留到 devenv，测试设计见 `crates/ws/tests/DESIGN.md`。
+  RFC 6455 upgrade、Transit 文本帧与 8802 超时关闭。`RedisBusClient` 使用发布/订阅
+  双连接，首订阅开通道、末退订关通道，断线重连后重订阅。33 条默认 crate 测试 +
+  7 条 Redis live 用例；浏览器联调与混合集群对拍见 `crates/ws/tests/DESIGN.md`。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 
@@ -85,7 +86,7 @@ backend-rust/
     ├── db/               sqlx 池、kebab→snake 命名、事务包装（运行时查询）
     ├── storage/          ✅ storage_object 闭包 metadata、bucket、去重、GC、fs/s3（S3 真实桶待验）
     ├── worker/           ✅ Quartz cron、task 状态机、dispatcher 认领、runner 循环
-    ├── ws/               ✅ msgbus topic/订阅计数、消息多态、axum WebSocket（Redis 适配器待验）
+    ├── ws/               ✅ msgbus、消息多态、axum WebSocket、Redis 适配器
     └── rpc/              ✅ axum 服务：路由 + 中间件管道 + 命令 Registry（DB-free 骨架）
 ```
 

@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | rustc / cargo | 1.98.0（`~/.cargo/bin`） | 可用 |
 | registry | `.cargo/config.toml` 把 crates-io 换到 `sparse+https://rsproxy.cn/index/`；crates.io 直连 TLS 被拦，`static.crates.io` 通 | 依赖必须优先选用**本地已缓存版本**，并锁进 `Cargo.lock` |
-| 已缓存关键依赖 | axum 0.8.9、tokio 1.53.1、tower-http 0.6.11、sqlx 0.9.0/0.8.6、redis 0.27.6（旧机清单）、tokio-tungstenite 0.28.0、uuid 1.26.1、chrono 0.4.45、indexmap 2.14.2、tracing 0.1.44、thiserror 2.0.21、proptest 1.11、aws-sdk-s3 1.123、reqwest 0.13.5、mime、url、hex、base64 0.23.1；密码学以 digest-0.10 一代为准：aes 0.8.4、aes-gcm 0.10.3、hkdf 0.12.4、blake2 0.10.6、hmac 0.12.1、httpdate 1.0.3、zeroize 1.8 | M0–M7 实际声明的依赖均可离线构建；当前机器未检出 `redis` crate，故 M7 只落 `RedisBus` trait 与 `InMemoryBus`。`aes-kw 0.3.1` 虽在旧机缓存但需要未缓存的 `aes 0.9`/`cipher 0.5`，故 AES-KW 自带实现 |
+| 已缓存关键依赖 | axum 0.8.9、tokio 1.53.1、tower-http 0.6.11、sqlx 0.9.0/0.8.6、redis 0.27.6、tokio-tungstenite 0.28.0、uuid 1.26.1、chrono 0.4.45、indexmap 2.14.2、tracing 0.1.44、thiserror 2.0.21、proptest 1.11、aws-sdk-s3 1.123、reqwest 0.13.5、mime、url、hex、base64 0.23.1；密码学以 digest-0.10 一代为准：aes 0.8.4、aes-gcm 0.10.3、hkdf 0.12.4、blake2 0.10.6、hmac 0.12.1、httpdate 1.0.3、zeroize 1.8 | M0–M7 实际声明的依赖均可离线构建。`redis 0.27.6` 已联网拉取一次并锁进 `Cargo.lock`，M7 的 `RedisBusClient` 可离线编译。`aes-kw 0.3.1` 需要未缓存的 `aes 0.9`/`cipher 0.5`，故 AES-KW 自带实现 |
 | docker | **不存在**（`docker: command not found`） | devenv 起不来 |
 | PostgreSQL | `localhost:5433` 拒绝连接 | S3（DDL 快照）、任何 sqlx/`query!` 编译期校验受阻 |
 | Clojure CLI / JVM | 未见可用 | S2（OpenAPI 快照）、JWE 测试向量生成受阻 |
@@ -114,7 +114,7 @@ backend-rust/
     ├── db/                 # sqlx 池、kebab→snake 命名、事务包装（运行时查询，不用 query! 宏）
     ├── storage/            # metadata schema、bucket、去重、GC 状态机、ObjectStore trait + fs/s3
     ├── worker/             # cron 解析、task 状态机、dispatcher SQL、runner 循环、retry/dedupe
-    ├── ws/                 # msgbus topic/订阅计数、消息多态、RedisBus trait + InMemoryBus
+    ├── ws/                 # msgbus、协议、axum WebSocket、RedisBusClient + InMemoryBus
     └── rpc/                # bin：axum 服务（路由 + 中间件管道 + Registry），仅本地监听 6061
 ```
 
@@ -290,19 +290,20 @@ clj_contract}.rs`），整个 workspace 304 条通过 + 2 ignored。
 - 明确未做：`sqlx` 仓储、Redis `TaskQueue` 适配器与 live PG/Redis 集成；混合集群兼容测试
   代码等 devenv。SQL 常量已覆盖 dispatcher、GC 与 webhook 的三类写入路径。
 
-### M7 — `ws`（✅ 2026-11-24，离线部分；真实 Redis 适配器待 devenv）
+### M7 — `ws`（✅ 2026-11-24，Redis live 已验证）
 
 - T7.1 ✅ msgbus topic 约定 + `prefix-topic` 复刻（profile-id / file-id / team topics / `uuid/zero` 系统 topic）
 - T7.2 ✅ 订阅计数状态机（首订阅真订阅、末退订真退订）+ 单测
 - T7.3 ✅ 消息多态（`subscribe-team`/`subscribe-file`/`unsubscribe-file`/presence/心跳）
 - T7.4 ✅ axum WebSocket upgrade + `RedisBus` trait + `InMemoryBus`（离线测试用）
+- T7.5 ✅ `RedisBusClient`：发布/订阅双连接、首订阅开通道、末退订关通道、断线重连重订阅
 
-DoD：InMemoryBus 下 ≥8 条协议测试（实测协议 10 条）。真实 Redis 适配器与 `#[ignore]`
-集成测试按 M6 同一口径延后：本机 cargo 缓存没有 `redis` crate，等 devenv 一并验证。
+DoD：InMemoryBus 下 ≥8 条协议测试（实测协议 10 条）；真实 Redis 的 7 条 `#[ignore]`
+live 用例通过。
 
-落地（2026-11-24）：`crates/ws` 有 `bus / error / heartbeat / protocol / server` 五个模块。
-测试为 crate 内 33 条通过（`tests/{bus,clj_contract,heartbeat,protocol,server}.rs`），
-整个 workspace 337 条通过 + 2 ignored。
+落地（2026-11-24）：`crates/ws` 有 `bus / error / heartbeat / protocol / redis / server`
+六个模块。默认测试为 crate 内 33 条通过 + 7 ignored；整个 workspace 337 条通过 + 9 ignored。
+Redis live 7 条独立跑通。
 
 - bus：`prefix_topic` 按 `<tenant>.<topic>` 拼接；`InMemoryBus` 复刻本地订阅计数，
   首订阅打开、末退订关闭，退订幂等；发布补逻辑 `:topic`，慢订阅丢弃，关闭的发送端自动清理。
@@ -315,8 +316,13 @@ DoD：InMemoryBus 下 ≥8 条协议测试（实测协议 10 条）。真实 Red
   `tokio-tungstenite` 读写，文本帧走 Transit verbose；入站上限 1 MiB/消息、256 KiB/帧。
 - heartbeat：8 字节大端序号；profile 16、scope 64、输出/输入 64、5 秒、最多 3 个未答
   ping；超时用 Clojure 的关闭码 8802。`clj_contract` 锁定路由、tenant 前缀、缓冲与消息类型。
-- 明确未做：真实 Redis `RedisBus` 适配器、浏览器到真实 Redis 的端到端联调。设计边界见
-  `crates/ws/tests/DESIGN.md`。
+- redis：`RedisBusClient` 用多路复用连接发布、独立 Pub/Sub 连接接收；本地计数决定首个
+  `SUBSCRIBE` 与最后一个 `UNSUBSCRIBE`。监听任务在断线后按 100ms 到 5s 退避重连，
+  重开仍有本地订阅的通道。坏 channel、非 Transit 或非 map payload 只告警并跳过。
+- live 测试：发布往返、两个本地订阅共享一个 Redis 通道、外部连接直投前缀通道、租户隔离、
+  退订后重订阅、坏 payload 后继续投递，共 7 条通过。
+- 明确未做：浏览器到真实 Redis 的两标签页联调、Clojure/Rust 混合集群对拍、强制断线重连
+  的自动化用例。设计边界见 `crates/ws/tests/DESIGN.md`。
 
 ### M8 — `rpc` 只读命令承接：**本阶段不交付**
 
@@ -388,8 +394,9 @@ M5：`storage` 的 metadata 双编码、BLAKE2b 去重、pending→valid 状态�
 45 条 crate 测试 + 1 ignored（真实桶）；
 M6：`worker` 的 Quartz cron、六态 task 状态机、dispatcher 认领/恢复、runner 重试与五个
 offline handler，67 条 crate 测试；
-M7：`ws` 的 msgbus 前缀/订阅计数、协议多态、presence、心跳、鉴权与 axum WebSocket 路由，
-33 条 crate 测试（协议 10 条），整个 workspace 337 条通过 + 2 ignored。
+M7：`ws` 的 msgbus 前缀/订阅计数、协议多态、presence、心跳、鉴权、axum WebSocket 路由
+与真实 Redis 适配器，33 条默认 crate 测试 + 7 条 Redis live 用例，整个 workspace
+337 条通过 + 9 ignored。
 本阶段代码交付到此收口；下一步是 devenv 的 live PG/Redis 适配器与 C1–C4 采集。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。
 
