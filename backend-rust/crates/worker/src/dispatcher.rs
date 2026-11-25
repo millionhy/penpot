@@ -137,22 +137,20 @@ where
     /// Returns a repository or queue error when recovery, selection, Redis
     /// publishing or the scheduled acknowledgement fails.
     pub async fn run_once(&self, now: DateTime<Utc>) -> Result<BatchOutcome> {
-        for item in self
-            .repository
-            .reschedule_lost(now, LOST_TASK_AFTER)
-            .await?
-        {
+        let mut batch = self.repository.begin_batch().await?;
+
+        for item in batch.reschedule_lost(now, LOST_TASK_AFTER).await? {
             tracing::warn!(task_id = %item.id, queue = %item.queue, "reschedule lost task");
         }
-        for item in self.repository.fail_orphans(now, ORPHAN_AFTER).await? {
+        for item in batch.fail_orphans(now, ORPHAN_AFTER).await? {
             tracing::warn!(task_id = %item.id, queue = %item.queue, "fail orphan task");
         }
 
-        let tasks = self
-            .repository
+        let tasks = batch
             .select_next(now, &self.config.tenant, self.config.batch_size)
             .await?;
         if tasks.is_empty() {
+            batch.commit().await?;
             return Ok(BatchOutcome::Waited);
         }
 
@@ -176,8 +174,10 @@ where
                 .collect();
             self.queue.push(&self.queue_key(queue), messages).await?;
             let ids: Vec<_> = group.iter().map(|task| task.id).collect();
-            self.repository.mark_scheduled(&ids).await?;
+            batch.mark_scheduled(&ids).await?;
         }
+
+        batch.commit().await?;
 
         Ok(BatchOutcome::Published {
             batches: groups.len(),

@@ -6,7 +6,7 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 
 **M0 工作区基线、M1 `transit`（离线部分）、M2 `errors` + `config`、M3 `rpc` 骨架、
 M4 `session`、M5 `storage`（离线部分）、M6 `worker`（Redis 队列已验、PG 待验）、
-M7 `ws`、M9 `rpc` 鉴权接线、M10 `db`/`pg` 基础完成（2026-11-25）。**
+M7 `ws`、M9 `rpc` 鉴权接线、M10 `db`/`pg` 基础、M11 worker PG 仓储完成（2026-11-25）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -71,6 +71,13 @@ M7 `ws`、M9 `rpc` 鉴权接线、M10 `db`/`pg` 基础完成（2026-11-25）。*
   `app.http.session` 与 `access-token`。鉴权 trait 因此改为 async；sqlx 固定 `=0.9.0`，
   只开 `runtime-tokio`/`postgres`/`uuid`。db 11 条单测 + pg 2 条 `#[ignore]` live；
   workspace 378 条通过 + 18 ignored。
+- M11 已有：`crates/pg/src/task.rs` 的 `PgTaskRepository`。dispatcher 经
+  `worker::DispatchBatch` 在同一事务里做丢失重排、orphan 清理、`FOR UPDATE SKIP LOCKED`
+  认领与 `mark_scheduled`，空批次也会 commit，Redis 失败则回滚；`task.props`
+  按 verbose Transit 解码，时间戳统一换毫秒，`get`/`mark_running`/`save` 对齐
+  `app.worker.runner`，另有与 `sql:insert-new-task` 同列的 `insert`。pg 4 条单测 +
+  1 条 `#[ignore]` live 往返；worker 2 条 batch commit 测试；workspace 384 条通过 +
+  19 ignored。live PG 与 Clojure↔Rust 混合集群仍待 devenv。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 

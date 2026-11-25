@@ -9,12 +9,15 @@ publish.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+chrono.workspace = true
 db = { path = "../db" }
 errors = { path = "../errors" }
 rpc = { path = "../rpc" }
 sqlx.workspace = true
 tokio.workspace = true
+transit = { path = "../transit" }
 uuid.workspace = true
+worker = { path = "../worker" }
 
 [lints]
 workspace = true

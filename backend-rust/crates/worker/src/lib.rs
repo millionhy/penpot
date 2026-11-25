@@ -35,7 +35,7 @@ pub use handler::{
     TasksGc, WebhookRunner,
 };
 pub use queue::RedisTaskQueue;
-pub use repository::{TaskQueue, TaskRepository};
+pub use repository::{DispatchBatch, TaskQueue, TaskRepository};
 pub use runner::{ProcessOutcome, Runner, RunnerConfig, RUNNER_QUEUE_TIMEOUT};
 pub use task::{
     task_queue, HandlerFailure, HandlerResult, SubmitOptions, Task, TaskStatus,

@@ -1,8 +1,8 @@
 # backend-rust 开发计划（**已批准** · 实现但不接入部署）
 
-本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干、M9 鉴权接线与
-M10 `db`/`pg` 基础已落地（2026-11-25），M6 的 PG 仓储与 M8 仍不交付。换机器后的上下文快照见
-`backend-rust/HANDOFF.md`。
+本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干、M9 鉴权接线、
+M10 `db`/`pg` 基础与 M11 worker PG 仓储已落地（2026-11-25），live PG 验证与 M8 仍不交付。
+换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
 
@@ -383,6 +383,30 @@ DoD ✅：db 11 条单测 + doc test；pg 2 条 live 测试 `#[ignore]`；worksp
 18 ignored；fmt/clippy/build/doc 全绿。明确未做：live PG 实跑、示例二进制接线、
 sqlx 事务 hook 与 M5/M6 仓储。
 
+### M11 — worker 的 PG 仓储（✅ 2026-11-25，live PG 待 devenv）
+
+把 M6 的 `TaskRepository` 接到 `task` 表，同时补上 dispatcher 的事务边界。
+
+- T11.1 ✅ `worker::DispatchBatch`：dispatcher 每次迭代先开一个 batch，恢复、认领与
+  `mark_scheduled` 都在同一事务里；空批次也 commit，队列发布失败直接 drop 回滚。
+  `TaskRepository::begin_batch` 有默认实现（顺序调用旧方法），内存 fake 无需改写。
+- T11.2 ✅ `crates/pg/src/task.rs` 的 `PgTaskRepository`：认领 SQL 保留
+  `ORDER BY t.priority DESC, t.scheduled_at` / `FOR UPDATE SKIP LOCKED`，队列条件用
+  `queue ~~* $2` 加 `<tenant>:%`；`mark_scheduled` 用 `id = ANY($1::uuid[])`；
+  丢失重排与 orphan 清理的阈值用 `PgInterval` 绑定，不再写死 5 分钟/24 小时。
+- T11.3 ✅ 行映射：`props::text` 交给 verbose Transit reader（对齐 `app.db/tjson`），
+  `created_at`/`modified_at`/`scheduled_at`/`completed_at` 统一转毫秒；`label` 空值读成
+  空串，`priority` 空值回退 100。`get`、`mark_running`、`save` 与 Clojure runner 的
+  三条 `db/update!` 对齐。
+- T11.4 ✅ 附带 `insert`：列与 `sql:insert-new-task` 相同，`props` 用
+  `$3::text::jsonb` 绑定 verbose Transit；供后续 submit 接线使用。
+
+DoD ✅：pg 4 条单测（verbose props、非 map 拒绝、毫秒换算、interval 换算）+
+1 条 `#[ignore]` live 往返（insert → begin_batch 认领 → mark_scheduled → mark_running →
+save completed → delete）；worker 2 条 batch commit 测试；workspace 384 passed + 19 ignored；
+fmt/clippy/build/doc 全绿。live PG 实跑、Clojure↔Rust 混合集群与 Redis 故障后的重排
+仍待 devenv。
+
 ---
 
 ## 5. 顺序与总量
@@ -456,7 +480,9 @@ M9：`rpc` 鉴权接线——`TokenResolver` 接 cookie/Bearer 会话令牌与 `
 整个 workspace 366 条通过 + 14 ignored。
 M10：`db` 的池、命名、错误映射与事务助手，`pg` 的会话/访问令牌存储，鉴权 trait 改为
 async；workspace 378 条通过 + 18 ignored。
-下一步是 devenv 起来后的 live PG 验证（`PENPOT_TEST_DATABASE_URL`）与 M6/M5 的 PG 仓储，
+M11：worker 的 `PgTaskRepository` 与 `DispatchBatch` 事务边界——认领/恢复/ack 同事务，
+verbose Transit props、毫秒时间戳与 `task` 行映射；workspace 384 条通过 + 19 ignored。
+下一步是 devenv 起来后的 live PG 验证（`PENPOT_TEST_DATABASE_URL`）、M5 的 PG 仓储，
 再把 `PgSessionStore` 接进示例二进制。C2 真实应答到位后，按 `TODO-ONLINE.md` 回填金样本，
 再把 M1 的「线上形态」标为定案。M8 仍不交付。
 

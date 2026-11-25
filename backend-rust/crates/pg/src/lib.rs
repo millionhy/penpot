@@ -1,11 +1,11 @@
 //! PostgreSQL adapters for the traits defined by the domain crates.
 //!
-//! This crate is the only place that turns SQL rows into `rpc::auth` records.
-//! Keeping it separate from `rpc` means the router and the auth logic stay
-//! free of sqlx, while the live queries still compile against the same
-//! `sqlx` version the rest of the backend uses.
+//! This crate is the only place that turns SQL rows into `rpc::auth` or
+//! `worker` records. Keeping it separate means the router, the auth logic and
+//! the worker stay free of sqlx, while the live queries still compile against
+//! the same `sqlx` version the rest of the backend uses.
 //!
-//! The queries are the ones in `app.http.session` and
+//! The auth queries are the ones in `app.http.session` and
 //! `app.http.access-token`, restated with runtime `sqlx::query` calls:
 //!
 //! * sessions select `id`, `profile_id` and `modified_at` in milliseconds,
@@ -13,8 +13,14 @@
 //! * access tokens select `profile_id`, `perms` and `expires_at`, and skip
 //!   expired rows like `sql:get-token-data`.
 //!
+//! The worker adapter covers the `task` table: dispatcher claim and recovery,
+//! runner fetch and state writes, and the submit insert. `task.props` is
+//! verbose Transit stored as JSONB, so the adapter decodes it with the same
+//! reader the RPC layer uses.
+//!
 //! Live tests are `#[ignore]`d and need `PENPOT_TEST_DATABASE_URL` plus a
-//! migrated schema; they only read a random UUID, so they never write.
+//! migrated schema. The task test inserts one row under a random id and
+//! removes it again.
 
 use std::collections::BTreeSet;
 
@@ -22,6 +28,10 @@ use errors::Cause;
 use rpc::auth::{AccessTokenRecord, AccessTokenStore, SessionRecord, SessionStore};
 use sqlx::Row;
 use uuid::Uuid;
+
+mod task;
+
+pub use task::PgTaskRepository;
 
 /// `http_session_v2` reader.
 #[derive(Debug, Clone)]

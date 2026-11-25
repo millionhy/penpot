@@ -9,9 +9,9 @@ use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 use tokio::sync::watch;
 use uuid::Uuid;
 use worker::{
-    decode_payload, encode_payload, BatchOutcome, ClaimedTask, Dispatcher, DispatcherConfig,
-    QueueRef, Result, SubmitOptions, Task, TaskMessage, TaskQueue, TaskRepository, TaskStatus,
-    WorkerError,
+    decode_payload, encode_payload, BatchOutcome, ClaimedTask, DispatchBatch, Dispatcher,
+    DispatcherConfig, QueueRef, Result, SubmitOptions, Task, TaskMessage, TaskQueue,
+    TaskRepository, TaskStatus, WorkerError,
 };
 
 #[derive(Default)]
@@ -186,6 +186,120 @@ impl TaskQueue for FakeQueue {
     }
 }
 
+#[derive(Default)]
+struct CommittingRepository {
+    inner: FakeRepository,
+    commits: Mutex<usize>,
+}
+
+impl CommittingRepository {
+    fn with_tasks(tasks: impl IntoIterator<Item = Task>) -> Self {
+        Self {
+            inner: FakeRepository::with_tasks(tasks),
+            commits: Mutex::new(0),
+        }
+    }
+
+    fn commits(&self) -> usize {
+        *self
+            .commits
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+#[async_trait]
+impl TaskRepository for CommittingRepository {
+    async fn select_next(
+        &self,
+        now: DateTime<Utc>,
+        tenant: &str,
+        limit: usize,
+    ) -> Result<Vec<ClaimedTask>> {
+        self.inner.select_next(now, tenant, limit).await
+    }
+
+    async fn mark_scheduled(&self, ids: &[Uuid]) -> Result<usize> {
+        self.inner.mark_scheduled(ids).await
+    }
+
+    async fn reschedule_lost(
+        &self,
+        now: DateTime<Utc>,
+        max_age: TimeDelta,
+    ) -> Result<Vec<QueueRef>> {
+        self.inner.reschedule_lost(now, max_age).await
+    }
+
+    async fn fail_orphans(&self, now: DateTime<Utc>, max_age: TimeDelta) -> Result<Vec<QueueRef>> {
+        self.inner.fail_orphans(now, max_age).await
+    }
+
+    async fn get(&self, id: Uuid) -> Result<Option<Task>> {
+        self.inner.get(id).await
+    }
+
+    async fn mark_running(&self, id: Uuid, now: DateTime<Utc>) -> Result<bool> {
+        self.inner.mark_running(id, now).await
+    }
+
+    async fn save(&self, task: &Task) -> Result<bool> {
+        self.inner.save(task).await
+    }
+
+    async fn begin_batch<'a>(&'a self) -> Result<Box<dyn DispatchBatch + 'a>> {
+        Ok(Box::new(CommittingBatch {
+            inner: &self.inner,
+            commits: &self.commits,
+        }))
+    }
+}
+
+struct CommittingBatch<'a> {
+    inner: &'a FakeRepository,
+    commits: &'a Mutex<usize>,
+}
+
+#[async_trait]
+impl DispatchBatch for CommittingBatch<'_> {
+    async fn reschedule_lost(
+        &mut self,
+        now: DateTime<Utc>,
+        max_age: TimeDelta,
+    ) -> Result<Vec<QueueRef>> {
+        self.inner.reschedule_lost(now, max_age).await
+    }
+
+    async fn fail_orphans(
+        &mut self,
+        now: DateTime<Utc>,
+        max_age: TimeDelta,
+    ) -> Result<Vec<QueueRef>> {
+        self.inner.fail_orphans(now, max_age).await
+    }
+
+    async fn select_next(
+        &mut self,
+        now: DateTime<Utc>,
+        tenant: &str,
+        limit: usize,
+    ) -> Result<Vec<ClaimedTask>> {
+        self.inner.select_next(now, tenant, limit).await
+    }
+
+    async fn mark_scheduled(&mut self, ids: &[Uuid]) -> Result<usize> {
+        self.inner.mark_scheduled(ids).await
+    }
+
+    async fn commit(self: Box<Self>) -> Result<()> {
+        *self
+            .commits
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
+        Ok(())
+    }
+}
+
 fn now() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 11, 24, 12, 0, 0)
         .single()
@@ -352,4 +466,40 @@ async fn dispatcher_loop_exits_when_shutdown_is_already_requested() {
     dispatcher.run_loop(receiver).await.expect("loop exits");
 
     drop(sender);
+}
+
+#[tokio::test]
+async fn an_empty_batch_is_committed() {
+    let repository = Arc::new(CommittingRepository::default());
+    let dispatcher = Dispatcher::new(
+        repository.clone(),
+        Arc::new(FakeQueue::default()),
+        DispatcherConfig {
+            tenant: "acme".into(),
+            ..DispatcherConfig::default()
+        },
+    );
+
+    assert_eq!(
+        dispatcher.run_once(now()).await.expect("dispatch"),
+        BatchOutcome::Waited
+    );
+    assert_eq!(repository.commits(), 1);
+}
+
+#[tokio::test]
+async fn a_published_batch_is_committed_once() {
+    let repository = Arc::new(CommittingRepository::with_tasks([task(1, "default")]));
+    let dispatcher = Dispatcher::new(
+        repository.clone(),
+        Arc::new(FakeQueue::default()),
+        DispatcherConfig {
+            tenant: "acme".into(),
+            ..DispatcherConfig::default()
+        },
+    );
+
+    dispatcher.run_once(now()).await.expect("dispatch");
+
+    assert_eq!(repository.commits(), 1);
 }
