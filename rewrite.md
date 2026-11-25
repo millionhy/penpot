@@ -9,7 +9,7 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（收口见 7.96）；阶段 B（backend-rust）M0–M7 完成，`rpc` 鉴权已接入 `session`（见 7.107），M8 仍不交付，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（收口见 7.96）；阶段 B（backend-rust）M0–M7 完成，`rpc` 鉴权已接入 `session` 并落到 PG 存储（见 7.107、7.108），M8 仍不交付，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
 | 最后更新 | 2026-11-25 |
@@ -3818,6 +3818,33 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   `build`、`doc` 均退出 0。
 - 边界：没有 sqlx 存储、没有 cookie 续期写回、没有 `::actoken/type` 审计字段；
   `x-session-id` 仍不参与鉴权（与 Clojure 相同，它只做请求上下文）。M8 仍不交付。
+- 提交：未提交（等用户明确要求）。
+
+---
+
+### 7.108 本轮（2026-11-25，第一百零七批：backend-rust M10 db 与 PG 认证存储）
+
+- 口径不变：只改 `backend-rust/`，不接部署、不改 `backend/`/`common/`/`docker/`/
+  `scripts/ci`。PostgreSQL 5432/5433 与 Docker daemon 仍不可用，live PG 用例保持 `#[ignore]`。
+- 新增 `crates/db`：`DbOptions` 复刻 `app.db/defaults`（60 连接、30s 获取、2min idle、
+  30min lifetime）与 `initsql` 的 `statement_timeout`/`idle_in_transaction_session_timeout`
+  各 300s；`connect_lazy_with` 不建连，等同 Hikari 的 `initializationFailTimeout -1`；
+  `read_only` 用 `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`。
+- `table_name`/`snake_case`/`kebab_case` 按 `app.db.sql` 只换 `-` 与 `_`，不改大小写；
+  `DbError → Cause` 保留 SQLSTATE，57014/25P03 仍走 504，IO 与池故障按 500。
+  `Database::begin` 返回 sqlx 事务，未 commit 直接 drop 即回滚。
+- 新增 `crates/pg`：`PgSessionStore` 查询 `http_session_v2`（跳过 `profile_id IS NULL`，
+  `modified_at` 转毫秒）；`PgAccessTokenStore` 查询 `access_token`（过滤过期行，
+  `perms` 转集合）。SQL 逐条对照 `app.http.session` 与 `app.http.access-token`。
+- 鉴权 trait 改为 async：`SessionResolver`/`SessionStore`/`AccessTokenStore` 用
+  `async-trait`，router 的鉴权阶段改为 await。`rpc` 本身仍不依赖 sqlx，SQL 只在 `pg`。
+- 依赖：`sqlx` 固定 `=0.9.0`。解析到 0.9.1 时 cargo 需要未缓存的 `sqlx-mysql 0.9.1`，
+  离线构建失败；0.9.0 的 `runtime-tokio`/`postgres`/`uuid` 均已缓存，TLS 关闭。
+- 测试：db 11 条单测 + 1 条 doc test；pg 2 条 live `#[ignore]`（只读随机 UUID，
+  需要 `PENPOT_TEST_DATABASE_URL` 与已迁移 schema）。workspace 378 passed + 18 ignored；
+  fmt/clippy/build/doc 均退出 0。
+- 边界：live PG 未实跑；示例二进制仍用 `NoSessions`；`TransactionHook` 未接 sqlx；
+  M5/M6 的 PG 仓储仍未开始。M8 不交付。
 - 提交：未提交（等用户明确要求）。
 
 ---

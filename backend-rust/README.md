@@ -6,7 +6,7 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 
 **M0 工作区基线、M1 `transit`（离线部分）、M2 `errors` + `config`、M3 `rpc` 骨架、
 M4 `session`、M5 `storage`（离线部分）、M6 `worker`（Redis 队列已验、PG 待验）、
-M7 `ws`、M9 `rpc` 鉴权接线完成（2026-11-25）。**
+M7 `ws`、M9 `rpc` 鉴权接线、M10 `db`/`pg` 基础完成（2026-11-25）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -63,6 +63,14 @@ M7 `ws`、M9 `rpc` 鉴权接线完成（2026-11-25）。**
   解码失败降级为未认证，存储错误上抛 500。存储是 `SessionStore`/`AccessTokenStore`
   trait，`rpc` 不引入 sqlx；16 条 auth 单测 + 10 条 `oneshot` 集成。
   整个 workspace 366 条通过 + 14 ignored。
+- M10 已有：`crates/db` 的池与命名基础——`DbOptions` 复刻 Hikari 默认（60 连接、30s 获取、
+  2min idle、30min lifetime）与 300s 的 `statement_timeout`/`idle_in_transaction_session_timeout`，
+  `connect_lazy_with` 不建连，`read_only` 用会话只读特性；`table_name`/`snake_case` 对齐
+  `app.db.sql`；`DbError → Cause` 保留 SQLSTATE；`begin` 返回可回滚的 sqlx 事务。
+  `crates/pg` 实现 `PgSessionStore` 与 `PgAccessTokenStore`，SQL 对齐
+  `app.http.session` 与 `access-token`。鉴权 trait 因此改为 async；sqlx 固定 `=0.9.0`，
+  只开 `runtime-tokio`/`postgres`/`uuid`。db 11 条单测 + pg 2 条 `#[ignore]` live；
+  workspace 378 条通过 + 18 ignored。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 
@@ -92,14 +100,16 @@ backend-rust/
     ├── errors/           ✅ ex-data(:type/:code/:hint) → HTTP status/body（axum IntoResponse）
     ├── config/           ✅ PENPOT_* env + flags（enable-/disable-）
     ├── session/          ✅ JWE a256kw+a256gcm + HKDF-BLAKE2b-512 + claims/verify + cookie
-    ├── db/               sqlx 池、kebab→snake 命名、事务包装（运行时查询）
+    ├── db/               ✅ sqlx 池、kebab→snake 命名、错误映射、事务助手（运行时查询）
     ├── storage/          ✅ storage_object 闭包 metadata、bucket、去重、GC、fs/s3（S3 真实桶待验）
     ├── worker/           ✅ Quartz cron、task 状态机、dispatcher、runner、Redis 队列
     ├── ws/               ✅ msgbus、消息多态、axum WebSocket、Redis 适配器
-    └── rpc/              ✅ axum 服务：路由 + 中间件管道 + Registry；鉴权接 session（存储走 trait）
+    ├── rpc/              ✅ axum 服务：路由 + 中间件管道 + Registry；鉴权接 session（存储走 trait）
+    └── pg/               ✅ PostgreSQL 适配器：http_session_v2 与 access_token 读取
 ```
 
-依赖方向：`rpc → {transit, errors, config, session, db, storage, worker, ws}`，下层互不引用。
+依赖方向：`rpc → {transit, errors, config, session, storage, worker, ws}`；
+`pg → {db, rpc}`；`rpc` 不依赖 sqlx。
 
 顺序（`PLAN.md` §5）：`M0 workspace → M1 transit（关键路径）→ M2 errors+config ∥ M3 rpc(axum) → M4 session
 → M5 storage → M6 worker → M7 ws`。M0–M7 已落地；M6 的 PG 仓储仍待 live PostgreSQL。

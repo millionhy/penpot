@@ -29,8 +29,9 @@ fn kw(name: &str) -> Value {
 
 struct TestResolver;
 
+#[async_trait::async_trait]
 impl SessionResolver for TestResolver {
-    fn resolve(
+    async fn resolve(
         &self,
         headers: &HeaderMap,
         _session_id: Option<Uuid>,

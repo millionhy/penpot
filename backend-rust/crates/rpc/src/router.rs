@@ -26,21 +26,31 @@ pub type SharedKeys = BTreeMap<String, String>;
 
 /// Resolves the caller identity from request headers.
 ///
-/// The session/access-token decoding lands with the `session` crate (M4). M3
-/// only defines the seam so the authorisation branches are testable.
+/// The lookup is async because the live implementation reads
+/// `http_session_v2` / `access_token` through sqlx.
+#[async_trait::async_trait]
 pub trait SessionResolver: Send + Sync {
     /// # Errors
     ///
     /// A controlled error when the presented credential is malformed.
-    fn resolve(&self, headers: &HeaderMap, session_id: Option<Uuid>) -> Result<Identity, Cause>;
+    async fn resolve(
+        &self,
+        headers: &HeaderMap,
+        session_id: Option<Uuid>,
+    ) -> Result<Identity, Cause>;
 }
 
 /// The default resolver: no sessions, no tokens.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoSessions;
 
+#[async_trait::async_trait]
 impl SessionResolver for NoSessions {
-    fn resolve(&self, _headers: &HeaderMap, _session_id: Option<Uuid>) -> Result<Identity, Cause> {
+    async fn resolve(
+        &self,
+        _headers: &HeaderMap,
+        _session_id: Option<Uuid>,
+    ) -> Result<Identity, Cause> {
         Ok(Identity::default())
     }
 }
@@ -230,7 +240,7 @@ async fn dispatch_inner(
 
     // Stage: authentication.
     let session_id = header_uuid(&parts.headers, "x-session-id");
-    let identity = match state.resolver.resolve(&parts.headers, session_id) {
+    let identity = match state.resolver.resolve(&parts.headers, session_id).await {
         Ok(mut identity) => {
             identity.auth_key_id = auth_key_id;
             identity

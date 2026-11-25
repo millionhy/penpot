@@ -51,13 +51,14 @@ pub struct SessionRecord {
 }
 
 /// Reads `http_session_v2` rows.
+#[async_trait::async_trait]
 pub trait SessionStore: Send + Sync {
     /// Return the row for `id`, or `None` when it does not exist.
     ///
     /// # Errors
     ///
     /// Any database failure; it reaches the client as a 500.
-    fn read_session(&self, id: Uuid) -> Result<Option<SessionRecord>, Cause>;
+    async fn read_session(&self, id: Uuid) -> Result<Option<SessionRecord>, Cause>;
 }
 
 /// The `access_token` fields the auth pipeline reads.
@@ -72,6 +73,7 @@ pub struct AccessTokenRecord {
 }
 
 /// Reads `access_token` rows.
+#[async_trait::async_trait]
 pub trait AccessTokenStore: Send + Sync {
     /// Return the row for `id`, or `None` when it does not exist.
     ///
@@ -81,7 +83,7 @@ pub trait AccessTokenStore: Send + Sync {
     /// # Errors
     ///
     /// Any database failure; it reaches the client as a 500.
-    fn read_token(&self, id: Uuid) -> Result<Option<AccessTokenRecord>, Cause>;
+    async fn read_token(&self, id: Uuid) -> Result<Option<AccessTokenRecord>, Cause>;
 }
 
 /// Values the resolver takes from config.
@@ -147,7 +149,7 @@ impl TokenResolver {
         self
     }
 
-    fn session_identity(&self, raw: &str) -> Result<Option<Identity>, Cause> {
+    async fn session_identity(&self, raw: &str) -> Result<Option<Identity>, Cause> {
         let now = (self.clock)();
 
         // `wrap-auth` only decodes cookie/Bearer tokens whose header is the
@@ -178,7 +180,7 @@ impl TokenResolver {
         let Some(sid) = claims.sid() else {
             return Ok(None);
         };
-        let Some(record) = self.sessions.read_session(sid)? else {
+        let Some(record) = self.sessions.read_session(sid).await? else {
             return Ok(None);
         };
         if idle_expired(record.modified_at_ms, self.options.idle_max_age, now) {
@@ -189,7 +191,7 @@ impl TokenResolver {
         ))
     }
 
-    fn access_identity(&self, raw: &str) -> Result<Option<Identity>, Cause> {
+    async fn access_identity(&self, raw: &str) -> Result<Option<Identity>, Cause> {
         let Some(store) = &self.access_tokens else {
             return Ok(None);
         };
@@ -205,7 +207,7 @@ impl TokenResolver {
         let Some(tid) = claims.get("tid").and_then(Value::as_uuid) else {
             return Ok(None);
         };
-        let Some(record) = store.read_token(tid)? else {
+        let Some(record) = store.read_token(tid).await? else {
             return Ok(None);
         };
         if record.expires_at_ms.is_some_and(|expires| expires <= now) {
@@ -220,16 +222,21 @@ impl TokenResolver {
     }
 }
 
+#[async_trait::async_trait]
 impl SessionResolver for TokenResolver {
-    fn resolve(&self, headers: &HeaderMap, _session_id: Option<Uuid>) -> Result<Identity, Cause> {
+    async fn resolve(
+        &self,
+        headers: &HeaderMap,
+        _session_id: Option<Uuid>,
+    ) -> Result<Identity, Cause> {
         let Some(credential) = credential(headers, &self.options.cookie_name) else {
             return Ok(Identity::default());
         };
         let identity = match credential.kind {
             CredentialKind::Cookie | CredentialKind::Bearer => {
-                self.session_identity(&credential.token)?
+                self.session_identity(&credential.token).await?
             }
-            CredentialKind::AccessToken => self.access_identity(&credential.token)?,
+            CredentialKind::AccessToken => self.access_identity(&credential.token).await?,
         };
         Ok(identity.unwrap_or_default())
     }
@@ -314,16 +321,18 @@ mod tests {
 
     struct Sessions(HashMap<Uuid, SessionRecord>);
 
+    #[async_trait::async_trait]
     impl SessionStore for Sessions {
-        fn read_session(&self, id: Uuid) -> Result<Option<SessionRecord>, Cause> {
+        async fn read_session(&self, id: Uuid) -> Result<Option<SessionRecord>, Cause> {
             Ok(self.0.get(&id).cloned())
         }
     }
 
     struct Tokens(HashMap<Uuid, AccessTokenRecord>);
 
+    #[async_trait::async_trait]
     impl AccessTokenStore for Tokens {
-        fn read_token(&self, id: Uuid) -> Result<Option<AccessTokenRecord>, Cause> {
+        async fn read_token(&self, id: Uuid) -> Result<Option<AccessTokenRecord>, Cause> {
             Ok(self.0.get(&id).cloned())
         }
     }
@@ -384,47 +393,51 @@ mod tests {
         format!("auth-token={token}")
     }
 
-    #[test]
-    fn resolves_a_live_session_from_the_cookie() {
+    #[tokio::test]
+    async fn resolves_a_live_session_from_the_cookie() {
         let token = session_token(SID, PROFILE, None);
         let identity = resolver(Sessions(HashMap::from([(SID, live_row())])))
             .resolve(&headers(Some(&cookie(&token)), None), None)
+            .await
             .unwrap();
         assert_eq!(identity.profile_id, Some(PROFILE));
         assert_eq!(identity.auth_type, Some(AuthType::Session));
     }
 
-    #[test]
-    fn bearer_resolves_like_the_cookie() {
+    #[tokio::test]
+    async fn bearer_resolves_like_the_cookie() {
         let token = session_token(SID, PROFILE, None);
         let authorization = format!("Bearer {token}");
         let identity = resolver(Sessions(HashMap::from([(SID, live_row())])))
             .resolve(&headers(None, Some(&authorization)), None)
+            .await
             .unwrap();
         assert_eq!(identity.profile_id, Some(PROFILE));
         assert_eq!(identity.auth_type, Some(AuthType::Session));
     }
 
-    #[test]
-    fn no_credential_is_anonymous() {
+    #[tokio::test]
+    async fn no_credential_is_anonymous() {
         let identity = resolver(Sessions(HashMap::new()))
             .resolve(&HeaderMap::new(), None)
+            .await
             .unwrap();
         assert_eq!(identity, Identity::default());
     }
 
-    #[test]
-    fn an_empty_cookie_falls_through_to_the_header() {
+    #[tokio::test]
+    async fn an_empty_cookie_falls_through_to_the_header() {
         let token = session_token(SID, PROFILE, None);
         let authorization = format!("Bearer {token}");
         let identity = resolver(Sessions(HashMap::from([(SID, live_row())])))
             .resolve(&headers(Some("auth-token="), Some(&authorization)), None)
+            .await
             .unwrap();
         assert_eq!(identity.profile_id, Some(PROFILE));
     }
 
-    #[test]
-    fn the_cookie_wins_over_the_authorization_header() {
+    #[tokio::test]
+    async fn the_cookie_wins_over_the_authorization_header() {
         let token = session_token(SID, PROFILE, None);
         let authorization = format!("Bearer {token}");
         let identity = resolver(Sessions(HashMap::from([(SID, live_row())])))
@@ -432,12 +445,13 @@ mod tests {
                 &headers(Some("auth-token=not-a-token"), Some(&authorization)),
                 None,
             )
+            .await
             .unwrap();
         assert_eq!(identity, Identity::default());
     }
 
-    #[test]
-    fn a_token_from_another_key_is_anonymous() {
+    #[tokio::test]
+    async fn a_token_from_another_key_is_anonymous() {
         let other = session::Token::new("another-secret").unwrap();
         let claims = session::SessionClaims {
             iss: Some(session::AUTHENTICATION_ISSUER.to_owned()),
@@ -449,27 +463,30 @@ mod tests {
         let token = other.encode_at(&claims, NOW).unwrap();
         let identity = resolver(Sessions(HashMap::from([(SID, live_row())])))
             .resolve(&headers(Some(&cookie(&token)), None), None)
+            .await
             .unwrap();
         assert_eq!(identity, Identity::default());
     }
 
-    #[test]
-    fn an_expired_token_is_anonymous_but_exp_eq_now_is_valid() {
+    #[tokio::test]
+    async fn an_expired_token_is_anonymous_but_exp_eq_now_is_valid() {
         let token = session_token(SID, PROFILE, Some(NOW - 1));
         let identity = resolver(Sessions(HashMap::from([(SID, live_row())])))
             .resolve(&headers(Some(&cookie(&token)), None), None)
+            .await
             .unwrap();
         assert_eq!(identity, Identity::default());
 
         let token = session_token(SID, PROFILE, Some(NOW));
         let identity = resolver(Sessions(HashMap::from([(SID, live_row())])))
             .resolve(&headers(Some(&cookie(&token)), None), None)
+            .await
             .unwrap();
         assert_eq!(identity.profile_id, Some(PROFILE));
     }
 
-    #[test]
-    fn another_kid_is_anonymous() {
+    #[tokio::test]
+    async fn another_kid_is_anonymous() {
         let key = session::TokenKey::derive("test-secret").unwrap();
         let codec = session::TokenCodec::with_header(key, session::TokenHeader { kid: 2, ver: 1 });
         let payload = transit::encode(
@@ -485,21 +502,23 @@ mod tests {
         let token = codec.encrypt(payload.as_bytes()).unwrap();
         let identity = resolver(Sessions(HashMap::from([(SID, live_row())])))
             .resolve(&headers(Some(&cookie(&token)), None), None)
+            .await
             .unwrap();
         assert_eq!(identity, Identity::default());
     }
 
-    #[test]
-    fn a_missing_session_row_is_anonymous() {
+    #[tokio::test]
+    async fn a_missing_session_row_is_anonymous() {
         let token = session_token(SID, PROFILE, None);
         let identity = resolver(Sessions(HashMap::new()))
             .resolve(&headers(Some(&cookie(&token)), None), None)
+            .await
             .unwrap();
         assert_eq!(identity, Identity::default());
     }
 
-    #[test]
-    fn an_idle_expired_session_is_anonymous() {
+    #[tokio::test]
+    async fn an_idle_expired_session_is_anonymous() {
         let row = SessionRecord {
             modified_at_ms: NOW - 8 * 24 * 60 * 60 * 1_000,
             ..live_row()
@@ -507,12 +526,13 @@ mod tests {
         let token = session_token(SID, PROFILE, None);
         let identity = resolver(Sessions(HashMap::from([(SID, row)])))
             .resolve(&headers(Some(&cookie(&token)), None), None)
+            .await
             .unwrap();
         assert_eq!(identity, Identity::default());
     }
 
-    #[test]
-    fn access_tokens_carry_permissions() {
+    #[tokio::test]
+    async fn access_tokens_carry_permissions() {
         let tokens = Arc::new(Tokens(HashMap::from([(
             TID,
             AccessTokenRecord {
@@ -529,6 +549,7 @@ mod tests {
         .with_access_tokens(tokens)
         .with_clock(frozen())
         .resolve(&headers(None, Some(&authorization)), None)
+        .await
         .unwrap();
         assert_eq!(identity.profile_id, Some(PROFILE));
         assert_eq!(identity.auth_type, Some(AuthType::Token));
@@ -538,8 +559,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn expired_or_unknown_access_tokens_are_anonymous() {
+    #[tokio::test]
+    async fn expired_or_unknown_access_tokens_are_anonymous() {
         let authorization = format!("Token {}", access_token(TID, ACCESS_TOKEN_ISSUER));
         let build = |record: Option<AccessTokenRecord>| {
             let tokens = Arc::new(Tokens(
@@ -558,6 +579,7 @@ mod tests {
 
         let identity = build(None)
             .resolve(&headers(None, Some(&authorization)), None)
+            .await
             .unwrap();
         assert_eq!(identity, Identity::default());
 
@@ -567,21 +589,23 @@ mod tests {
             expires_at_ms: Some(NOW),
         }))
         .resolve(&headers(None, Some(&authorization)), None)
+        .await
         .unwrap();
         assert_eq!(identity, Identity::default());
     }
 
-    #[test]
-    fn access_tokens_are_ignored_when_the_flag_is_off() {
+    #[tokio::test]
+    async fn access_tokens_are_ignored_when_the_flag_is_off() {
         let authorization = format!("Token {}", access_token(TID, ACCESS_TOKEN_ISSUER));
         let identity = resolver(Sessions(HashMap::new()))
             .resolve(&headers(None, Some(&authorization)), None)
+            .await
             .unwrap();
         assert_eq!(identity, Identity::default());
     }
 
-    #[test]
-    fn a_session_token_in_the_token_scheme_is_anonymous() {
+    #[tokio::test]
+    async fn a_session_token_in_the_token_scheme_is_anonymous() {
         let tokens = Arc::new(Tokens(HashMap::from([(
             TID,
             AccessTokenRecord {
@@ -599,26 +623,29 @@ mod tests {
         .with_access_tokens(tokens)
         .with_clock(frozen())
         .resolve(&headers(None, Some(&format!("Token {token}"))), None)
+        .await
         .unwrap();
         assert_eq!(identity, Identity::default());
     }
 
-    #[test]
-    fn an_unknown_scheme_is_ignored() {
+    #[tokio::test]
+    async fn an_unknown_scheme_is_ignored() {
         let identity = resolver(Sessions(HashMap::new()))
             .resolve(&headers(None, Some("Basic abc")), None)
+            .await
             .unwrap();
         assert_eq!(identity, Identity::default());
     }
 
-    #[test]
-    fn a_quoted_cookie_value_is_unquoted() {
+    #[tokio::test]
+    async fn a_quoted_cookie_value_is_unquoted() {
         let token = session_token(SID, PROFILE, None);
         let identity = resolver(Sessions(HashMap::from([(SID, live_row())])))
             .resolve(
                 &headers(Some(&format!("a=1; auth-token=\"{token}\"; b=2")), None),
                 None,
             )
+            .await
             .unwrap();
         assert_eq!(identity.profile_id, Some(PROFILE));
     }

@@ -1,7 +1,7 @@
 # backend-rust 开发计划（**已批准** · 实现但不接入部署）
 
-本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干与 M9 鉴权接线
-已落地（2026-11-25），M6 的 PG 仓储与 M8 仍不交付。换机器后的上下文快照见
+本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干、M9 鉴权接线与
+M10 `db`/`pg` 基础已落地（2026-11-25），M6 的 PG 仓储与 M8 仍不交付。换机器后的上下文快照见
 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
@@ -355,7 +355,33 @@ RPC 鉴权。存储留在 trait 后面，PG 实现随 devenv 补。
 - T9.6 ✅ `session::decode_header` 补上 `app.tokens/decode-header` 的等价能力，带单测。
 
 DoD ✅：16 条 `auth` 单测 + 10 条 `oneshot` 集成；workspace 366 passed + 14 ignored；
-fmt/clippy/build/doc 全绿。明确未做：sqlx 存储、cookie 续期写回、`::actoken/type` 审计字段。
+fmt/clippy/build/doc 全绿。sqlx 存储随后由 M10 补上；cookie 续期写回与
+`::actoken/type` 审计字段仍未做。
+
+### M10 — `db` 与 PG 认证存储（✅ 2026-11-25，live PG 待 devenv）
+
+把 M9 的 trait 接到真实 PostgreSQL 上。`rpc` 仍不依赖 sqlx；SQL 只在 `pg` crate 里。
+
+- T10.1 ✅ `crates/db`：`DbOptions` 复刻 `app.db/defaults`（60 连接、30s 获取、2min idle、
+  30min lifetime）与 `initsql` 的 `statement_timeout`/`idle_in_transaction_session_timeout`
+  各 300s；`connect_lazy_with` 不建连，行为同 Hikari 的 `initializationFailTimeout -1`。
+- T10.2 ✅ `snake_case`/`kebab_case`/`table_name` 对齐 `app.db.sql` 的 `-` ↔ `_` 规则。
+- T10.3 ✅ `DbError` → `errors::Cause`：服务器错误保留 SQLSTATE（57014/25P03 → 504，
+  其余 500），IO 与连接池故障按 500 处理。
+- T10.4 ✅ `Database::begin` 返回 sqlx 事务，未 commit 直接 drop 即回滚；`close` 等待
+  连接归还。`read_only` 用 `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`。
+- T10.5 ✅ `SessionResolver`/`SessionStore`/`AccessTokenStore` 改为 async trait
+  （sqlx 查询必须 await），router 的鉴权阶段同步改为 await。
+- T10.6 ✅ `crates/pg`：`PgSessionStore` 查询 `http_session_v2`（跳过 `profile_id IS NULL`，
+  `modified_at` 转毫秒），`PgAccessTokenStore` 查询 `access_token`（过滤过期行，`perms`
+  转集合）。
+
+依赖：`sqlx` 固定 `=0.9.0`（0.9.1 需要未缓存的 `sqlx-mysql 0.9.1`），关闭默认 feature，
+只开 `runtime-tokio`/`postgres`/`uuid`；TLS 关闭，连接本地 devenv。
+
+DoD ✅：db 11 条单测 + doc test；pg 2 条 live 测试 `#[ignore]`；workspace 378 passed +
+18 ignored；fmt/clippy/build/doc 全绿。明确未做：live PG 实跑、示例二进制接线、
+sqlx 事务 hook 与 M5/M6 仓储。
 
 ---
 
@@ -428,9 +454,11 @@ M7：`ws` 的 msgbus 前缀/订阅计数、协议多态、presence、心跳、�
 M9：`rpc` 鉴权接线——`TokenResolver` 接 cookie/Bearer 会话令牌与 `Token` 访问令牌，
 存储留在 `SessionStore`/`AccessTokenStore` trait 后，16 条 auth 单测 + 10 条 oneshot；
 整个 workspace 366 条通过 + 14 ignored。
-下一步仍是 devenv 的 live PG/Redis 适配器与 C1–C4 采集：先按 M9 的 trait 补 sqlx 存储，
-再做 M6/M5 的 PG 仓储。C2 真实应答到位后，按 `TODO-ONLINE.md` 回填金样本，再把 M1 的
-「线上形态」标为定案。M8 仍不交付。
+M10：`db` 的池、命名、错误映射与事务助手，`pg` 的会话/访问令牌存储，鉴权 trait 改为
+async；workspace 378 条通过 + 18 ignored。
+下一步是 devenv 起来后的 live PG 验证（`PENPOT_TEST_DATABASE_URL`）与 M6/M5 的 PG 仓储，
+再把 `PgSessionStore` 接进示例二进制。C2 真实应答到位后，按 `TODO-ONLINE.md` 回填金样本，
+再把 M1 的「线上形态」标为定案。M8 仍不交付。
 
 ## 10. 换机器 / devenv 起来之后的采集清单
 

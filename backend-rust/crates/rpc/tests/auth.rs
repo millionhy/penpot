@@ -62,24 +62,27 @@ fn access_token() -> String {
 #[derive(Default)]
 struct Sessions(HashMap<Uuid, SessionRecord>);
 
+#[async_trait::async_trait]
 impl SessionStore for Sessions {
-    fn read_session(&self, id: Uuid) -> Result<Option<SessionRecord>, Cause> {
+    async fn read_session(&self, id: Uuid) -> Result<Option<SessionRecord>, Cause> {
         Ok(self.0.get(&id).cloned())
     }
 }
 
 struct FailingSessions;
 
+#[async_trait::async_trait]
 impl SessionStore for FailingSessions {
-    fn read_session(&self, _id: Uuid) -> Result<Option<SessionRecord>, Cause> {
+    async fn read_session(&self, _id: Uuid) -> Result<Option<SessionRecord>, Cause> {
         Err(Cause::other("session store unavailable"))
     }
 }
 
 struct Tokens(HashMap<Uuid, AccessTokenRecord>);
 
+#[async_trait::async_trait]
 impl AccessTokenStore for Tokens {
-    fn read_token(&self, id: Uuid) -> Result<Option<AccessTokenRecord>, Cause> {
+    async fn read_token(&self, id: Uuid) -> Result<Option<AccessTokenRecord>, Cause> {
         Ok(self.0.get(&id).cloned())
     }
 }
