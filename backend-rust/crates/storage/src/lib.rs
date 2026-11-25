@@ -11,14 +11,16 @@
 //! * [`ObjectStore`] is the physical boundary with filesystem ([`FsStore`]) and
 //!   S3 ([`S3Store`]) implementations.
 //!
-//! Garbage collection decisions live in the `gc` module as pure functions plus SQL
-//! constants. They are intentionally not wired to a database adapter yet: the
-//! module has no live PostgreSQL dependency, which keeps the M5 gate offline.
+//! Garbage collection decisions live in the `gc` module as pure functions plus
+//! SQL constants. [`StorageGc`] drives the three GC phases over the
+//! [`GcRepository`] boundary, and adapters supply the transaction. The
+//! PostgreSQL adapter lives in the `pg` crate.
 
 mod content;
 mod error;
 mod fs;
 mod gc;
+mod gc_runner;
 mod metadata;
 mod object;
 mod path;
@@ -34,11 +36,12 @@ pub use content::{
 pub use error::{Result, StorageError};
 pub use fs::FsStore;
 pub use gc::{
-    classify_deletion_failure, decide_touched, pending_cutoff, pending_is_eligible,
-    poison_defer_until, touched_threshold, DeletionFailure, GcDecision, DELETED_CHUNK_SIZE,
-    MAX_DELETION_ATTEMPTS, PENDING_CHUNK_SIZE, PENDING_MAX_AGE, SQL_GET_DELETED, SQL_GET_PENDING,
-    SQL_GET_TOUCHED, TOUCHED_CHUNK_SIZE, TOUCHED_MIN_AGE,
+    classify_deletion_failure, decide_touched, deletion_retry_until, pending_cutoff,
+    pending_is_eligible, poison_defer_until, touched_threshold, DeletionFailure, GcDecision,
+    DELETED_CHUNK_SIZE, MAX_DELETION_ATTEMPTS, PENDING_CHUNK_SIZE, PENDING_MAX_AGE,
+    SQL_GET_DELETED, SQL_GET_PENDING, SQL_GET_TOUCHED, TOUCHED_CHUNK_SIZE, TOUCHED_MIN_AGE,
 };
+pub use gc_runner::{GcItem, GcReport, GcRepository, GcTransaction, StorageGc, TouchedChunk};
 pub use metadata::{
     is_transit_encoded, AssetAccess, Bucket, MetadataEncoding, StorageMetadata, DEFAULT_BUCKET,
     TEMPFILE_BUCKET, UPLOAD_SESSION_BUCKET,

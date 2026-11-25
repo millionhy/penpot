@@ -132,13 +132,19 @@ pub fn classify_deletion_failure(attempts: u32, now: DateTime<Utc>) -> DeletionF
     } else {
         DeletionFailure::Retry {
             attempts,
-            defer_until: now + Duration::days(1),
+            defer_until: deletion_retry_until(now),
         }
     }
+}
+
+/// Failed deletions are retried after one day.
+#[must_use]
+pub fn deletion_retry_until(now: DateTime<Utc>) -> DateTime<Utc> {
+    now + Duration::days(1)
 }
 
 /// Poison metadata is deferred exactly one day.
 #[must_use]
 pub fn poison_defer_until(now: DateTime<Utc>) -> DateTime<Utc> {
-    now + Duration::days(1)
+    deletion_retry_until(now)
 }

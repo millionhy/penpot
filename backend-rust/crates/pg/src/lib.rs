@@ -23,6 +23,10 @@
 //! deduplication probe, the write-ahead insert, promotion, touch and soft
 //! delete. New rows use verbose Transit metadata by default.
 //!
+//! The storage GC adapter opens transactions for `StorageGc`: pending
+//! reclamation, the touched reference scan and physical deletion of
+//! tombstones.
+//!
 //! Live tests are `#[ignore]`d and need `PENPOT_TEST_DATABASE_URL` plus a
 //! migrated schema. The task and storage tests insert one row under a random
 //! id and remove it again.
@@ -35,9 +39,11 @@ use sqlx::Row;
 use uuid::Uuid;
 
 mod storage;
+mod storage_gc;
 mod task;
 
 pub use storage::PgStorageRepository;
+pub use storage_gc::PgStorageGcRepository;
 pub use task::PgTaskRepository;
 
 /// `http_session_v2` reader.

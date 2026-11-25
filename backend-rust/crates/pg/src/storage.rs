@@ -194,7 +194,7 @@ impl StorageRepository for PgStorageRepository {
     }
 }
 
-fn object_from_row(row: &sqlx::postgres::PgRow) -> Result<StorageObject> {
+pub(crate) fn object_from_row(row: &sqlx::postgres::PgRow) -> Result<StorageObject> {
     let backend: String = row.try_get("backend").map_err(repository_error)?;
     let backend = StorageBackend::from_name(&backend)
         .ok_or_else(|| StorageError::InvalidBackend(backend.clone()))?;

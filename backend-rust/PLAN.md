@@ -1,8 +1,9 @@
 # backend-rust 开发计划（**已批准** · 实现但不接入部署）
 
 本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干、M9 鉴权接线、
-M10 `db`/`pg` 基础、M11 worker PG 仓储与 M12 storage PG 仓储已落地（2026-11-25），
-live PG 验证与 M8 仍不交付。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
+M10 `db`/`pg` 基础、M11 worker PG 仓储、M12 storage PG 仓储与 M13 storage GC 执行器
+已落地（2026-11-25），live PG 验证与 M8 仍不交付。换机器后的上下文快照见
+`backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
 
@@ -261,7 +262,7 @@ repository / s3 / service / store` 十一个模块。测试为 crate 内 45 条�
 - GC：pending 24h/100 条、touched 默认 2h/10 条、deleted 25 条、删除失败 7 次放弃并延后 1 天；
   三条 SQL 常量保留 `FOR UPDATE SKIP LOCKED`；poison metadata 延后 1 天。
 - 依赖：`aws-sdk-s3 1.123` 与 `aws-config 1.8` 声明 Rust 1.91，workspace MSRV 从 1.85 提到 1.91。
-- 明确未做：`sqlx` 仓储/GC 执行器（本阶段没有 live PG）；真实 S3 桶与真实 PG 的集成验证；
+- 明确未做（`sqlx` 仓储与 GC 执行器已由 M12/M13 补上）：真实 S3 桶与真实 PG 的集成验证；
   `x-accel-redirect` 接线。S3 集成测试用 `PENPOT_TEST_S3_BUCKET` + AWS 凭证解锁。
 
 ### M6 — `worker`（2026-11-25，Redis live 已验证；真实 PG 待 devenv）
@@ -426,8 +427,31 @@ SQL 常量仍留在 `storage::gc`。
 DoD ✅：pg 4 条 storage 单测（Transit metadata、缺失 metadata、毫秒换算、默认编码）+
 1 条 `#[ignore]` live 往返（pending 不可见 → promote → dedup → touch → soft delete →
 第二次删除 false → delete）；pg 共 8 条单测 + 4 条 live `#[ignore]`；workspace
-388 passed + 20 ignored；fmt/clippy/build/doc 全绿。live PG、`ObjectsGc` 执行器与
-Clojure↔Rust 混合集群仍待 devenv。
+388 passed + 20 ignored；fmt/clippy/build/doc 全绿。live PG、worker 的 `objects-gc`
+接线与 Clojure↔Rust 混合集群仍待 devenv。
+
+### M13 — storage GC 执行器（✅ 2026-11-25，live PG 待 devenv）
+
+把 `storage::gc` 的决策与 SQL 常量接到仓储上，覆盖 pending、touched、deleted 三个阶段。
+worker 的 `objects-gc` 任务接线仍不在本切片内。
+
+- T13.1 ✅ `crates/storage/src/gc_runner.rs` 的 `StorageGc`：三个批次循环，默认 chunk
+  100/10/25；`run_all` 按 pending → touched → deleted 顺序合并 `GcReport`。
+- T13.2 ✅ `GcTransaction`/`GcRepository` 事务边界：选择、更新、删除与提交都在同一
+  `sqlx` 事务内；`GcReport` 记录 reclaim/freeze/delete/defer/abandon 与 blob 失败数。
+- T13.3 ✅ `crates/pg/src/storage_gc.rs` 的 `PgStorageGcRepository`：三组
+  `FOR UPDATE SKIP LOCKED` 选择；touched 按 bucket 查
+  `file_media_object`/`team_font_variant`/`profile`/`file_tagged_object_thumbnail`/
+  `file_thumbnail`/`file_data` 引用；poison 行延后一天；删除行前先清
+  `upload_session_chunk`。
+- T13.4 ✅ 行为对齐 `app.storage`：pending 先提交行删除再 best-effort 删 blob；
+  touched 先处理 poison 再评估健康行；deleted 在事务内锁行、按物理 backend 分组
+  `delete_bulk`，失败 `deletion_attempts+1` 且延后一天，第 7 次放弃并删行。
+
+DoD ✅：storage 7 条 `gc_runner` 单测（三阶段批量计数、poison 延后、兼容 bucket 报错、
+blob 失败重试与放弃、`run_all`）+ pg 1 条 live `#[ignore]`（pending 行与 blob 一并
+回收）；workspace 395 passed + 21 ignored；fmt/clippy/build/doc 全绿。live PG、
+worker `objects-gc` 接线与混合集群仍待 devenv。
 
 ---
 
@@ -507,8 +531,12 @@ verbose Transit props、毫秒时间戳与 `task` 行映射；workspace 384 条�
 M12：storage 的 `PgStorageRepository`——`storage_object` 的 valid/软删读取、legacy 与
 plain metadata 的 `UNION ALL` 去重、pending→valid 写入与 touch/soft delete；默认 verbose
 Transit 写入、毫秒时间戳；pg 4 条 storage 单测 + 1 条 `#[ignore]` live 往返。
-下一步是 devenv 起来后的 live PG 验证（`PENPOT_TEST_DATABASE_URL`），重点验 M10–M12 的
-仓储，再补 storage GC 执行器并把 `PgSessionStore` 接进示例二进制。C2 真实应答到位后，
+M13：storage 的 GC 执行器——`StorageGc` 驱动 pending/touched/deleted 三阶段，
+`GcTransaction` 提供事务边界，`PgStorageGcRepository` 落三组 `FOR UPDATE SKIP LOCKED`
+选择、引用查询、poison 延后与失败重试；storage 7 条 `gc_runner` 单测 + 1 条 live
+`#[ignore]`。
+下一步是 devenv 起来后的 live PG 验证（`PENPOT_TEST_DATABASE_URL`），重点验 M10–M13，
+再接 worker 的 `objects-gc` 与 `PgSessionStore` 示例二进制。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。M8 仍不交付。
 
 ## 10. 换机器 / devenv 起来之后的采集清单

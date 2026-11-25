@@ -6,16 +6,21 @@
 //! ```
 //!
 //! The auth tests read a random UUID and never write. The task test inserts
-//! one row under a random tenant and removes it again; the storage test does
-//! the same with a random `storage_object` id.
+//! one row under a random tenant and removes it again; the storage tests do
+//! the same with a random `storage_object` id. The GC test writes a pending
+//! row plus one blob under a temporary directory.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
-use pg::{PgAccessTokenStore, PgSessionStore, PgStorageRepository, PgTaskRepository};
+use pg::{
+    PgAccessTokenStore, PgSessionStore, PgStorageGcRepository, PgStorageRepository,
+    PgTaskRepository,
+};
 use rpc::auth::{AccessTokenStore, SessionStore};
 use storage::{
-    Bucket, ObjectStatus, StorageBackend, StorageMetadata, StorageObject, StorageRepository,
+    Bucket, FsStore, ObjectStatus, StorageBackend, StorageGc, StorageMetadata, StorageObject,
+    StorageRepository,
 };
 use transit::{Map, Value};
 use uuid::Uuid;
@@ -210,4 +215,38 @@ async fn a_storage_object_round_trips_and_soft_deletes() {
         .await
         .expect("delete object");
     repository.database().close().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live PostgreSQL and a writable temp directory; set PENPOT_TEST_DATABASE_URL"]
+async fn a_pending_object_is_reclaimed_with_its_blob() {
+    let database = database();
+    let directory = std::env::temp_dir().join(format!("penpot-gc-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).expect("temp directory");
+    let store = Arc::new(FsStore::new(&directory));
+
+    let id = Uuid::new_v4();
+    let metadata = StorageMetadata::new(Bucket::Tempfile, "text/plain");
+    let created_at = Utc::now() - chrono::Duration::hours(25);
+    let object = StorageObject::new_pending(id, 6, created_at, StorageBackend::Fs, metadata);
+    PgStorageRepository::new(database.clone())
+        .insert(&object)
+        .await
+        .expect("insert pending");
+    std::fs::write(store.object_path(id), b"orphan").expect("blob");
+
+    let gc = StorageGc::new(PgStorageGcRepository::new(database.clone()), store.clone());
+    let report = gc.run_pending().await.expect("pending pass");
+    assert!(report.pending_removed >= 1);
+    assert!(!store.object_path(id).exists());
+
+    let row: Option<Uuid> = sqlx::query_scalar("SELECT id FROM storage_object WHERE id = $1")
+        .bind(id)
+        .fetch_optional(database.pool())
+        .await
+        .expect("row probe");
+    assert!(row.is_none());
+
+    std::fs::remove_dir_all(&directory).expect("cleanup directory");
+    database.close().await;
 }

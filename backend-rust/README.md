@@ -7,7 +7,7 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 **M0 工作区基线、M1 `transit`（离线部分）、M2 `errors` + `config`、M3 `rpc` 骨架、
 M4 `session`、M5 `storage`（离线部分）、M6 `worker`（Redis 队列已验、PG 待验）、
 M7 `ws`、M9 `rpc` 鉴权接线、M10 `db`/`pg` 基础、M11 worker PG 仓储、
-M12 storage PG 仓储完成（2026-11-25）。**
+M12 storage PG 仓储、M13 storage GC 执行器完成（2026-11-25）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -85,8 +85,15 @@ M12 storage PG 仓储完成（2026-11-25）。**
   `touched_at`、`status` 与 `created_at`；`promote`/`set_touched`/`soft_delete` 对齐
   `app.storage` 的三条更新。metadata 默认写 verbose Transit，可切 plain JSON；读取
   按 `metadata::text` 解码，时间戳统一换毫秒。pg 4 条 storage 单测 + 1 条
-  `#[ignore]` live 往返；workspace 388 条通过 + 20 ignored；GC 执行器与 live PG
-  仍待 devenv。
+  `#[ignore]` live 往返；workspace 388 条通过 + 20 ignored；live PG 仍待 devenv
+  （GC 执行器见 M13）。
+- M13 已有：`crates/storage/src/gc_runner.rs` 的 `StorageGc`，按 pending → touched →
+  deleted 三阶段驱动批次；`GcTransaction` 把选择、更新、删除与提交放在同一事务，
+  `GcReport` 记录回收、冻结、延后与放弃数。`crates/pg/src/storage_gc.rs` 的
+  `PgStorageGcRepository` 落三组 `FOR UPDATE SKIP LOCKED`、六个 bucket 的引用查询、
+  poison 延后一天与 blob 失败重试（第 7 次放弃）。storage 7 条 `gc_runner` 单测 +
+  pg 1 条 `#[ignore]` live；workspace 395 条通过 + 21 ignored。worker 的
+  `objects-gc` 接线与 live PG 仍待 devenv。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 
@@ -117,18 +124,18 @@ backend-rust/
     ├── config/           ✅ PENPOT_* env + flags（enable-/disable-）
     ├── session/          ✅ JWE a256kw+a256gcm + HKDF-BLAKE2b-512 + claims/verify + cookie
     ├── db/               ✅ sqlx 池、kebab→snake 命名、错误映射、事务助手（运行时查询）
-    ├── storage/          ✅ storage_object 闭包 metadata、bucket、去重、GC、fs/s3（S3 真实桶待验）
+    ├── storage/          ✅ metadata、bucket、去重、fs/s3、GC 决策与三阶段执行器（S3 真实桶待验）
     ├── worker/           ✅ Quartz cron、task 状态机、dispatcher、runner、Redis 队列
     ├── ws/               ✅ msgbus、消息多态、axum WebSocket、Redis 适配器
     ├── rpc/              ✅ axum 服务：路由 + 中间件管道 + Registry；鉴权接 session（存储走 trait）
-    └── pg/               ✅ PostgreSQL 适配器：http_session_v2 与 access_token 读取
+    └── pg/               ✅ PostgreSQL 适配器：鉴权、task、storage_object 与 GC 事务
 ```
 
 依赖方向：`rpc → {transit, errors, config, session, storage, worker, ws}`；
-`pg → {db, rpc}`；`rpc` 不依赖 sqlx。
+`pg → {db, errors, rpc, storage, worker}`；`rpc` 不依赖 sqlx。
 
 顺序（`PLAN.md` §5）：`M0 workspace → M1 transit（关键路径）→ M2 errors+config ∥ M3 rpc(axum) → M4 session
-→ M5 storage → M6 worker → M7 ws`。M0–M7 已落地；M6 的 PG 仓储仍待 live PostgreSQL。
+→ M5 storage → M6 worker → M7 ws`。M0–M7 已落地；M10–M13 的 PG 适配器仍待 live PostgreSQL。
 `transit` 先做，因为 RPC 请求体、应答体、
 `task.props`、session payload 全是 transit。
 
