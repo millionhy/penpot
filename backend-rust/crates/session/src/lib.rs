@@ -53,8 +53,8 @@ pub use cookie::{
 };
 pub use error::{InvalidReason, Result, SessionError};
 pub use jwe::{
-    TokenCodec, TokenHeader, ALGORITHM, CEK_LEN, ENCRYPTION, IV_LEN, MAX_HEADER_LEN, MAX_TOKEN_LEN,
-    SEGMENTS, TAG_LEN, WRAPPED_KEY_LEN,
+    decode_header, TokenCodec, TokenHeader, ALGORITHM, CEK_LEN, ENCRYPTION, IV_LEN, MAX_HEADER_LEN,
+    MAX_TOKEN_LEN, SEGMENTS, TAG_LEN, WRAPPED_KEY_LEN,
 };
 pub use key::{TokenKey, TOKEN_KEY_LEN, TOKEN_KEY_SALT};
 

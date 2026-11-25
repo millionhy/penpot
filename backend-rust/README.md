@@ -6,7 +6,7 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 
 **M0 工作区基线、M1 `transit`（离线部分）、M2 `errors` + `config`、M3 `rpc` 骨架、
 M4 `session`、M5 `storage`（离线部分）、M6 `worker`（Redis 队列已验、PG 待验）、
-M7 `ws` 完成（2026-11-25）。**
+M7 `ws`、M9 `rpc` 鉴权接线完成（2026-11-25）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -27,7 +27,8 @@ M7 `ws` 完成（2026-11-25）。**
   合并、compact/verbose transit 应答、`nil`→204、SSE 固定帧、`x-shared-key`/`x-client` 检查、
   CORS（allowlist + 预检 204）、`inet/parse-request` 的 IP 优先级。本地 `cargo run -p rpc`
   起 `127.0.0.1:6061` 的 DB-free 服务。29 条 `oneshot` 测试加 3 条 `rpc.clj` 源码契约测试。
-  sqlx 事务、multipart 与长连接 SSE 分别留给 M5/M7；multipart 还缺本地缓存的 `multer` 依赖。
+  鉴权接见下方 M9；sqlx 事务、multipart 与长连接 SSE 分别留给数据库片与 M7；
+  multipart 还缺本地缓存的 `multer` 依赖。
 - M4 已有：`crates/session` 的 `TokenKey`（HKDF-HMAC-BLAKE2b-512，salt `"tokens"`，空 `info`，32B）、
   `TokenCodec`（RFC 7516 compact，A256KW + A256GCM，`{alg,enc,kid,ver}` 头，IV 12B、tag 16B）、
   `SessionClaims`/`Claims`（保留未知 claim，`exp` 严格早于才过期，`exp` 先于 `iss`）与
@@ -55,6 +56,13 @@ M7 `ws` 完成（2026-11-25）。**
   RFC 6455 upgrade、Transit 文本帧与 8802 超时关闭。`RedisBusClient` 使用发布/订阅
   双连接，首订阅开通道、末退订关通道，断线重连后重订阅。33 条默认 crate 测试 +
   7 条 Redis live 用例；浏览器联调与混合集群对拍见 `crates/ws/tests/DESIGN.md`。
+- M9 已有：`crates/rpc/src/auth.rs` 的 `TokenResolver`。`auth-token` cookie 优先于
+  `Authorization`；`Bearer` 走会话令牌（`{:kid 1 :ver 1}` 头、`iss "authentication"`、
+  按 `:sid` 查 `http_session_v2`、idle 7 天过期），`Token` 走访问令牌
+  （`iss "access-token"`、按 `:tid` 查 `access_token` 的 perms/profile/expires_at）。
+  解码失败降级为未认证，存储错误上抛 500。存储是 `SessionStore`/`AccessTokenStore`
+  trait，`rpc` 不引入 sqlx；16 条 auth 单测 + 10 条 `oneshot` 集成。
+  整个 workspace 366 条通过 + 14 ignored。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 
@@ -88,7 +96,7 @@ backend-rust/
     ├── storage/          ✅ storage_object 闭包 metadata、bucket、去重、GC、fs/s3（S3 真实桶待验）
     ├── worker/           ✅ Quartz cron、task 状态机、dispatcher、runner、Redis 队列
     ├── ws/               ✅ msgbus、消息多态、axum WebSocket、Redis 适配器
-    └── rpc/              ✅ axum 服务：路由 + 中间件管道 + 命令 Registry（DB-free 骨架）
+    └── rpc/              ✅ axum 服务：路由 + 中间件管道 + Registry；鉴权接 session（存储走 trait）
 ```
 
 依赖方向：`rpc → {transit, errors, config, session, db, storage, worker, ws}`，下层互不引用。

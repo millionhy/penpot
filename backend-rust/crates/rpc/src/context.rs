@@ -42,8 +42,9 @@ impl AuthType {
 
 /// The identity resolved for a request.
 ///
-/// The real header/cookie decoding lands with the `session` crate (M4). Until
-/// then [`crate::SessionResolver`] implementations fill this in.
+/// [`crate::auth::TokenResolver`] fills this from the session cookie or an
+/// access token; other [`crate::SessionResolver`] implementations may fill it
+/// from their own credentials.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Identity {
     /// `:uid` of the session claims, or the access-token profile.

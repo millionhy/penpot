@@ -1,7 +1,7 @@
 # backend-rust 开发计划（**已批准** · 实现但不接入部署）
 
-本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干已落地
-（2026-11-25），M6 的 PG 仓储与 M8 仍不交付。换机器后的上下文快照见
+本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干与 M9 鉴权接线
+已落地（2026-11-25），M6 的 PG 仓储与 M8 仍不交付。换机器后的上下文快照见
 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
@@ -206,9 +206,11 @@ DoD：`tower::ServiceExt::oneshot` 测试 ≥20 条（路由、限制、编解�
   `x-session-id`；`inet/parse-request` 的 IP 优先级
   （`x-real-ip` → `x-forwarded-for` 首跳 → socket peer），服务端用
   `into_make_service_with_connect_info` 提供 peer。
-- 明确未做：把 M4 `session` 接进 rpc 的鉴权中间件（crate 已就绪，接线随 M5/M8）；sqlx 事务（M5）；multipart（axum 的
-  `multipart` feature 依赖 `multer`，本地缓存没有该 crate，需单独批准拉依赖）；长连接 SSE（M7，
-  当前只渲染固定帧）；`Accept: application/json`。
+- 鉴权接线已在 M9 落地：`auth::TokenResolver` 把 cookie/Bearer 会话令牌与 `Token`
+  访问令牌接进 `SessionResolver`，存储留在 trait 后。
+- 仍未做：sqlx 事务与 PG 存储（数据库片）；multipart（axum 的 `multipart` feature 依赖
+  `multer`，本地缓存没有该 crate，需单独批准拉依赖）；长连接 SSE（M7，当前只渲染固定帧）；
+  `Accept: application/json`。
 
 ### M4 — `session`（✅ 2026-11-24，buddy 向量待 C1）
 
@@ -335,6 +337,26 @@ Redis live 7 条独立跑通。
 前置条件（缺任一不启动）：S3 DDL 快照、S2 OpenAPI、目标命令补齐 `::sm/result`、可用 devenv、JWE 向量。
 永久排除：`add-file-transient-changes`、binfile 导入导出、files 写路径、thumbnails 生成、nitrate。
 
+### M9 — `rpc` 鉴权接线（✅ 2026-11-25，PG 存储待 devenv）
+
+M8 被 live PG/devenv 卡住，先做不依赖数据库的下一片：把 M4 的 `session` 真正接进
+RPC 鉴权。存储留在 trait 后面，PG 实现随 devenv 补。
+
+- T9.1 ✅ `crates/rpc/src/auth.rs`：`TokenResolver` 实现 `SessionResolver`。凭据顺序照
+  `mw/wrap-auth` 的 `some-fn`：`auth-token` cookie 先于 `Authorization`；空 cookie 视为
+  没有；`Bearer` 会话令牌、`Token` 访问令牌、其他 scheme 忽略。
+- T9.2 ✅ 会话令牌先读 `{:kid 1 :ver 1}` 头，再用 `:iss "authentication"` 校验，最后按
+  `:sid` 查 `http_session_v2`。缺行或 idle 过期（`modified_at + 7 天 < now`）按匿名处理；
+  `exp == now` 仍有效。
+- T9.3 ✅ 访问令牌用 `:iss "access-token"` 校验，按 `:tid` 查 `access_token`，取
+  `profile_id`/`perms`/`expires_at`；`expires_at <= now` 无效。
+- T9.4 ✅ 解码失败降级为未认证（对应 `decode-token` 吞异常）；存储错误冒泡为 500。
+- T9.5 ✅ `SessionStore`/`AccessTokenStore` 两个 trait；`rpc` 不引入 sqlx，测试用内存 store。
+- T9.6 ✅ `session::decode_header` 补上 `app.tokens/decode-header` 的等价能力，带单测。
+
+DoD ✅：16 条 `auth` 单测 + 10 条 `oneshot` 集成；workspace 366 passed + 14 ignored；
+fmt/clippy/build/doc 全绿。明确未做：sqlx 存储、cookie 续期写回、`::actoken/type` 审计字段。
+
 ---
 
 ## 5. 顺序与总量
@@ -403,8 +425,12 @@ M6：`worker` 的 Quartz cron、六态 task 状态机、dispatcher 认领/恢复
 M7：`ws` 的 msgbus 前缀/订阅计数、协议多态、presence、心跳、鉴权、axum WebSocket 路由
 与真实 Redis 适配器，33 条默认 crate 测试 + 7 条 Redis live 用例，整个 workspace
 337 条通过 + 9 ignored。
-本阶段代码交付到此收口；下一步是 devenv 的 live PG/Redis 适配器与 C1–C4 采集。C2 真实应答到位后，
-按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。
+M9：`rpc` 鉴权接线——`TokenResolver` 接 cookie/Bearer 会话令牌与 `Token` 访问令牌，
+存储留在 `SessionStore`/`AccessTokenStore` trait 后，16 条 auth 单测 + 10 条 oneshot；
+整个 workspace 366 条通过 + 14 ignored。
+下一步仍是 devenv 的 live PG/Redis 适配器与 C1–C4 采集：先按 M9 的 trait 补 sqlx 存储，
+再做 M6/M5 的 PG 仓储。C2 真实应答到位后，按 `TODO-ONLINE.md` 回填金样本，再把 M1 的
+「线上形态」标为定案。M8 仍不交付。
 
 ## 10. 换机器 / devenv 起来之后的采集清单
 

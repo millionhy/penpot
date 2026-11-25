@@ -202,6 +202,31 @@ fn malformed() -> SessionError {
     SessionError::invalid(InvalidReason::Malformed)
 }
 
+/// Read the protected header of a compact token without decrypting it.
+///
+/// This mirrors `app.tokens/decode-header`. The auth middleware uses it to
+/// check `{:kid 1 :ver 1}` before spending a key unwrap on a token minted by
+/// another format version.
+///
+/// # Errors
+///
+/// Returns an [`InvalidReason`] for a malformed token, a non-JSON header, or
+/// an unexpected `alg`/`enc`/`kid`/`ver` shape.
+pub fn decode_header(token: &str) -> Result<TokenHeader> {
+    if token.len() > MAX_TOKEN_LEN {
+        return Err(malformed());
+    }
+    let protected = token.split('.').next().ok_or_else(malformed)?;
+    if protected.len() > MAX_HEADER_LEN * 4 / 3 + 4 {
+        return Err(malformed());
+    }
+    let bytes = decode_segment(protected)?;
+    if bytes.len() > MAX_HEADER_LEN {
+        return Err(malformed());
+    }
+    parse_header(&bytes)
+}
+
 fn decode_segment(segment: &str) -> Result<Vec<u8>> {
     URL_SAFE_NO_PAD.decode(segment).map_err(|_| malformed())
 }
@@ -253,6 +278,46 @@ mod tests {
         assert_eq!(
             TokenHeader::PENPOT.to_json(),
             r#"{"alg":"A256KW","enc":"A256GCM","kid":1,"ver":1}"#
+        );
+    }
+
+    #[test]
+    fn header_decode_reads_the_token_without_the_key() {
+        let token = codec()
+            .encrypt_with(b"payload", &[13_u8; CEK_LEN], &[14_u8; IV_LEN])
+            .unwrap();
+        assert_eq!(decode_header(&token).unwrap(), TokenHeader::PENPOT);
+
+        let other = TokenCodec::with_header(
+            TokenKey::derive("test-secret").unwrap(),
+            TokenHeader { kid: 2, ver: 1 },
+        );
+        let token = other
+            .encrypt_with(b"payload", &[15_u8; CEK_LEN], &[16_u8; IV_LEN])
+            .unwrap();
+        assert_eq!(
+            decode_header(&token).unwrap(),
+            TokenHeader { kid: 2, ver: 1 }
+        );
+    }
+
+    #[test]
+    fn header_decode_rejects_malformed_tokens() {
+        assert_eq!(decode_header("").unwrap_err(), malformed());
+        assert_eq!(decode_header("not-base64!!").unwrap_err(), malformed());
+        let not_json = URL_SAFE_NO_PAD.encode(b"plain text");
+        assert_eq!(decode_header(&not_json).unwrap_err(), malformed());
+        let other_alg = URL_SAFE_NO_PAD
+            .encode(br#"{"alg":"A128KW","enc":"A256GCM","kid":1,"ver":1}"#.as_slice());
+        assert_eq!(
+            decode_header(&other_alg).unwrap_err(),
+            SessionError::invalid(InvalidReason::UnsupportedAlgorithm)
+        );
+        let missing_kid =
+            URL_SAFE_NO_PAD.encode(br#"{"alg":"A256KW","enc":"A256GCM","ver":1}"#.as_slice());
+        assert_eq!(
+            decode_header(&missing_kid).unwrap_err(),
+            SessionError::invalid(InvalidReason::HeaderMismatch)
         );
     }
 

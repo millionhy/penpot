@@ -9,10 +9,10 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（收口见 7.96）；阶段 B（backend-rust）**计划已批准**，M0 工作区基线完成（2026-11-24），M1 `transit` 进行中，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（收口见 7.96）；阶段 B（backend-rust）M0–M7 完成，`rpc` 鉴权已接入 `session`（见 7.107），M8 仍不交付，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
-| 最后更新 | 2026-11-24 |
+| 最后更新 | 2026-11-25 |
 
 > **状态更正**：本文件早期修订声称阶段一已产出 `tools/`、`api/`、`apps/`、`packages/`、根
 > `Cargo.toml` 等交付物。核对当前 checkout（`git status` 干净，仅 `.archify/` 未跟踪）后确认这些
@@ -3788,6 +3788,36 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   均退出 0。默认 workspace 为 338 passed + 14 ignored；worker 为 68 passed + 5 ignored。
 - 边界：PG `TaskRepository`、真实 task 表、Clojure↔Rust 混合集群与 Redis 故障后的 5 分钟
   重排仍未验；这些需要 live PostgreSQL。M8 不交付。
+- 提交：未提交（等用户明确要求）。
+
+---
+
+### 7.107 本轮（2026-11-25，第一百零六批：backend-rust rpc 鉴权接线）
+
+- 口径不变：只改 `backend-rust/`，不接部署、不改 `backend/`/`common/`/`docker/`/
+  `scripts/ci`。本机 Redis 可用；PostgreSQL 5432/5433 与 Docker daemon 仍不可用。
+- 新增 `crates/rpc/src/auth.rs`：`TokenResolver` 实现 `SessionResolver`。凭据顺序照
+  `mw/wrap-auth` 的 `some-fn`：`auth-token` cookie 先于 `Authorization`；空 cookie 视为
+  没有并继续看请求头；`Bearer` 是会话令牌，`Token` 是访问令牌，其他 scheme 忽略。
+- 会话令牌先读 `{:kid 1 :ver 1}` 头，再用 `:iss "authentication"` 校验 JWE，最后用
+  claims 的 `:sid` 查 `http_session_v2`。行不存在或 `modified_at + 7 天 < now` 都按匿名
+  处理；`exp == now` 仍有效，与 `ct/is-before?` 的严格比较一致。
+- 访问令牌用 `:iss "access-token"` 校验，取 `:tid` 查 `access_token`；`profile_id`、
+  `perms`、`expires_at` 进入 `Identity`。`expires_at <= now` 视为无效，store 之外的
+  二次检查防止实现放宽过期语义。
+- 解码失败一律降级为未认证：对应 `decode-token` 捕获异常后返回 nil。只有存储错误上抛，
+  由 `errors` 映射为 500，与 Clojure 让数据库异常冒泡的行为一致。
+- 存储走 `SessionStore` / `AccessTokenStore` 两个 trait，`rpc` 不引入 sqlx；测试用内存
+  store。PG 实现仍等 devenv，业务模块只依赖 trait。
+- 顺带补齐 `session::decode_header`（对应 `app.tokens/decode-header`）：不耗密钥即可读
+  `alg`/`enc`/`kid`/`ver`，坏段、非 JSON、错算法、缺 `kid` 都有单测。
+- 测试：`auth` 16 条单测 + 10 条 `oneshot` 集成。覆盖 cookie/bearer、空 cookie 回落、
+  cookie 优先、错密钥、`exp` 过期、`exp == now`、异 `kid`、缺行、idle 过期、访问令牌
+  perms 通过/拒绝、`Token` 策略拒绝会话、存储故障 500、自定义 cookie 名。
+- 验证：workspace 366 passed + 14 ignored；`fmt --check`、clippy `-D warnings`、
+  `build`、`doc` 均退出 0。
+- 边界：没有 sqlx 存储、没有 cookie 续期写回、没有 `::actoken/type` 审计字段；
+  `x-session-id` 仍不参与鉴权（与 Clojure 相同，它只做请求上下文）。M8 仍不交付。
 - 提交：未提交（等用户明确要求）。
 
 ---

@@ -11,11 +11,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| HEAD（快照时） | `5c67c5a129` `:construction: Add backend-rust worker and WebSocket crates` |
-| 工作区 | M0–M7 已提交（含 M7 Redis 适配器与 live 测试）；`.g2-tmp/` 未跟踪 |
+| HEAD（快照时） | `f5f7b43d4d` `:sparkles: Add Redis task queue to backend-rust worker` |
+| 工作区 | M0–M7 已提交；M9 `rpc` 鉴权接线在工作区（未提交）；`.g2-tmp/` 未跟踪 |
 | 阶段 F/G | F 已收口；G0–G5 已完成，见 `rewrite.md` §7.92–§7.96 |
-| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；**M5 ✅（2026-11-24）**：`storage` 的 metadata、去重状态机、FS/S3、GC 纯逻辑，45 条 + 1 ignored；**M6 🔧（2026-11-25）**：`worker` 的 cron、状态机、dispatcher、runner、五个 handler 与 Redis 队列，68 条默认测试 + 5 条 Redis live；PG 仓储与混合集群待 devenv；**M7 ✅（2026-11-24）**：`ws` 的 msgbus、协议多态、心跳、axum 路由与 Redis 适配器，33 条默认测试 + 7 条 Redis live；M8 不交付；C1/C2 真实向量与应答语料待 devenv |
-| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4，§7.102 为 M5，§7.103 为 M6，§7.104 为 M7，§7.105 为 M7 Redis 适配器，§7.106 为 M6 Redis 队列；里程碑状态见本文与 `PLAN.md` |
+| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；**M5 ✅（2026-11-24）**：`storage` 的 metadata、去重状态机、FS/S3、GC 纯逻辑，45 条 + 1 ignored；**M6 🔧（2026-11-25）**：`worker` 的 cron、状态机、dispatcher、runner、五个 handler 与 Redis 队列，68 条默认测试 + 5 条 Redis live；PG 仓储与混合集群待 devenv；**M7 ✅（2026-11-24）**：`ws` 的 msgbus、协议多态、心跳、axum 路由与 Redis 适配器，33 条默认测试 + 7 条 Redis live；**M9 ✅（2026-11-25）**：`rpc` 的 `TokenResolver` 接 cookie/Bearer 会话令牌与 `Token` 访问令牌，16 条 auth 单测 + 10 条 oneshot，存储走 trait；M8 不交付；C1/C2 真实向量与应答语料待 devenv |
+| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4，§7.102 为 M5，§7.103 为 M6，§7.104 为 M7，§7.105 为 M7 Redis 适配器，§7.106 为 M6 Redis 队列，§7.107 为 M9 鉴权接线；里程碑状态见本文与 `PLAN.md` |
 
 ## 2. 已拍板决策（不要重议，除非用户改口）
 
@@ -103,6 +103,13 @@ base64 0.23.1 / mime / url / hex` 为旧机清单。当前机器实测 M0–M7 �
   `RedisBusClient` 用发布/订阅双连接，首订阅开通道、末退订关通道，断线按退避重连并
   重订阅。crate 33 条默认测试 + 7 条 Redis live；workspace 337 条通过 + 9 ignored。
   浏览器联调、混合集群对拍与强制断线自动化仍待补，设计见 `crates/ws/tests/DESIGN.md`。
+- M9：`crates/rpc/src/auth.rs` 的 `TokenResolver`。凭据顺序照 `wrap-auth`：cookie 先于
+  `Authorization`，空 cookie 视为没有；`Bearer` 解析会话令牌（kid/ver=1、iss
+  `authentication`、按 `:sid` 查 `http_session_v2`、idle 7 天），`Token` 解析访问令牌
+  （iss `access-token`、按 `:tid` 查 `access_token`）。解码失败降级为未认证，存储错误
+  上抛 500。`SessionStore`/`AccessTokenStore` 是 trait，`rpc` 不依赖 sqlx。
+  `session::decode_header` 补上 `decode-header` 语义。16 条 auth 单测 + 10 条 oneshot；
+  workspace 366 条通过 + 14 ignored。PG 存储、cookie 续期写回与 `::actoken/type` 未做。
 
 **C. devenv 起来后采集（一次采完，回填 `fixtures/`）**
 
