@@ -6,13 +6,17 @@
 //! ```
 //!
 //! The auth tests read a random UUID and never write. The task test inserts
-//! one row under a random tenant and removes it again.
+//! one row under a random tenant and removes it again; the storage test does
+//! the same with a random `storage_object` id.
 
 use std::time::Duration;
 
 use chrono::Utc;
-use pg::{PgAccessTokenStore, PgSessionStore, PgTaskRepository};
+use pg::{PgAccessTokenStore, PgSessionStore, PgStorageRepository, PgTaskRepository};
 use rpc::auth::{AccessTokenStore, SessionStore};
+use storage::{
+    Bucket, ObjectStatus, StorageBackend, StorageMetadata, StorageObject, StorageRepository,
+};
 use transit::{Map, Value};
 use uuid::Uuid;
 use worker::{HandlerResult, SubmitOptions, Task, TaskRepository, TaskStatus};
@@ -125,5 +129,85 @@ async fn a_task_round_trips_through_claim_and_completion() {
         .execute(repository.database().pool())
         .await
         .expect("delete task");
+    repository.database().close().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live PostgreSQL; set PENPOT_TEST_DATABASE_URL"]
+async fn a_storage_object_round_trips_and_soft_deletes() {
+    let repository = PgStorageRepository::new(database());
+    let hash = format!("blake2b:live-{}", Uuid::new_v4());
+    let metadata = StorageMetadata::new(Bucket::FileMediaObject, "image/png").with_hash(&hash);
+    let object =
+        StorageObject::new_pending(Uuid::new_v4(), 42, Utc::now(), StorageBackend::Fs, metadata);
+
+    repository.insert(&object).await.expect("insert object");
+    assert!(repository
+        .get_valid(object.id)
+        .await
+        .expect("pending is invisible")
+        .is_none());
+
+    assert!(repository.promote(object.id).await.expect("promote"));
+    let valid = repository
+        .get_valid(object.id)
+        .await
+        .expect("read object")
+        .expect("valid row");
+    assert_eq!(valid.id, object.id);
+    assert_eq!(valid.size, 42);
+    assert_eq!(valid.backend, StorageBackend::Fs);
+    assert_eq!(valid.metadata, object.metadata);
+    assert_eq!(valid.status, ObjectStatus::Valid);
+    assert!(valid.expired_at.is_none());
+
+    let found = repository
+        .find_dedup(StorageBackend::Fs, "file-media-object", &hash)
+        .await
+        .expect("dedup probe")
+        .expect("dedup row");
+    assert_eq!(found.id, object.id);
+
+    let touched = Utc::now();
+    assert!(repository
+        .set_touched(object.id, Some(touched))
+        .await
+        .expect("touch"));
+    let touched_row = repository
+        .get_valid(object.id)
+        .await
+        .expect("read object")
+        .expect("valid row");
+    assert_eq!(
+        touched_row
+            .touched_at
+            .map(|instant| instant.timestamp_millis()),
+        Some(touched.timestamp_millis())
+    );
+
+    assert!(repository
+        .soft_delete(object.id, Utc::now())
+        .await
+        .expect("soft delete"));
+    assert!(repository
+        .get_valid(object.id)
+        .await
+        .expect("deleted is invisible")
+        .is_none());
+    assert!(!repository
+        .soft_delete(object.id, Utc::now())
+        .await
+        .expect("second delete"));
+    assert!(repository
+        .find_dedup(StorageBackend::Fs, "file-media-object", &hash)
+        .await
+        .expect("dedup probe")
+        .is_none());
+
+    sqlx::query("DELETE FROM storage_object WHERE id = $1")
+        .bind(object.id)
+        .execute(repository.database().pool())
+        .await
+        .expect("delete object");
     repository.database().close().await;
 }

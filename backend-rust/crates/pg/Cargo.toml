@@ -14,6 +14,7 @@ db = { path = "../db" }
 errors = { path = "../errors" }
 rpc = { path = "../rpc" }
 sqlx.workspace = true
+storage = { path = "../storage" }
 tokio.workspace = true
 transit = { path = "../transit" }
 uuid.workspace = true

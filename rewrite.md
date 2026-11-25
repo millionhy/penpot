@@ -9,7 +9,7 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（收口见 7.96）；阶段 B（backend-rust）M0–M7 完成，`rpc` 鉴权已接入 `session` 并落到 PG 存储，worker 的 PG 仓储也落地（见 7.107–7.109），live PG 与 M8 仍不交付，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（收口见 7.96）；阶段 B（backend-rust）M0–M7 完成，`rpc` 鉴权已接入 `session` 并落到 PG 存储，worker 与 storage 的 PG 仓储也落地（见 7.107–7.110），live PG 与 M8 仍不交付，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
 | 最后更新 | 2026-11-25 |
@@ -58,7 +58,7 @@
 | B2 | M2 | `errors` + `config` crate | ✅ | `ex-data` → HTTP status/body；`PENPOT_*` env + flags；2026-11-24 完成 |
 | B3 | M3 | `rpc` crate（axum 骨架） | ✅ | 三组路由 + 中间件同序 + Registry；本地 `cargo run`，不接 nginx；2026-11-24 完成 |
 | B4 | M4 | `session` crate | ✅ | JWE `a256kw`+`a256gcm` + HKDF-BLAKE2b-512；会话查 **`http_session_v2`**（旧表已由 `0155` 删除）；buddy 兼容性待 C1 向量 |
-| B5 | M5 | `storage` crate | 🔧 | `storage_object`/bucket/去重/GC；`:fs`/`:s3`；离线部分完成，真实 S3 桶/PG 待 devenv |
+| B5 | M5 | `storage` crate | 🔧 | `storage_object`/bucket/去重/GC；`:fs`/`:s3`；离线部分完成，PG 仓储已落地（见 7.110），真实 S3 桶/live PG/GC 执行器待 devenv |
 | B6 | M6 | `worker` crate | 🔧 | Quartz 6 段 cron、task 状态机、dispatcher/runner、Redis `TaskQueue`、PG 仓储（见 7.109）；`task.props` = **jsonb transit**；Redis live 已验，live PG 与混合集群待 devenv |
 | B7 | M7 | `ws` crate | ✅ | axum WebSocket + msgbus；RedisBusClient + InMemoryBus；协议/心跳/路由 33 条默认测试 + 7 条 Redis live |
 | B8 | M8 | `rpc` 只读命令承接 | ⛔ | 前置：C3 DDL + C4 OpenAPI + 补齐 `::sm/result` + 可用 devenv。永久排除：`add-file-transient-changes`/binfile/files 写路径/thumbnails/nitrate（`file.data` blob = Fressian v4/v5，JVM 专有） |
@@ -3873,6 +3873,32 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   commit 测试。workspace 384 passed + 19 ignored；fmt/clippy/build/doc 均退出 0。
 - 边界：live PG 未实跑；Clojure↔Rust 混合集群、dispatcher 在 Redis 故障后的 5 分钟
   重排与 M5 的 storage PG 仓储仍未验。M8 不交付。
+- 提交：未提交（等用户明确要求）。
+
+---
+
+### 7.110 本轮（2026-11-25，第一百零九批：backend-rust M12 storage PG 仓储）
+
+- 口径不变：只改 `backend-rust/`，不接部署、不改 `backend/`/`common/`/`docker/`/
+  `scripts/ci`。PostgreSQL 5432/5433 与 Docker daemon 仍不可用，live PG 用例保持 `#[ignore]`。
+- 新增 `crates/pg/src/storage.rs` 的 `PgStorageRepository`，实现
+  `storage::StorageRepository`。`get_valid` 只返回 `status='valid'` 且
+  `deleted_at IS NULL` 的行；`find_dedup` 用 `UNION ALL` 同时匹配 legacy
+  `~:hash`/`~:bucket` 与 plain `hash`/`bucket` 的 metadata；`insert` 写 `deleted_at`
+  （对应模型的 `expired_at`）、`touched_at`、`status` 与 `created_at`；
+  `promote`/`set_touched`/`soft_delete` 对齐 `app.storage` 的三条更新。
+- 行映射：`deleted_at` → `StorageObject.expired_at`，`metadata::text` 交给
+  `StorageMetadata::decode`（Transit/plain 双读），`deletion_attempts` 从 bigint
+  收窄到 `u32`，未知 backend/status 报结构化错误；时间戳统一毫秒。
+- 写编码：默认 verbose Transit（对齐 `:storage-metadata-as-json` 未设时的后端），
+  `with_metadata_encoding` 可切 plain JSON；该配置键在 Rust `config` 里仍是 pending。
+- 依赖：`pg` 增加 `storage`。
+- 测试：pg 4 条 storage 单测（Transit metadata、缺失 metadata、毫秒换算、默认编码）+
+  1 条 live `#[ignore]`（pending 不可见 → promote → dedup → touch → soft delete →
+  二次删除 false → 清理）；pg 共 8 条单测 + 4 条 live `#[ignore]`。workspace
+  388 passed + 20 ignored；fmt/clippy/build/doc 均退出 0。
+- 边界：live PG 未实跑；`ObjectsGc` 执行器未做，纯决策与 SQL 常量仍在 `storage::gc`；
+  Clojure↔Rust 混合集群未验。M8 不交付。
 - 提交：未提交（等用户明确要求）。
 
 ---

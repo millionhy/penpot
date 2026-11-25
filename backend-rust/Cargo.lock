@@ -2016,6 +2016,7 @@ dependencies = [
  "errors",
  "rpc",
  "sqlx",
+ "storage",
  "tokio",
  "transit",
  "uuid",

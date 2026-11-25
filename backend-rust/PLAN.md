@@ -1,8 +1,8 @@
 # backend-rust 开发计划（**已批准** · 实现但不接入部署）
 
 本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干、M9 鉴权接线、
-M10 `db`/`pg` 基础与 M11 worker PG 仓储已落地（2026-11-25），live PG 验证与 M8 仍不交付。
-换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
+M10 `db`/`pg` 基础、M11 worker PG 仓储与 M12 storage PG 仓储已落地（2026-11-25），
+live PG 验证与 M8 仍不交付。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
 
@@ -407,6 +407,28 @@ save completed → delete）；worker 2 条 batch commit 测试；workspace 384 
 fmt/clippy/build/doc 全绿。live PG 实跑、Clojure↔Rust 混合集群与 Redis 故障后的重排
 仍待 devenv。
 
+### M12 — storage 的 PG 仓储（✅ 2026-11-25，live PG 待 devenv）
+
+把 M5 的 `StorageRepository` 接到 `storage_object` 表。GC 执行器不在本切片内；纯决策与
+SQL 常量仍留在 `storage::gc`。
+
+- T12.1 ✅ `crates/pg/src/storage.rs` 的 `PgStorageRepository`：
+  `get_valid` 只认 `status='valid'` 且 `deleted_at IS NULL`；`find_dedup` 用
+  `UNION ALL` 同时匹配 legacy `~:hash`/`~:bucket` 与 plain `hash`/`bucket`；
+  `insert` 写 `deleted_at`（对应模型的 `expired_at`）、`touched_at`、`status` 与
+  `created_at`；`promote`/`set_touched`/`soft_delete` 对应 `app.storage` 的三条更新。
+- T12.2 ✅ 行映射：`deleted_at` → `StorageObject.expired_at`，`metadata::text` 交给
+  `StorageMetadata::decode`（Transit/plain 双读），`deletion_attempts` 从 bigint 收窄到
+  `u32`，未知 backend/status 报结构化错误。
+- T12.3 ✅ 写编码：默认 verbose Transit（对齐 `:storage-metadata-as-json` 未设时的后端），
+  `with_metadata_encoding` 可切 plain JSON；该配置键在 Rust config 里仍是 pending。
+
+DoD ✅：pg 4 条 storage 单测（Transit metadata、缺失 metadata、毫秒换算、默认编码）+
+1 条 `#[ignore]` live 往返（pending 不可见 → promote → dedup → touch → soft delete →
+第二次删除 false → delete）；pg 共 8 条单测 + 4 条 live `#[ignore]`；workspace
+388 passed + 20 ignored；fmt/clippy/build/doc 全绿。live PG、`ObjectsGc` 执行器与
+Clojure↔Rust 混合集群仍待 devenv。
+
 ---
 
 ## 5. 顺序与总量
@@ -482,9 +504,12 @@ M10：`db` 的池、命名、错误映射与事务助手，`pg` 的会话/访问
 async；workspace 378 条通过 + 18 ignored。
 M11：worker 的 `PgTaskRepository` 与 `DispatchBatch` 事务边界——认领/恢复/ack 同事务，
 verbose Transit props、毫秒时间戳与 `task` 行映射；workspace 384 条通过 + 19 ignored。
-下一步是 devenv 起来后的 live PG 验证（`PENPOT_TEST_DATABASE_URL`）、M5 的 PG 仓储，
-再把 `PgSessionStore` 接进示例二进制。C2 真实应答到位后，按 `TODO-ONLINE.md` 回填金样本，
-再把 M1 的「线上形态」标为定案。M8 仍不交付。
+M12：storage 的 `PgStorageRepository`——`storage_object` 的 valid/软删读取、legacy 与
+plain metadata 的 `UNION ALL` 去重、pending→valid 写入与 touch/soft delete；默认 verbose
+Transit 写入、毫秒时间戳；pg 4 条 storage 单测 + 1 条 `#[ignore]` live 往返。
+下一步是 devenv 起来后的 live PG 验证（`PENPOT_TEST_DATABASE_URL`），重点验 M10–M12 的
+仓储，再补 storage GC 执行器并把 `PgSessionStore` 接进示例二进制。C2 真实应答到位后，
+按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。M8 仍不交付。
 
 ## 10. 换机器 / devenv 起来之后的采集清单
 

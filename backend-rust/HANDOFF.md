@@ -11,11 +11,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| HEAD（快照时） | `70ce69fde7` `:sparkles: Add db and PostgreSQL auth stores to backend-rust` |
-| 工作区 | M0–M7、M9、M10 已提交；M11 `pg` worker 仓储在工作区（未提交）；`.g2-tmp/` 未跟踪 |
+| HEAD（快照时） | `d62327fbfa` `:sparkles: Add PostgreSQL task repository to backend-rust` |
+| 工作区 | M0–M7、M9、M10、M11 已提交；M12 `pg` storage 仓储在工作区（未提交）；`.g2-tmp/` 未跟踪 |
 | 阶段 F/G | F 已收口；G0–G5 已完成，见 `rewrite.md` §7.92–§7.96 |
-| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；**M5 ✅（2026-11-24）**：`storage` 的 metadata、去重状态机、FS/S3、GC 纯逻辑，45 条 + 1 ignored；**M6 🔧（2026-11-25）**：`worker` 的 cron、状态机、dispatcher、runner、五个 handler 与 Redis 队列，68 条默认测试 + 5 条 Redis live；PG 仓储已落地、混合集群待 devenv；**M7 ✅（2026-11-24）**：`ws` 的 msgbus、协议多态、心跳、axum 路由与 Redis 适配器，33 条默认测试 + 7 条 Redis live；**M9 ✅（2026-11-25）**：`rpc` 的 `TokenResolver` 接 cookie/Bearer 会话令牌与 `Token` 访问令牌，16 条 auth 单测 + 10 条 oneshot，存储走 trait；**M10 ✅（2026-11-25）**：`db` 的池/命名/错误/事务助手与 `pg` 的会话、访问令牌存储，鉴权 trait 改 async；**M11 ✅ 代码（2026-11-25）**：worker 的 `PgTaskRepository` 与 `DispatchBatch` 事务边界，pg 4 条单测 + 1 条 live `#[ignore]`；M8 不交付；C1/C2 真实向量与应答语料待 devenv |
-| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4，§7.102 为 M5，§7.103 为 M6，§7.104 为 M7，§7.105 为 M7 Redis 适配器，§7.106 为 M6 Redis 队列，§7.107 为 M9 鉴权接线，§7.108 为 M10 `db`/`pg`，§7.109 为 M11 worker PG 仓储；里程碑状态见本文与 `PLAN.md` |
+| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；**M5 ✅（2026-11-24）**：`storage` 的 metadata、去重状态机、FS/S3、GC 纯逻辑，45 条 + 1 ignored，PG 仓储见 M12；**M6 🔧（2026-11-25）**：`worker` 的 cron、状态机、dispatcher、runner、五个 handler 与 Redis 队列，68 条默认测试 + 5 条 Redis live；PG 仓储已落地、混合集群待 devenv；**M7 ✅（2026-11-24）**：`ws` 的 msgbus、协议多态、心跳、axum 路由与 Redis 适配器，33 条默认测试 + 7 条 Redis live；**M9 ✅（2026-11-25）**：`rpc` 的 `TokenResolver` 接 cookie/Bearer 会话令牌与 `Token` 访问令牌，16 条 auth 单测 + 10 条 oneshot，存储走 trait；**M10 ✅（2026-11-25）**：`db` 的池/命名/错误/事务助手与 `pg` 的会话、访问令牌存储，鉴权 trait 改 async；**M11 ✅（2026-11-25）**：worker 的 `PgTaskRepository` 与 `DispatchBatch` 事务边界，pg 4 条单测 + 1 条 live `#[ignore]`；**M12 ✅ 代码（2026-11-25）**：storage 的 `PgStorageRepository`，pg 4 条 storage 单测 + 1 条 live `#[ignore]`，GC 执行器待做；M8 不交付；C1/C2 真实向量与应答语料待 devenv |
+| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4，§7.102 为 M5，§7.103 为 M6，§7.104 为 M7，§7.105 为 M7 Redis 适配器，§7.106 为 M6 Redis 队列，§7.107 为 M9 鉴权接线，§7.108 为 M10 `db`/`pg`，§7.109 为 M11 worker PG 仓储，§7.110 为 M12 storage PG 仓储；里程碑状态见本文与 `PLAN.md` |
 
 ## 2. 已拍板决策（不要重议，除非用户改口）
 
@@ -58,7 +58,7 @@ indexmap 2.14.2 / tracing 0.1.44 / thiserror 2.0.21 / proptest 1.11 / aws-sdk-s3
 base64 0.23.1 / mime / url / hex` 为旧机清单。当前机器实测 M0–M7 实际声明的依赖均可离线构建。
 `redis 0.27.6` 已联网拉取一次并锁进 `Cargo.lock`。依赖只选已验证版本并**提交 `Cargo.lock`**。
 
-**B. 已完成切片 = M0 + M1 的 T1.1–T1.6（离线部分）+ M2 + M3 + M4 + M5 + M6 + M7 + M9 + M10 + M11（live 集成交给 devenv）**
+**B. 已完成切片 = M0 + M1 的 T1.1–T1.6（离线部分）+ M2 + M3 + M4 + M5 + M6 + M7 + M9 + M10 + M11 + M12（live 集成交给 devenv）**
 
 - M0：workspace（`members = ["crates/*"]`、`[workspace.dependencies]` 锁版）、`rust-toolchain.toml`（用 `stable`，
   别把 channel 钉死到具体小版本）、`.gitignore`（`target/`、`fixtures/online/`）、`backend-rust/Makefile`
@@ -123,6 +123,13 @@ base64 0.23.1 / mime / url / hex` 为旧机清单。当前机器实测 M0–M7 �
   `app.worker.runner`，`insert` 对齐 `sql:insert-new-task`（`$3::text::jsonb`）。
   pg 4 条单测 + 1 条 live `#[ignore]` 往返；worker 2 条 batch commit 测试；
   workspace 384 条通过 + 19 ignored。live PG 与混合集群未验。
+- M12：`crates/pg/src/storage.rs` 的 `PgStorageRepository`。`get_valid` 只认
+  `status='valid'` 且 `deleted_at IS NULL`；`find_dedup` 用 `UNION ALL` 同时匹配
+  legacy `~:hash`/`~:bucket` 与 plain `hash`/`bucket`；`insert` 写 `deleted_at`
+  （对应模型的 `expired_at`）、`touched_at`、`status`、`created_at`；
+  `promote`/`set_touched`/`soft_delete` 对齐 `app.storage` 的三条更新。metadata 默认
+  verbose Transit，可切 plain JSON；读取走 `metadata::text` 解码，时间戳统一毫秒。
+  pg 4 条 storage 单测 + 1 条 live `#[ignore]` 往返；GC 执行器未做。
 
 **C. devenv 起来后采集（一次采完，回填 `fixtures/`）**
 
@@ -177,7 +184,7 @@ base64 0.23.1 / mime / url / hex` 为旧机清单。当前机器实测 M0–M7 �
 
 - `task.props` 是 **jsonb + transit**（`db/tjson`），**不是 Fressian** → worker 只需 transit
 - dispatcher `FOR UPDATE SKIP LOCKED` + `tenant:queue` RPUSH + 丢失重排；runner BLPOP + parallelism + `::retry`；17 任务 / 10 条 Quartz 6 段 cron
-- `storage_object`：统一闭包 metadata schema、11 canonical bucket、hash 去重、`status/deletion_attempts`、`:fs`/`:s3` + 遗留别名 `:assets-fs`/`:assets-s3`；Rust 侧已落 `crates/storage`（真实桶/PG 待验）
+- `storage_object`：统一闭包 metadata schema、11 canonical bucket、hash 去重、`status/deletion_attempts`、`:fs`/`:s3` + 遗留别名 `:assets-fs`/`:assets-s3`；Rust 侧已落 `crates/storage` 与 `crates/pg` 的仓储（真实桶/live PG 待验，GC 执行器未做）
 - **file data blob = Fressian v4/v5（`app.common.fressian`，JVM 专有，无 Rust 实现）→ 本阶段不碰**；
   因此 `add-file-transient-changes`、binfile、files 写路径、thumbnails、nitrate 全列入 M8 永久排除
 
@@ -200,7 +207,7 @@ base64 0.23.1 / mime / url / hex` 为旧机清单。当前机器实测 M0–M7 �
 | --- | --- |
 | 执行计划（里程碑 M0–M8、契约、风险、红线） | `backend-rust/PLAN.md` |
 | 服务规划与门禁说明 | `backend-rust/README.md` |
-| 总计划（阶段 F/B、里程碑、执行记录） | `rewrite.md`（本轮记录 §7.26） |
+| 总计划（阶段 F/B、里程碑、执行记录） | `rewrite.md`（本轮记录 §7.110） |
 | Transit 后端事实来源 | `common/src/app/common/transit.cljc` |
 | Transit 参考移植 + 用例 | `frontend-nextjs/lib/transit.ts`、`frontend-nextjs/lib/transit.test.ts` |
 | RPC 分发/错误/中间件 | `backend/src/app/rpc.clj`、`backend/src/app/http/errors.clj` |

@@ -1,9 +1,10 @@
 //! PostgreSQL adapters for the traits defined by the domain crates.
 //!
-//! This crate is the only place that turns SQL rows into `rpc::auth` or
-//! `worker` records. Keeping it separate means the router, the auth logic and
-//! the worker stay free of sqlx, while the live queries still compile against
-//! the same `sqlx` version the rest of the backend uses.
+//! This crate is the only place that turns SQL rows into `rpc::auth`,
+//! `worker` or `storage` records. Keeping it separate means the router, the
+//! auth logic, the worker and the storage service stay free of sqlx, while the
+//! live queries still compile against the same `sqlx` version the rest of the
+//! backend uses.
 //!
 //! The auth queries are the ones in `app.http.session` and
 //! `app.http.access-token`, restated with runtime `sqlx::query` calls:
@@ -18,9 +19,13 @@
 //! verbose Transit stored as JSONB, so the adapter decodes it with the same
 //! reader the RPC layer uses.
 //!
+//! The storage adapter covers `storage_object`: live reads, the dual-encoding
+//! deduplication probe, the write-ahead insert, promotion, touch and soft
+//! delete. New rows use verbose Transit metadata by default.
+//!
 //! Live tests are `#[ignore]`d and need `PENPOT_TEST_DATABASE_URL` plus a
-//! migrated schema. The task test inserts one row under a random id and
-//! removes it again.
+//! migrated schema. The task and storage tests insert one row under a random
+//! id and remove it again.
 
 use std::collections::BTreeSet;
 
@@ -29,8 +34,10 @@ use rpc::auth::{AccessTokenRecord, AccessTokenStore, SessionRecord, SessionStore
 use sqlx::Row;
 use uuid::Uuid;
 
+mod storage;
 mod task;
 
+pub use storage::PgStorageRepository;
 pub use task::PgTaskRepository;
 
 /// `http_session_v2` reader.
