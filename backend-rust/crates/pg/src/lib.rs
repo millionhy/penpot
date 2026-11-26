@@ -33,9 +33,13 @@
 //! reclamation, the touched reference scan and physical deletion of
 //! tombstones.
 //!
+//! The `objects-gc` adapter purges soft-deleted domain rows in the Clojure
+//! procedure order and touches the storage objects they referenced.
+//!
 //! Live tests are `#[ignore]`d and need `PENPOT_TEST_DATABASE_URL` plus a
 //! migrated schema. The task and storage tests insert one row under a random
-//! id and remove it again.
+//! id and remove it again. The `objects-gc` test purges every pending soft
+//! delete, so point it at a disposable database.
 
 use std::collections::BTreeSet;
 
@@ -44,12 +48,14 @@ use rpc::auth::{AccessTokenRecord, AccessTokenStore, SessionRecord, SessionStore
 use sqlx::Row;
 use uuid::Uuid;
 
+mod objects_gc;
 mod storage;
 mod storage_gc;
 mod task;
 mod task_services;
 mod webhook;
 
+pub use objects_gc::PgObjectsGc;
 pub use storage::PgStorageRepository;
 pub use storage_gc::PgStorageGcRepository;
 pub use task::PgTaskRepository;

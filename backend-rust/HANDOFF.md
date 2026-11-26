@@ -11,11 +11,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| HEAD（快照时） | `27f9be667e` `:sparkles: Add tasks-gc and session-gc services to backend-rust` |
-| 工作区 | M0–M7、M9–M14 已提交；M15 的 `httpclient` 与 `run-webhook` 服务在工作区（未提交）；`.g2-tmp/` 未跟踪 |
+| HEAD（快照时） | `f029b55c4d` `:sparkles: Add webhook delivery services to backend-rust` |
+| 工作区 | M0–M7、M9–M15 已提交；M16 的 `objects_gc` 在工作区（未提交）；`.g2-tmp/` 未跟踪 |
 | 阶段 F/G | F 已收口；G0–G5 已完成，见 `rewrite.md` §7.92–§7.96 |
-| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；**M5 ✅（2026-11-24）**：`storage` 的 metadata、去重状态机、FS/S3、GC 纯逻辑与执行器，45 条 + 1 ignored，PG 仓储与 GC 见 M12/M13；**M6 🔧（2026-11-25）**：`worker` 的 cron、状态机、dispatcher、runner、五个 handler 与 Redis 队列，68 条默认测试 + 5 条 Redis live；PG 仓储已落地、混合集群待 devenv；**M7 ✅（2026-11-24）**：`ws` 的 msgbus、协议多态、心跳、axum 路由与 Redis 适配器，33 条默认测试 + 7 条 Redis live；**M9 ✅（2026-11-25）**：`rpc` 的 `TokenResolver` 接 cookie/Bearer 会话令牌与 `Token` 访问令牌，16 条 auth 单测 + 10 条 oneshot，存储走 trait；**M10 ✅（2026-11-25）**：`db` 的池/命名/错误/事务助手与 `pg` 的会话、访问令牌存储，鉴权 trait 改 async；**M11 ✅（2026-11-25）**：worker 的 `PgTaskRepository` 与 `DispatchBatch` 事务边界，pg 4 条单测 + 1 条 live `#[ignore]`；**M12 ✅（2026-11-25）**：storage 的 `PgStorageRepository`，pg 4 条 storage 单测 + 1 条 live `#[ignore]`；**M13 ✅（2026-11-25）**：storage 的 `StorageGc` 三阶段执行器与 `PgStorageGcRepository`，storage 7 条单测 + 1 条 live `#[ignore]`；**M14 ✅（2026-11-25）**：`PgTasksGc` 与 `PgSessionGc`，pg 2 条单测 + 2 条 live `#[ignore]`；**M15 🔧（2026-11-26）**：`crates/httpclient` 的 SSRF 校验与 `ReqwestTransport`，`PgWebhookRunner` 写 `webhook_delivery` 并在三次失败后停用，httpclient 12 条 + pg 7 条单测 + 2 条 live `#[ignore]`，`objects-gc`/`sendmail` 待做；M8 不交付；C1/C2 真实向量与应答语料待 devenv |
-| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4，§7.102 为 M5，§7.103 为 M6，§7.104 为 M7，§7.105 为 M7 Redis 适配器，§7.106 为 M6 Redis 队列，§7.107 为 M9 鉴权接线，§7.108 为 M10 `db`/`pg`，§7.109 为 M11 worker PG 仓储，§7.110 为 M12 storage PG 仓储，§7.111 为 M13 storage GC 执行器，§7.112 为 M14 `tasks-gc`/`session-gc` 服务，§7.113 为 M15 `run-webhook`；里程碑状态见本文与 `PLAN.md` |
+| 阶段 B | **M0 ✅**；**M1 `transit` 离线部分 ✅**：103 条金样本、round-trip 1000 例、畸形输入、`TODO-ONLINE.md`；**M2 ✅（2026-11-24）**：`errors` 全分支 + verbose 应答 + `config` 18 键与源码表对齐；**M3 ✅（2026-11-24）**：`rpc` 三组路由、默认鉴权、参数/应答管线，29 条 oneshot + 3 条 `rpc.clj` 契约测试；**M4 ✅（2026-11-24）**：`session` 的 HKDF、RFC 3394 AES-KW、A256KW/A256GCM JWE、claims/verify、cookie，50 条 crate 测试 + OpenSSL 交叉向量；**M5 ✅（2026-11-24）**：`storage` 的 metadata、去重状态机、FS/S3、GC 纯逻辑与执行器，45 条 + 1 ignored，PG 仓储与 GC 见 M12/M13；**M6 🔧（2026-11-25）**：`worker` 的 cron、状态机、dispatcher、runner、五个 handler 与 Redis 队列，68 条默认测试 + 5 条 Redis live；PG 仓储已落地、混合集群待 devenv；**M7 ✅（2026-11-24）**：`ws` 的 msgbus、协议多态、心跳、axum 路由与 Redis 适配器，33 条默认测试 + 7 条 Redis live；**M9 ✅（2026-11-25）**：`rpc` 的 `TokenResolver` 接 cookie/Bearer 会话令牌与 `Token` 访问令牌，16 条 auth 单测 + 10 条 oneshot，存储走 trait；**M10 ✅（2026-11-25）**：`db` 的池/命名/错误/事务助手与 `pg` 的会话、访问令牌存储，鉴权 trait 改 async；**M11 ✅（2026-11-25）**：worker 的 `PgTaskRepository` 与 `DispatchBatch` 事务边界，pg 4 条单测 + 1 条 live `#[ignore]`；**M12 ✅（2026-11-25）**：storage 的 `PgStorageRepository`，pg 4 条 storage 单测 + 1 条 live `#[ignore]`；**M13 ✅（2026-11-25）**：storage 的 `StorageGc` 三阶段执行器与 `PgStorageGcRepository`，storage 7 条单测 + 1 条 live `#[ignore]`；**M14 ✅（2026-11-25）**：`PgTasksGc` 与 `PgSessionGc`，pg 2 条单测 + 2 条 live `#[ignore]`；**M15 ✅（2026-11-26）**：`crates/httpclient` 的 SSRF 校验与 `ReqwestTransport`，`PgWebhookRunner` 写 `webhook_delivery` 并在三次失败后停用，httpclient 12 条 + pg 7 条单测 + 2 条 live `#[ignore]`；**M16 ✅（2026-11-26）**：`PgObjectsGc` 按 11 个 procedure 清理软删域对象并做 profile/team/project/file 级联与存储对象 touch，pg 6 条单测 + 1 条 live `#[ignore]`，`sendmail` 待做；M8 不交付；C1/C2 真实向量与应答语料待 devenv |
+| `rewrite.md` | §7.96 为 G5 收口记录，§7.100 为 backend-rust M3，§7.101 为 M4，§7.102 为 M5，§7.103 为 M6，§7.104 为 M7，§7.105 为 M7 Redis 适配器，§7.106 为 M6 Redis 队列，§7.107 为 M9 鉴权接线，§7.108 为 M10 `db`/`pg`，§7.109 为 M11 worker PG 仓储，§7.110 为 M12 storage PG 仓储，§7.111 为 M13 storage GC 执行器，§7.112 为 M14 `tasks-gc`/`session-gc` 服务，§7.113 为 M15 `run-webhook`，§7.114 为 M16 `objects-gc` 服务；里程碑状态见本文与 `PLAN.md` |
 
 ## 2. 已拍板决策（不要重议，除非用户改口）
 
@@ -58,7 +58,7 @@ indexmap 2.14.2 / tracing 0.1.44 / thiserror 2.0.21 / proptest 1.11 / aws-sdk-s3
 base64 0.23.1 / mime / url / hex` 为旧机清单。当前机器实测 M0–M7 实际声明的依赖均可离线构建。
 `redis 0.27.6` 已联网拉取一次并锁进 `Cargo.lock`。依赖只选已验证版本并**提交 `Cargo.lock`**。
 
-**B. 已完成切片 = M0 + M1 的 T1.1–T1.6（离线部分）+ M2 + M3 + M4 + M5 + M6 + M7 + M9 + M10 + M11 + M12 + M13 + M14 + M15（live 集成交给 devenv）**
+**B. 已完成切片 = M0 + M1 的 T1.1–T1.6（离线部分）+ M2 + M3 + M4 + M5 + M6 + M7 + M9 + M10 + M11 + M12 + M13 + M14 + M15 + M16（live 集成交给 devenv）**
 
 - M0：workspace（`members = ["crates/*"]`、`[workspace.dependencies]` 锁版）、`rust-toolchain.toml`（用 `stable`，
   别把 channel 钉死到具体小版本）、`.gitignore`（`target/`、`fixtures/online/`）、`backend-rust/Makefile`
@@ -147,6 +147,13 @@ base64 0.23.1 / mime / url / hex` 为旧机清单。当前机器实测 M0–M7 �
   `crates/pg/src/webhook.rs` 的 `PgWebhookRunner` 生成 JSON/transit/form body，200/204
   成功，其余 `unexpected-status:<code>`，每次投递写 `webhook_delivery`，三次失败停用。
   httpclient 12 条 + pg 7 条单测，2 条 live `#[ignore]`。
+- M16：`crates/pg/src/objects_gc.rs` 的 `PgObjectsGc`。按 `deletion-proc-vars`
+  的 11 个 procedure 顺序逐段提交事务，每段先关 deletion protection，再分块循环到
+  0；`chunk-size` 默认 100，`skip-delay` 把软删时间戳推到 3650 天后。上传会话先删
+  chunk 映射并 touch 存储对象；profile 只级联 owned teams，team/project/file 按
+  Clojure `delete-object` 软删子行。touch 用墙钟 `now()`，软删用运行时间戳；
+  `file_data.metadata->>'storage-ref-id'` 非法时报错。pg 6 条单测 + 1 条 live
+  `#[ignore]`（会清空库内所有待清软删行，需一次性数据库）。
 
 **C. devenv 起来后采集（一次采完，回填 `fixtures/`）**
 
@@ -201,7 +208,7 @@ base64 0.23.1 / mime / url / hex` 为旧机清单。当前机器实测 M0–M7 �
 
 - `task.props` 是 **jsonb + transit**（`db/tjson`），**不是 Fressian** → worker 只需 transit
 - dispatcher `FOR UPDATE SKIP LOCKED` + `tenant:queue` RPUSH + 丢失重排；runner BLPOP + parallelism + `::retry`；17 任务 / 10 条 Quartz 6 段 cron
-- `storage_object`：统一闭包 metadata schema、11 canonical bucket、hash 去重、`status/deletion_attempts`、`:fs`/`:s3` + 遗留别名 `:assets-fs`/`:assets-s3`；Rust 侧已落 `crates/storage` 的仓储、三阶段 GC 执行器与 `crates/pg` 的适配器（真实桶/live PG 待验；worker `objects-gc` 接线未做）
+- `storage_object`：统一闭包 metadata schema、11 canonical bucket、hash 去重、`status/deletion_attempts`、`:fs`/`:s3` + 遗留别名 `:assets-fs`/`:assets-s3`；Rust 侧已落 `crates/storage` 的仓储、三阶段 GC 执行器、`crates/pg` 的适配器与 `objects-gc` 服务（真实桶/live PG 待验；运行接线仍未做）
 - **file data blob = Fressian v4/v5（`app.common.fressian`，JVM 专有，无 Rust 实现）→ 本阶段不碰**；
   因此 `add-file-transient-changes`、binfile、files 写路径、thumbnails、nitrate 全列入 M8 永久排除
 

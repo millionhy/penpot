@@ -500,6 +500,35 @@ camelCase）+ 2 条 live `#[ignore]`（连续失败停用、成功后清零）�
 25 ignored；fmt/clippy/build/doc 全绿。live PG、真实外网投递与 `objects-gc`/`sendmail`
 仍待 devenv。
 
+### M16 — worker 的 `objects-gc` 服务（✅ 2026-11-26，live PG 待 devenv）
+
+`PenpotTaskServices` 的第四个服务。按 `app.tasks.objects-gc` 的 11 个 procedure
+顺序清理软删域对象，并复用 `app.tasks.delete-object` 的
+profile → team → project → file 级联。
+
+- T16.1 ✅ `crates/pg/src/objects_gc.rs` 的 `PgObjectsGc`：实现 `worker::ObjectsGc`。
+  每个 procedure 独立事务，先 `SET LOCAL rules.deletion_protection TO off`，再按
+  `LIMIT` 分块循环到 0，和 `execute-proc!` 一致。`chunk-size` 默认 100，
+  `skip-delay` 把软删时间戳推到 3650 天之后。
+- T16.2 ✅ 11 个 procedure 与 Clojure `deletion-proc-vars` 同序：upload sessions →
+  profiles → file media → object thumbnails → file thumbnails → file data →
+  file changes → files → projects → fonts → teams。上传会话先删
+  `upload_session_chunk` 并 touch 存储对象，避免 profile 删除撞上 `NO ACTION` 外键。
+- T16.3 ✅ 级联与 touch：profile 只级联未删的 owned teams；team 软删 project/font，
+  project 软删 file，file 软删 change/data/media/thumbnail；所有删除按
+  `deleted_at <= 运行时间戳` 选择。touch 用墙钟 `now()`（对齐
+  `sto/touch-object!`），避免 `skip-delay` 把存储对象推到十年后才可回收。
+  `file_data.metadata->>'storage-ref-id'` 不是 UUID 时报错，和 Clojure 的 metadata
+  校验一致。
+- 行为注记：`objects-gc` 的级联只走 profile → team → project → file，Clojure 在这条
+  路径绑定 `*team-deletion*` 并跳过 library absorb，所以 Rust 不需要 Fressian。
+  独立 `delete-object` 的 absorb 路径仍随 M8 排除。
+
+DoD ✅：pg 6 条 objects-gc 单测（默认配置、props、非法配置连库前失败、skip-delay
+时间戳、procedure 全序）+ 1 条 live `#[ignore]`（profile 级联、upload-session
+chunk 删除与墙钟 touch，需一次性数据库）；workspace 422 passed + 26 ignored；
+fmt/clippy/build/doc 全绿。live PG、`sendmail` 与混合集群仍待 devenv。
+
 ---
 
 ## 5. 顺序与总量
@@ -588,9 +617,11 @@ M14：worker 的 `tasks-gc` 与 `session-gc` PG 服务——事务内删除旧 t
 M15：worker 的 `run-webhook` 服务——`httpclient` 移植 SSRF 校验与 4s POST 传输，
 校验地址固定到连接；`PgWebhookRunner` 编码三种 body、写 `webhook_delivery`、累计
 失败并在第 3 次停用。httpclient 12 条 + pg 7 条单测 + 2 条 live `#[ignore]`。
-下一步是 `objects-gc`（软删域对象并 touch 存储对象）与 `sendmail`，再接
-`PgSessionStore` 示例二进制。devenv 起来后先跑 live PG（`PENPOT_TEST_DATABASE_URL`），
-重点验 M10–M15。C2 真实应答到位后，
+M16：worker 的 `objects-gc` 服务——11 个 procedure 同序清理软删域对象，
+profile/team/project/file 级联、upload-session chunk 映射删除与存储对象 touch；
+pg 6 条单测 + 1 条 live `#[ignore]`。
+下一步是 `sendmail`，再接 `PgSessionStore` 示例二进制。devenv 起来后先跑 live PG
+（`PENPOT_TEST_DATABASE_URL`），重点验 M10–M16。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。M8 仍不交付。
 
 ## 10. 换机器 / devenv 起来之后的采集清单

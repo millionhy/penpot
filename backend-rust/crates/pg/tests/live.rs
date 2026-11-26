@@ -8,15 +8,17 @@
 //! The auth tests read a random UUID and never write. The task test inserts
 //! one row under a random tenant and removes it again; the storage tests do
 //! the same with a random `storage_object` id. The GC test writes a pending
-//! row plus one blob under a temporary directory.
+//! row plus one blob under a temporary directory. The `objects-gc` test
+//! purges every pending soft delete with `skip-delay`, so run it only against
+//! a disposable database.
 
 use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use httpclient::{HttpRequest, HttpResponse, Transport, TransportError};
 use pg::{
-    PgAccessTokenStore, PgSessionGc, PgSessionStore, PgStorageGcRepository, PgStorageRepository,
-    PgTaskRepository, PgTasksGc, PgWebhookRunner,
+    PgAccessTokenStore, PgObjectsGc, PgSessionGc, PgSessionStore, PgStorageGcRepository,
+    PgStorageRepository, PgTaskRepository, PgTasksGc, PgWebhookRunner,
 };
 use rpc::auth::{AccessTokenStore, SessionStore};
 use sqlx::Row;
@@ -27,7 +29,7 @@ use storage::{
 use transit::{Map, Value};
 use uuid::Uuid;
 use worker::{
-    HandlerResult, SessionGc, SubmitOptions, Task, TaskRepository, TaskStatus, TasksGc,
+    HandlerResult, ObjectsGc, SessionGc, SubmitOptions, Task, TaskRepository, TaskStatus, TasksGc,
     WebhookRunner,
 };
 
@@ -343,6 +345,154 @@ async fn session_gc_deletes_expired_rows() {
         .execute(database.pool())
         .await
         .expect("cleanup session");
+    database.close().await;
+}
+
+fn objects_gc_props() -> Map {
+    let mut props = Map::new();
+    props.insert(Value::Keyword("skip-delay".into()), Value::Bool(true));
+    props
+}
+
+struct ObjectsGcFixture {
+    profile: Uuid,
+    team: Uuid,
+    project: Uuid,
+    file: Uuid,
+    session: Uuid,
+    object: Uuid,
+}
+
+async fn seed_objects_gc_fixture(
+    database: &db::Database,
+    now: chrono::DateTime<Utc>,
+) -> ObjectsGcFixture {
+    let fixture = ObjectsGcFixture {
+        profile: Uuid::new_v4(),
+        team: Uuid::new_v4(),
+        project: Uuid::new_v4(),
+        file: Uuid::new_v4(),
+        session: Uuid::new_v4(),
+        object: Uuid::new_v4(),
+    };
+
+    sqlx::query(
+        "INSERT INTO profile (id, email, password, fullname, deleted_at) \
+         VALUES ($1, $2, '!', 'rust-live', \
+                 to_timestamp($3::bigint::double precision / 1000.0))",
+    )
+    .bind(fixture.profile)
+    .bind(format!("rust-live-{}@example.invalid", fixture.profile))
+    .bind((now - chrono::Duration::seconds(1)).timestamp_millis())
+    .execute(database.pool())
+    .await
+    .expect("insert profile");
+    sqlx::query("INSERT INTO team (id, name) VALUES ($1, 'rust-live')")
+        .bind(fixture.team)
+        .execute(database.pool())
+        .await
+        .expect("insert team");
+    sqlx::query(
+        "INSERT INTO team_profile_rel (team_id, profile_id, is_owner) \
+         VALUES ($1, $2, true)",
+    )
+    .bind(fixture.team)
+    .bind(fixture.profile)
+    .execute(database.pool())
+    .await
+    .expect("insert team relation");
+    sqlx::query("INSERT INTO project (id, team_id, name) VALUES ($1, $2, 'rust-live')")
+        .bind(fixture.project)
+        .bind(fixture.team)
+        .execute(database.pool())
+        .await
+        .expect("insert project");
+    sqlx::query("INSERT INTO file (id, project_id, name) VALUES ($1, $2, 'rust-live')")
+        .bind(fixture.file)
+        .bind(fixture.project)
+        .execute(database.pool())
+        .await
+        .expect("insert file");
+    sqlx::query("INSERT INTO storage_object (id, size, backend) VALUES ($1, 1, 'fs')")
+        .bind(fixture.object)
+        .execute(database.pool())
+        .await
+        .expect("insert storage object");
+    sqlx::query("INSERT INTO upload_session (id, profile_id, total_chunks) VALUES ($1, $2, 1)")
+        .bind(fixture.session)
+        .bind(fixture.profile)
+        .execute(database.pool())
+        .await
+        .expect("insert upload session");
+    sqlx::query(
+        "INSERT INTO upload_session_chunk (session_id, object_id, chunk_index) \
+         VALUES ($1, $2, 0)",
+    )
+    .bind(fixture.session)
+    .bind(fixture.object)
+    .execute(database.pool())
+    .await
+    .expect("insert upload chunk");
+    fixture
+}
+
+#[tokio::test]
+#[ignore = "needs a disposable migrated PostgreSQL database; set PENPOT_TEST_DATABASE_URL"]
+async fn objects_gc_purges_a_deleted_profile_cascade_and_touches_chunks() {
+    let database = database();
+    let fixture = seed_objects_gc_fixture(&database, Utc::now()).await;
+
+    let processed = PgObjectsGc::new(database.clone())
+        .run(&objects_gc_props())
+        .await
+        .expect("objects gc");
+    assert!(processed >= 5, "processed {processed} rows");
+
+    let survivors: Vec<(String, bool)> = sqlx::query_as(
+        "SELECT 'profile' AS name, EXISTS (SELECT 1 FROM profile WHERE id = $1) AS present \
+          UNION ALL SELECT 'team', EXISTS (SELECT 1 FROM team WHERE id = $2) \
+          UNION ALL SELECT 'project', EXISTS (SELECT 1 FROM project WHERE id = $3) \
+          UNION ALL SELECT 'file', EXISTS (SELECT 1 FROM file WHERE id = $4) \
+          UNION ALL SELECT 'upload_session', EXISTS (SELECT 1 FROM upload_session WHERE id = $5)",
+    )
+    .bind(fixture.profile)
+    .bind(fixture.team)
+    .bind(fixture.project)
+    .bind(fixture.file)
+    .bind(fixture.session)
+    .fetch_all(database.pool())
+    .await
+    .expect("row probe");
+    for (name, present) in survivors {
+        assert!(!present, "{name} row survived");
+    }
+
+    let chunks: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM upload_session_chunk WHERE session_id = $1")
+            .bind(fixture.session)
+            .fetch_one(database.pool())
+            .await
+            .expect("chunk probe");
+    assert_eq!(chunks, 0);
+
+    let touched_ms: Option<i64> = sqlx::query_scalar(
+        "SELECT (extract(epoch FROM touched_at) * 1000)::bigint \
+           FROM storage_object WHERE id = $1",
+    )
+    .bind(fixture.object)
+    .fetch_one(database.pool())
+    .await
+    .expect("object probe");
+    let touched_ms = touched_ms.expect("chunk object was touched");
+    // `skip-delay` pushes soft deletes ten years ahead, but storage objects
+    // must stay on the wall clock so the storage GC can reclaim them.
+    assert!(touched_ms <= Utc::now().timestamp_millis());
+
+    sqlx::query("DELETE FROM storage_object WHERE id = $1")
+        .bind(fixture.object)
+        .execute(database.pool())
+        .await
+        .expect("cleanup object");
     database.close().await;
 }
 
