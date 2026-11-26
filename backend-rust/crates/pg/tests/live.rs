@@ -240,7 +240,9 @@ async fn a_pending_object_is_reclaimed_with_its_blob() {
         .insert(&object)
         .await
         .expect("insert pending");
-    std::fs::write(store.object_path(id), b"orphan").expect("blob");
+    let blob = store.object_path(id);
+    std::fs::create_dir_all(blob.parent().expect("blob parent")).expect("blob directory");
+    std::fs::write(&blob, b"orphan").expect("blob");
 
     let gc = StorageGc::new(PgStorageGcRepository::new(database.clone()), store.clone());
     let report = gc.run_pending().await.expect("pending pass");
@@ -539,17 +541,48 @@ fn webhook_config(id: Uuid) -> Map {
     config
 }
 
-async fn insert_webhook(database: &db::Database, id: Uuid) {
+async fn insert_webhook(database: &db::Database, id: Uuid) -> Uuid {
+    // `webhook.team_id` is a real foreign key, so the fixture owns a
+    // throwaway team instead of relying on a pre-seeded zero UUID.
+    let team = Uuid::new_v4();
+    sqlx::query("INSERT INTO team (id, name) VALUES ($1, 'rust-live-webhook')")
+        .bind(team)
+        .execute(database.pool())
+        .await
+        .expect("insert team");
     sqlx::query(
         "INSERT INTO webhook (id, team_id, uri, mtype) \
          VALUES ($1, $2, $3, 'application/json')",
     )
     .bind(id)
-    .bind(Uuid::nil())
+    .bind(team)
     .bind(format!("https://example.invalid/{id}"))
     .execute(database.pool())
     .await
     .expect("insert webhook");
+    team
+}
+
+/// Remove the webhook and its throwaway team. Deleting a team trips
+/// `deletion_protection`, so the fixture turns the trigger off for the
+/// cleanup transaction.
+async fn cleanup_webhook(database: &db::Database, id: Uuid, team: Uuid) {
+    sqlx::query("DELETE FROM webhook WHERE id = $1")
+        .bind(id)
+        .execute(database.pool())
+        .await
+        .expect("cleanup webhook");
+    let mut tx = database.begin().await.expect("cleanup transaction");
+    sqlx::query("SET LOCAL rules.deletion_protection = 'off'")
+        .execute(&mut *tx)
+        .await
+        .expect("lift deletion protection");
+    sqlx::query("DELETE FROM team WHERE id = $1")
+        .bind(team)
+        .execute(&mut *tx)
+        .await
+        .expect("cleanup team");
+    tx.commit().await.expect("cleanup commit");
 }
 
 #[tokio::test]
@@ -557,7 +590,7 @@ async fn insert_webhook(database: &db::Database, id: Uuid) {
 async fn webhook_failures_are_recorded_and_disable_the_hook() {
     let database = database();
     let id = Uuid::new_v4();
-    insert_webhook(&database, id).await;
+    let team = insert_webhook(&database, id).await;
 
     let runner = PgWebhookRunner::new(database.clone(), Arc::new(FixedStatus { status: 400 }));
     let event = webhook_event();
@@ -590,11 +623,7 @@ async fn webhook_failures_are_recorded_and_disable_the_hook() {
     assert_eq!(error_count, 3);
     assert_eq!(is_active, Some(false));
 
-    sqlx::query("DELETE FROM webhook WHERE id = $1")
-        .bind(id)
-        .execute(database.pool())
-        .await
-        .expect("cleanup webhook");
+    cleanup_webhook(&database, id, team).await;
     database.close().await;
 }
 
@@ -603,7 +632,7 @@ async fn webhook_failures_are_recorded_and_disable_the_hook() {
 async fn a_successful_delivery_clears_the_error_state() {
     let database = database();
     let id = Uuid::new_v4();
-    insert_webhook(&database, id).await;
+    let team = insert_webhook(&database, id).await;
 
     let event = webhook_event();
     let config = webhook_config(id);
@@ -637,10 +666,6 @@ async fn a_successful_delivery_clears_the_error_state() {
     assert_eq!(codes[0].as_deref(), Some("unexpected-status:500"));
     assert!(codes[1].is_none());
 
-    sqlx::query("DELETE FROM webhook WHERE id = $1")
-        .bind(id)
-        .execute(database.pool())
-        .await
-        .expect("cleanup webhook");
+    cleanup_webhook(&database, id, team).await;
     database.close().await;
 }

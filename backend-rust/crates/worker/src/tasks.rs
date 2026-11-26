@@ -21,7 +21,10 @@ pub const PENPOT_TASK_NAMES: [&str; 5] = [
 ];
 
 /// Delete old task rows. The service binds a PostgreSQL interval.
-pub const SQL_TASKS_GC: &str = "DELETE FROM task WHERE scheduled_at < now() - ?::interval";
+///
+/// sqlx talks to PostgreSQL, so the placeholder is `$1`, not the `?` used by
+/// the Clojure/HoneySQL query this was ported from.
+pub const SQL_TASKS_GC: &str = "DELETE FROM task WHERE scheduled_at < now() - $1::interval";
 
 /// Reserve expired upload sessions in stable age order.
 pub const SQL_OBJECTS_GC_UPLOAD_SESSIONS: &str = "SELECT us.id
