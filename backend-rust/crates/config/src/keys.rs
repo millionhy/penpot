@@ -33,7 +33,6 @@ pub const PENDING_KEYS: &[&str] = &[
     "default-blob-version",
     "default-executor-parallelism",
     "default-rpc-rlimit",
-    "deletion-delay",
     "email-domain-blacklist",
     "email-domain-whitelist",
     "email-verify-threshold",

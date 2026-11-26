@@ -1,4 +1,5 @@
-//! Runnable Rust backend for the M18 login slice and the M19 dashboard reads.
+//! Runnable Rust backend for the M18 login slice and the M19/M20 dashboard
+//! reads.
 //!
 //! It wires the generic RPC router to PostgreSQL, reads the same token secret
 //! and cookie settings as the Clojure backend, and serves on port 6061 by
@@ -12,9 +13,11 @@ use std::sync::Arc;
 
 use config::Config;
 use db::{Database, DbOptions};
-use pg::{PgDashboardStore, PgProfileStore, PgSessionCreator, PgSessionStore};
+use pg::{PgDashboardStore, PgProfileStore, PgProjectStore, PgSessionCreator, PgSessionStore};
 use rpc::commands::auth::AuthCommands;
 use rpc::commands::dashboard::DashboardCommands;
+use rpc::commands::projects::ProjectCommands;
+use rpc::commands::templates::TemplatesCommands;
 use rpc::{
     build_router, context_snapshot, AppState, AuthOptions, Command, CommandResult, Options,
     Registry, TokenResolver,
@@ -90,6 +93,17 @@ async fn run() -> Result<(), Box<dyn Error>> {
     }
     .register(&mut registry);
 
+    ProjectCommands::new(
+        Arc::new(PgProjectStore::new(database.clone())),
+        config.tenant(),
+        config
+            .duration("deletion-delay")
+            .unwrap_or_else(|| std::time::Duration::from_hours(24 * 7)),
+    )
+    .register(&mut registry);
+
+    register_templates(&mut registry)?;
+
     let resolver = TokenResolver::new(token, Arc::new(PgSessionStore::new(database.clone())))
         .with_options(AuthOptions {
             cookie_name: cookie.name.clone(),
@@ -118,15 +132,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         })?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("backend-rust listening on http://{addr}");
-    println!("  GET  /api/rpc/command/get-health");
-    println!("  GET  /api/main/methods/get-profile");
-    println!("  GET  /api/main/methods/get-teams");
-    println!("  GET  /api/main/methods/get-projects");
-    println!("  GET  /api/main/methods/get-team-recent-files");
-    println!("  GET  /api/main/methods/get-font-variants");
-    println!("  GET  /api/main/methods/get-team-members");
-    println!("  GET  /api/main/methods/get-unread-comment-threads");
-    println!("  POST /api/main/methods/login-with-password");
+    print_routes();
 
     let service = app.into_make_service_with_connect_info::<SocketAddr>();
     tokio::select! {
@@ -136,6 +142,36 @@ async fn run() -> Result<(), Box<dyn Error>> {
 
     database.close().await;
     Ok(())
+}
+
+fn register_templates(registry: &mut Registry) -> Result<(), IoError> {
+    TemplatesCommands::from_embedded()
+        .map_err(|error| {
+            IoError::new(
+                ErrorKind::InvalidData,
+                format!("cannot read onboarding templates: {error}"),
+            )
+        })?
+        .register(registry);
+    Ok(())
+}
+
+fn print_routes() {
+    println!("  GET  /api/rpc/command/get-health");
+    println!("  GET  /api/main/methods/get-profile");
+    println!("  GET  /api/main/methods/get-teams");
+    println!("  GET  /api/main/methods/get-projects");
+    println!("  GET  /api/main/methods/get-team-recent-files");
+    println!("  GET  /api/main/methods/get-font-variants");
+    println!("  GET  /api/main/methods/get-team-members");
+    println!("  GET  /api/main/methods/get-unread-comment-threads");
+    println!("  GET  /api/main/methods/get-builtin-templates");
+    println!("  GET  /api/main/methods/get-project-files");
+    println!("  POST /api/main/methods/login-with-password");
+    println!("  POST /api/main/methods/create-project");
+    println!("  POST /api/main/methods/update-project-pin");
+    println!("  POST /api/main/methods/rename-project");
+    println!("  POST /api/main/methods/delete-project");
 }
 
 fn cookie_policy(config: &Config) -> CookiePolicy {

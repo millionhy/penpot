@@ -9,7 +9,8 @@ M4 `session`、M5 `storage`（离线部分）、M6 `worker`（Redis 队列已验
 M7 `ws`、M9 `rpc` 鉴权接线、M10 `db`/`pg` 基础、M11 worker PG 仓储、
 M12 storage PG 仓储、M13 storage GC 执行器、M14 worker 的 `tasks-gc`/`session-gc`
 PG 服务、M15 worker 的 `run-webhook` 与 `httpclient`、M16 worker 的 `objects-gc`、
-M17 `mailer`、M18 登录纵切与 M19 仪表盘只读命令完成（2026-11-26）。**
+M17 `mailer`、M18 登录纵切、M19 仪表盘只读命令、M20 内置模板与 M21
+项目写操作完成（2026-11-26）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -156,6 +157,19 @@ M17 `mailer`、M18 登录纵切与 M19 仪表盘只读命令完成（2026-11-26�
   测试（dashboard 共 10 条）、pg 5 条单测 + 1 条 live；workspace 484 passed
   + 29 ignored；真实 PG 与浏览器已验 `/dashboard/recent`、`/dashboard/fonts`、
   `/dashboard/members` 无 404。`get-builtin-templates` 仍待模板配置切片。
+- M20 已有：`get-builtin-templates`。编译期读同一个
+  `backend/resources/app/onboarding.edn`，用一个严格的 EDN 子集
+  reader 解析 vector-of-maps，只接受字符串值；命令只回 `id` 与 `name`，
+  与 `app.rpc.commands.management` 的 `select-keys` 一致。解析失败会让
+  `server` 启动失败，不静默降级。4 条解析单测 + 1 条路由测试；
+  浏览器上模板列表正常显示，RPC 404 清零（模板缩略图静态文件另说）。
+- M21 已有：项目写操作与项目文件列表。`create-project` 同事务写项目、
+  owner 关系与 pin 行；`update-project-pin` 的 upsert 拒绝非本团队项目；
+  `rename-project` 锁行后改名；`delete-project` 阻止删除默认项目，
+  非默认项目写未来 `deleted_at` 并同事务入队 `delete-object`；
+  `get-project-files` 按修改时间回文件列表。权限合并团队与项目关系，
+  拒绝统一为 `not-found/object-not-found`。rpc 12 条测试 + pg 1 条 live；
+  workspace 501 passed + 30 ignored，浏览器已验五个命令。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 

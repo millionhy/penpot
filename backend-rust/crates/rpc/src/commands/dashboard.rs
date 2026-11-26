@@ -20,6 +20,8 @@ use crate::params::{ParamKind, ParamSchema, ParamSpec};
 use crate::registry::{Command, HandlerFuture, Registry};
 use crate::response::CommandResult;
 
+use super::{authentication_required, cause, not_found};
+
 /// One `team_profile_rel` row joined with its team, as `get-teams` returns it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(
@@ -383,7 +385,7 @@ fn team_map(row: &TeamRow) -> Value {
     ])
 }
 
-fn project_map(row: &ProjectRow) -> Value {
+pub(crate) fn project_map(row: &ProjectRow) -> Value {
     Value::map([
         (Value::kw("id"), Value::Uuid(row.id)),
         (Value::kw("name"), Value::str(row.name.clone())),
@@ -535,23 +537,4 @@ fn comment_thread_map(row: &CommentThreadRow) -> Value {
         (Value::kw("created-at"), Value::Instant(row.created_at_ms)),
         (Value::kw("modified-at"), Value::Instant(row.modified_at_ms)),
     ])
-}
-
-fn authentication_required() -> Cause {
-    cause("authentication", "authentication-required", None)
-}
-
-fn not_found() -> Cause {
-    cause("not-found", "object-not-found", Some("not found"))
-}
-
-fn cause(kind: &str, code: &str, hint: Option<&str>) -> Cause {
-    let mut entries = vec![
-        (Value::kw("type"), Value::kw(kind)),
-        (Value::kw("code"), Value::kw(code)),
-    ];
-    if let Some(hint) = hint {
-        entries.push((Value::kw("hint"), Value::str(hint)));
-    }
-    Cause::error(Value::map(entries))
 }

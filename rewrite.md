@@ -9,7 +9,7 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（收口见 7.96）；阶段 B（backend-rust）M0–M7 完成，`rpc` 鉴权已接入 `session` 并落到 PG 存储，worker 与 storage 的 PG 仓储、storage GC 执行器、`tasks-gc`/`session-gc`、`run-webhook` 与 `objects-gc` 服务也落地（见 7.107–7.114），live PG 与 M8 仍不交付，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（收口见 7.96）；阶段 B（backend-rust）M0–M7、M9–M21 完成，`rpc` 鉴权、仪表盘读命令、模板列表与项目写操作均已接 PG（见 7.107–7.119），M8 仍不交付，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
 | 最后更新 | 2026-11-26 |
@@ -4112,6 +4112,52 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - 真机验证：Chrome 登录后 `/dashboard/recent`、`/dashboard/fonts`、
   `/dashboard/members` 三条页面均无 404；侧栏、项目、字体页与成员角色正常
   渲染。`get-builtin-templates` 仍 404，属模板配置切片。
+- 提交：未提交（等用户明确要求）。
+
+### 7.118 本轮（2026-11-26，第一百一十七批：backend-rust M20 内置模板）
+
+- 口径不变：只改 `backend-rust/` 与进度文档，不接部署、不改
+  `backend/`/`common/`/`docker/`/`scripts/ci`。
+- `get-builtin-templates`：`app.setup.templates` 把
+  `backend/resources/app/onboarding.edn` 读成模板表，
+  `app.rpc.commands.management` 只投影 `id`/`name`。Rust 用
+  `include_str!` 读同一文件（只读引用），列表不会与 Clojure 版本漂移。
+- 解析器：严格 EDN 子集，只接受该文件使用的 vector-of-maps、关键字键与
+  字符串值；缺字段、非字符串值、尾随数据都报错。解析失败让 `server`
+  启动失败，不静默降级成空列表。
+- 命令注册为默认鉴权；应答是 `[{"~:id" … "~:name" …}]`，不暴露
+  `file-uri`。
+- 测试：解析器 4 条（真实文件、id 唯一、缺字段、畸形输入）+ 路由 1 条
+  （15 条模板、只回 id/name、未登录 401）；rpc 35 条通过；workspace 489
+  passed + 29 ignored；fmt/clippy/build/doc 均退出 0。
+- 真机验证：Chrome 登录后仪表盘模板列表正常显示，RPC 请求无 404；剩余
+  404 只是 `/images/thumbnails/template-*.jpg` 静态缩略图。
+- 提交：未提交（等用户明确要求）。
+
+---
+
+### 7.119 本轮（2026-11-26，第一百一十八批：backend-rust M21 项目写操作）
+
+- 口径不变：只改 `backend-rust/` 与进度文档，不接部署、不改
+  `backend/`/`common/`/`docker/`/`scripts/ci`。
+- 五个命令：`create-project`、`update-project-pin`、`rename-project`、
+  `delete-project`、`get-project-files`。权限合并 `team_profile_rel` 与
+  `project_profile_rel`，owner/admin/can-edit 任一可写；拒绝统一回
+  `not-found/object-not-found`，不泄露对象是否存在。
+- 写路径：创建项目在事务内写项目、owner 关系与 pin 行；改名先锁行；
+  删除默认项目回 `validation/non-deletable-project` 并回滚，非默认项目写
+  未来 `deleted_at` 并同事务入队 `delete-object`（queue
+  `<tenant>:default`、priority 100、最多 3 次重试）。`config` 新增
+  `deletion-delay`，服务默认 7 天。
+- 读路径：`get-project-files` 按 `modified_at DESC` 回 id、项目、团队、
+  文件名、revn/vern、共享标志、缩略图与时间戳。
+- 测试：rpc 12 条 oneshot；pg 1 条 live 往返覆盖权限、创建、pin、改名、
+  默认项目删除回滚、非默认项目删除与任务 Transit props。live 清理先删
+  文件与项目，再删 team 与 profile，因为 `0115`/`0116` 把外键改成不带
+  级联的 `DEFERRABLE`。workspace 501 passed + 30 ignored；
+  fmt/clippy/build/doc 均退出 0。
+- 真机验证：Chrome 登录后 `/dashboard/recent` 完成新建、内联重命名、
+  置顶、删除；`/dashboard/files` 正常读取项目文件；RPC 无 4xx/5xx。
 - 提交：未提交（等用户明确要求）。
 
 ---

@@ -3,8 +3,9 @@
 本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干、M9 鉴权接线、
 M10 `db`/`pg` 基础、M11 worker PG 仓储、M12 storage PG 仓储与 M13 storage GC 执行器
 已落地，M14 的 `tasks-gc`/`session-gc`、M15 的 `run-webhook`、M16 的
-`objects-gc`、M17 的 `mailer`、M18 的登录纵切与 M19 的仪表盘只读命令也已
-接上（2026-11-26），live SMTP 验证与 M8 仍不交付。换机器后的上下文快照见
+`objects-gc`、M17 的 `mailer`、M18 的登录纵切、M19 的仪表盘只读命令与 M20
+的内置模板、M21 的项目写操作也已接上（2026-11-26），live SMTP 验证与 M8
+仍不交付。换机器后的上下文快照见
 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
@@ -601,6 +602,59 @@ fmt/clippy/build/doc 全绿。真实 PG 上 live 用例通过；Chrome 真机登
 
 ---
 
+### M20 — 内置模板列表（✅ 2026-11-26，浏览器验证）
+
+仪表盘最后一处 RPC 404。`app.setup.templates` 从资源
+`app/onboarding.edn` 读模板表，`get-builtin-templates` 只回 `id` 与
+`name`。
+
+- T20.1 ✅ `crates/rpc/src/commands/templates.rs`：`include_str!` 读同一个
+  `backend/resources/app/onboarding.edn`，列表不会与 Clojure 版本漂移；
+  编译期路径只读引用，不改 `backend/`。
+- T20.2 ✅ 严格 EDN 子集 reader：只接受该文件使用的
+  vector-of-maps、关键字键与字符串值；缺字段、非字符串值、尾随数据都报错。
+  解析失败让 `server` 启动失败，不静默降级成空列表。
+- T20.3 ✅ 命令注册为默认鉴权，应答是 `[{"~:id" … "~:name" …}]`，
+  不暴露 `file-uri`。
+
+DoD ✅：解析器 4 条单测（真实文件、id 唯一、缺字段、畸形输入）+ 1 条路由
+测试（15 条模板、只回 id/name、未登录 401）；rpc 35 条通过；workspace 489
+passed + 29 ignored；fmt/clippy/build/doc 全绿。浏览器登录后
+仪表盘模板列表正常显示，RPC 请求无 404；剩余 404 只是
+`/images/thumbnails/template-*.jpg` 静态缩略图。
+
+---
+
+### M21 — 项目写操作与项目文件列表（✅ 2026-11-26，浏览器验证）
+
+仪表盘项目区的五个命令：
+
+- T21.1 ✅ `create-project`：校验团队编辑权，名字按 UTF-16 长度限制
+  `1..=250` 后 trim；一个事务插入 `project`、owner
+  `project_profile_rel` 与 `is_pinned=false` 的
+  `team_project_profile_rel`。参数 schema 关闭，客户端传 `id` 会被拒绝。
+- T21.2 ✅ `update-project-pin`：upsert pin 行，并用
+  `SELECT … FROM project WHERE team_id = …` 保护“团队必须拥有项目”。
+- T21.3 ✅ `rename-project`：事务内 `SELECT … FOR UPDATE`，软删项目不可改名。
+- T21.4 ✅ `delete-project`：默认项目回
+  `validation/non-deletable-project` 并回滚；非默认项目写未来
+  `deleted_at`，同事务插 `delete-object` 任务（queue
+  `<tenant>:default`、verbose Transit props、priority 100、最多 3 次重试）。
+- T21.5 ✅ `get-project-files`：回 id/project/team/name/revn/vern/shared/
+  thumbnail/时间戳，按 `modified_at DESC` 排序。
+- T21.6 ✅ 权限与配置：合并 `team_profile_rel` 与
+  `project_profile_rel`，owner/admin/can-edit 任一可写；拒绝统一回
+  `not-found/object-not-found`。`config` 新增 `deletion-delay`，服务默认
+  7 天；`server` 注册 `ProjectCommands`。
+
+DoD ✅：rpc 12 条 oneshot；pg 1 条 live 往返（建 profile/team/project/file →
+权限 → 创建/pin/改名/删默认项目回滚/删非默认项目 → 任务 props →
+清理）；workspace 501 passed + 30 ignored；fmt/clippy/build/doc 全绿。
+Chrome 登录后 `/dashboard/recent` 完成新建、内联重命名、置顶、删除，
+`/dashboard/files` 正常读取空项目；RPC 无 4xx/5xx。
+
+---
+
 ## 5. 顺序与总量
 
 ```
@@ -701,8 +755,10 @@ pg 1 条 live，workspace 473 passed + 28 ignored，真机 PG 与浏览器登录
 M19：仪表盘只读命令——最近文件、字体变体、团队成员、未读评论线程四条命令接
 真实 PG，偏好 all/partial/off、point 与 transit participants 都按线格式回写；
 rpc 6 条新测 + pg 5 条单测 + 1 条 live，workspace 484 passed + 29 ignored，
-真机 PG 与三个浏览器页面已验。下一步是模板配置与撰写类命令，再往文件打开、
-媒体上传等纵切推进。本机已跑过 live PG（`PENPOT_TEST_DATABASE_URL`，M18 的
+真机 PG 与三个浏览器页面已验。M20：`get-builtin-templates` 在编译期读
+`backend/resources/app/onboarding.edn`，严格 EDN 子集解析后只回 id/name；
+解析 4 条单测 + 路由 1 条，浏览器模板列表已显示。下一步是撰写类命令，
+再往文件打开、媒体上传等纵切推进。本机已跑过 live PG（`PENPOT_TEST_DATABASE_URL`，M18 的
 `auth_live` 与 M19 的 `dashboard_live` 通过），M10–M16 的 live 用例仍可继续补验；SMTP 用
 `PENPOT_TEST_SMTP_*` 指向一次性收件箱。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。M8 仍不交付。

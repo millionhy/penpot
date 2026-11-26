@@ -17,10 +17,11 @@ use std::{sync::Arc, time::Duration};
 use chrono::Utc;
 use httpclient::{HttpRequest, HttpResponse, Transport, TransportError};
 use pg::{
-    PgAccessTokenStore, PgObjectsGc, PgSessionGc, PgSessionStore, PgStorageGcRepository,
-    PgStorageRepository, PgTaskRepository, PgTasksGc, PgWebhookRunner,
+    PgAccessTokenStore, PgObjectsGc, PgProjectStore, PgSessionGc, PgSessionStore,
+    PgStorageGcRepository, PgStorageRepository, PgTaskRepository, PgTasksGc, PgWebhookRunner,
 };
 use rpc::auth::{AccessTokenStore, SessionStore};
+use rpc::commands::projects::ProjectStore;
 use sqlx::Row;
 use storage::{
     Bucket, FsStore, ObjectStatus, StorageBackend, StorageGc, StorageMetadata, StorageObject,
@@ -667,5 +668,253 @@ async fn a_successful_delivery_clears_the_error_state() {
     assert!(codes[1].is_none());
 
     cleanup_webhook(&database, id, team).await;
+    database.close().await;
+}
+
+/// Remove a throwaway team, its projects and the owner profile. `project`
+/// references `team` without a cascade, and both `team` and `profile` carry
+/// `deletion_protection` triggers, so the cleanup lifts the setting and
+/// deletes the rows in dependency order inside one transaction.
+async fn delete_team_rows(database: &db::Database, team: Uuid, profile: Uuid) {
+    let mut tx = database.begin().await.expect("cleanup transaction");
+    sqlx::query("SET LOCAL rules.deletion_protection = 'off'")
+        .execute(&mut *tx)
+        .await
+        .expect("lift deletion protection");
+    sqlx::query("DELETE FROM file WHERE project_id IN (SELECT id FROM project WHERE team_id = $1)")
+        .bind(team)
+        .execute(&mut *tx)
+        .await
+        .expect("cleanup files");
+    sqlx::query("DELETE FROM project WHERE team_id = $1")
+        .bind(team)
+        .execute(&mut *tx)
+        .await
+        .expect("cleanup projects");
+    sqlx::query("DELETE FROM team WHERE id = $1")
+        .bind(team)
+        .execute(&mut *tx)
+        .await
+        .expect("cleanup team");
+    sqlx::query("DELETE FROM profile WHERE id = $1")
+        .bind(profile)
+        .execute(&mut *tx)
+        .await
+        .expect("cleanup profile");
+    tx.commit().await.expect("cleanup commit");
+}
+
+#[tokio::test]
+#[ignore = "needs live PostgreSQL; set PENPOT_TEST_DATABASE_URL"]
+#[allow(clippy::too_many_lines, reason = "one end-to-end project round trip")]
+async fn project_writes_round_trip_and_enqueue_the_delete_task() {
+    let database = database();
+    let now = Utc::now();
+    let profile = Uuid::new_v4();
+    let team = Uuid::new_v4();
+    let draft = Uuid::new_v4();
+    let file = Uuid::new_v4();
+    let queue = format!("rust-live-{}:default", Uuid::new_v4());
+
+    sqlx::query(
+        "INSERT INTO profile (id, email, password, fullname) \
+         VALUES ($1, $2, '!', 'rust-live')",
+    )
+    .bind(profile)
+    .bind(format!("rust-live-{profile}@example.invalid"))
+    .execute(database.pool())
+    .await
+    .expect("insert profile");
+    sqlx::query("INSERT INTO team (id, name) VALUES ($1, 'rust-live-project')")
+        .bind(team)
+        .execute(database.pool())
+        .await
+        .expect("insert team");
+    sqlx::query(
+        "INSERT INTO team_profile_rel (team_id, profile_id, is_owner) VALUES ($1, $2, true)",
+    )
+    .bind(team)
+    .bind(profile)
+    .execute(database.pool())
+    .await
+    .expect("insert team relation");
+    sqlx::query(
+        "INSERT INTO project (id, team_id, name, is_default) \
+         VALUES ($1, $2, 'Drafts', true)",
+    )
+    .bind(draft)
+    .bind(team)
+    .execute(database.pool())
+    .await
+    .expect("insert draft project");
+    sqlx::query("INSERT INTO file (id, project_id, name) VALUES ($1, $2, 'Landing')")
+        .bind(file)
+        .bind(draft)
+        .execute(database.pool())
+        .await
+        .expect("insert file");
+
+    let store = PgProjectStore::new(database.clone());
+    let team_flags = store
+        .team_permissions(profile, team)
+        .await
+        .expect("team permissions")
+        .expect("team member row");
+    assert!(team_flags.edits());
+
+    let project_flags = store
+        .project_permissions(profile, draft)
+        .await
+        .expect("project permissions")
+        .expect("team relation grants the project");
+    assert!(project_flags.edits());
+    assert!(
+        store
+            .project_permissions(Uuid::new_v4(), draft)
+            .await
+            .expect("foreign permissions")
+            .is_none(),
+        "a stranger has no project relation"
+    );
+
+    let files = store.project_files(draft).await.expect("project files");
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].id, file);
+    assert_eq!(files[0].team_id, team);
+    assert!(files[0].thumbnail_id.is_none());
+
+    let now_ms = now.timestamp_millis();
+    let created = store
+        .create_project(profile, team, "Live", now_ms)
+        .await
+        .expect("create project");
+    assert_eq!(created.name, "Live");
+    assert!(!created.is_default);
+    assert!(!created.is_pinned);
+
+    let owner_rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM project_profile_rel WHERE project_id = $1 AND is_owner",
+    )
+    .bind(created.id)
+    .fetch_one(database.pool())
+    .await
+    .expect("owner probe");
+    assert_eq!(owner_rows, 1);
+    let pin_rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM team_project_profile_rel \
+          WHERE project_id = $1 AND profile_id = $2 AND NOT is_pinned",
+    )
+    .bind(created.id)
+    .bind(profile)
+    .fetch_one(database.pool())
+    .await
+    .expect("pin probe");
+    assert_eq!(pin_rows, 1);
+
+    assert!(store
+        .set_project_pin(profile, team, created.id, true)
+        .await
+        .expect("pin"));
+    let pinned: bool =
+        sqlx::query_scalar("SELECT is_pinned FROM team_project_profile_rel WHERE project_id = $1")
+            .bind(created.id)
+            .fetch_one(database.pool())
+            .await
+            .expect("pinned probe");
+    assert!(pinned);
+    assert!(
+        !store
+            .set_project_pin(profile, Uuid::new_v4(), created.id, false)
+            .await
+            .expect("foreign team pin"),
+        "the upsert refuses a team that does not own the project"
+    );
+
+    store
+        .rename_project(created.id, "Renamed")
+        .await
+        .expect("rename");
+    let name: String = sqlx::query_scalar("SELECT name FROM project WHERE id = $1")
+        .bind(created.id)
+        .fetch_one(database.pool())
+        .await
+        .expect("name probe");
+    assert_eq!(name, "Renamed");
+
+    let non_deletable = store
+        .delete_project(draft, now_ms + 7 * 24 * 3600 * 1000, now_ms, &queue)
+        .await
+        .expect_err("the default project cannot be deleted");
+    let code = non_deletable
+        .data()
+        .and_then(|data| data.get_kw("code"))
+        .and_then(Value::as_keyword);
+    assert_eq!(code, Some("non-deletable-project"));
+    let draft_deleted: Option<i64> = sqlx::query_scalar(
+        "SELECT (extract(epoch FROM deleted_at) * 1000)::bigint \
+           FROM project WHERE id = $1",
+    )
+    .bind(draft)
+    .fetch_one(database.pool())
+    .await
+    .expect("draft deletion probe");
+    assert!(
+        draft_deleted.is_none(),
+        "the failed delete rolled its update back"
+    );
+
+    let deleted_at_ms = now_ms + 7 * 24 * 3600 * 1000;
+    store
+        .delete_project(created.id, deleted_at_ms, now_ms, &queue)
+        .await
+        .expect("delete project");
+    let deleted_at: i64 = sqlx::query_scalar(
+        "SELECT (extract(epoch FROM deleted_at) * 1000)::bigint \
+           FROM project WHERE id = $1",
+    )
+    .bind(created.id)
+    .fetch_one(database.pool())
+    .await
+    .expect("deleted_at probe");
+    assert_eq!(deleted_at, deleted_at_ms);
+
+    let task = sqlx::query(
+        "SELECT name, props::text AS props, priority, max_retries \
+           FROM task WHERE queue = $1",
+    )
+    .bind(&queue)
+    .fetch_one(database.pool())
+    .await
+    .expect("delete-object task");
+    let task_name: String = task.try_get("name").expect("task name");
+    let props: String = task.try_get("props").expect("task props");
+    let priority: i16 = task.try_get("priority").expect("priority");
+    assert_eq!(task_name, "delete-object");
+    assert_eq!(priority, 100);
+    let decoded = transit::decode(&props).expect("transit props");
+    assert_eq!(
+        decoded.get_kw("object").and_then(Value::as_keyword),
+        Some("project")
+    );
+    assert_eq!(
+        decoded.get_kw("id").and_then(Value::as_uuid),
+        Some(created.id)
+    );
+    assert_eq!(
+        decoded.get_kw("deleted-at").and_then(Value::as_i64),
+        Some(deleted_at_ms)
+    );
+
+    assert!(
+        store.rename_project(created.id, "Gone").await.is_err(),
+        "a soft-deleted project cannot be renamed"
+    );
+
+    sqlx::query("DELETE FROM task WHERE queue = $1")
+        .bind(&queue)
+        .execute(database.pool())
+        .await
+        .expect("cleanup task");
+    delete_team_rows(&database, team, profile).await;
     database.close().await;
 }

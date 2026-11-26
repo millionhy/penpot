@@ -172,6 +172,12 @@ pub const KNOWN_KEYS: &[KeySpec] = &[
         required: false,
     },
     KeySpec {
+        name: "deletion-delay",
+        kind: ValueKind::Duration,
+        default: None,
+        required: false,
+    },
+    KeySpec {
         name: "flags",
         kind: ValueKind::Set,
         default: None,

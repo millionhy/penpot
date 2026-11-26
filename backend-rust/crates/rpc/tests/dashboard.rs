@@ -14,6 +14,7 @@ use rpc::commands::dashboard::{
     CommentThreadRow, DashboardCommands, DashboardStore, FontScope, FontVariantRow, ProjectRow,
     RecentFileRow, TeamMemberRow, TeamRow,
 };
+use rpc::commands::templates::TemplatesCommands;
 use rpc::errors::Cause;
 use rpc::{
     build_router, AppState, AuthOptions, Registry, SessionRecord, SessionStore, TokenResolver,
@@ -267,6 +268,9 @@ fn app(can_read: bool) -> Router {
         store: Arc::new(Store { can_read }),
     }
     .register(&mut registry);
+    TemplatesCommands::from_embedded()
+        .expect("onboarding templates")
+        .register(&mut registry);
 
     let resolver = TokenResolver::new(token, Arc::new(SessionRows))
         .with_options(AuthOptions::default())
@@ -417,6 +421,7 @@ async fn dashboard_reads_require_a_session() {
         "/api/main/methods/get-font-variants?team-id=00000000-0000-0000-0000-000000000003",
         "/api/main/methods/get-team-members?team-id=00000000-0000-0000-0000-000000000003",
         "/api/main/methods/get-unread-comment-threads?team-id=00000000-0000-0000-0000-000000000003",
+        "/api/main/methods/get-builtin-templates",
     ] {
         let response = send(&router, get(uri, None)).await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -581,4 +586,33 @@ async fn dashboard_content_reads_hide_foreign_teams() {
             "{uri}"
         );
     }
+}
+
+#[tokio::test]
+async fn builtin_templates_project_id_and_name_only() {
+    let router = app(true);
+    let cookie = login_cookie(&router).await;
+    let response = send(
+        &router,
+        get("/api/main/methods/get-builtin-templates", Some(&cookie)),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let templates = body(response).await;
+    let rows = templates.items().expect("template list");
+    assert_eq!(rows.len(), 15);
+    let first = rows[0];
+    assert_eq!(
+        first.get_kw("id").and_then(Value::as_str),
+        Some("tokens-starter-kit")
+    );
+    assert_eq!(
+        first.get_kw("name").and_then(Value::as_str),
+        Some("Design tokens starter kit")
+    );
+    assert!(
+        first.get_kw("file-uri").is_none(),
+        "the command hides the download URL"
+    );
 }
