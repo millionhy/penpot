@@ -407,7 +407,7 @@ fn instant(millis: i64) -> Result<DateTime<Utc>> {
     })
 }
 
-fn interval(duration: TimeDelta) -> PgInterval {
+pub(crate) fn interval(duration: TimeDelta) -> PgInterval {
     PgInterval {
         months: 0,
         days: 0,

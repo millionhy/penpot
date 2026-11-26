@@ -9,7 +9,7 @@
 | 文档状态 | 规划已对齐当前仓库；阶段 F 已收口（F0–F4 完成；F5 dashboard：F5.1–F5.7 全部完成（F5.7 的 organization/team switch、subscription/nitrate、插件注册实为 F7 交付、dashboard `subscribe-team` 实时刷新见 7.53、comments 见 7.54、画布点选落位与 pin 拖动见 7.55、comments 延后项（@提及补全/组浮卡/头像/timeago/zoom 到线程）见 7.56、回复编辑与 dashboard 未读通知卡片见 7.57、pin 拖动进 undo 见 7.58）；F6 viewer：F6.1 数据层、F6.2 外壳、F6.3 导航与缩放交互、F6.4 WASM 渲染、F6.5 interactions、F6.6 收尾完成；F7 plugins：F7.1–F7.4 完成；F9 workspace：F9.1–F9.12、F9.3 伴随变更与文本/图片/路径工具完成，浏览器冒烟 43/43（见 7.49）；F9.13 布尔与路径节点编辑（见 7.51）、F9.14 缩略图 Web Worker（见 7.52）、F9.15 命中检测索引 Worker 化（见 7.59）完成，阶段 F 登记余项清零，剩余功能缺口转入阶段 G；F8 协作四片完成，见 7.46–7.48） |
 | 基线版本 | Penpot v2.17.0（archify revision `84c794c5b8`） |
 | 架构依据 | `.archify/architecture-penpot-20261002-123416/penpot-architecture.html`（validate/deliver/check/browser-check 四门禁全过） |
-| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（收口见 7.96）；阶段 B（backend-rust）M0–M7 完成，`rpc` 鉴权已接入 `session` 并落到 PG 存储，worker 与 storage 的 PG 仓储及 storage GC 执行器也落地（见 7.107–7.111），live PG 与 M8 仍不交付，按「实现但不接入部署」推进 |
+| 当前阶段 | 阶段 F 已收口（登记余项转入 G1）；阶段 G（去 CLJS 化）G0–G5 完成（收口见 7.96）；阶段 B（backend-rust）M0–M7 完成，`rpc` 鉴权已接入 `session` 并落到 PG 存储，worker 与 storage 的 PG 仓储、storage GC 执行器及 `tasks-gc`/`session-gc` 服务也落地（见 7.107–7.112），live PG 与 M8 仍不交付，按「实现但不接入部署」推进 |
 | 策略 | 绞杀者模式（Strangler Fig），新旧并行、逐模块替换 |
 | 硬性门禁 | 不改 `backend/` 一行；`backend-rust` **可写代码但不接入部署**（不接 nginx/反代、不加灰度开关、不改 `docker/` 与 `scripts/ci` 现有 target）；执行计划见 `backend-rust/PLAN.md`，上下文快照见 `backend-rust/HANDOFF.md` |
 | 最后更新 | 2026-11-25 |
@@ -59,7 +59,7 @@
 | B3 | M3 | `rpc` crate（axum 骨架） | ✅ | 三组路由 + 中间件同序 + Registry；本地 `cargo run`，不接 nginx；2026-11-24 完成 |
 | B4 | M4 | `session` crate | ✅ | JWE `a256kw`+`a256gcm` + HKDF-BLAKE2b-512；会话查 **`http_session_v2`**（旧表已由 `0155` 删除）；buddy 兼容性待 C1 向量 |
 | B5 | M5 | `storage` crate | 🔧 | `storage_object`/bucket/去重/GC；`:fs`/`:s3`；PG 仓储与三阶段 GC 执行器已落地（见 7.110–7.111），真实 S3 桶/live PG/worker `objects-gc` 接线待 devenv |
-| B6 | M6 | `worker` crate | 🔧 | Quartz 6 段 cron、task 状态机、dispatcher/runner、Redis `TaskQueue`、PG 仓储（见 7.109）；`task.props` = **jsonb transit**；Redis live 已验，live PG 与混合集群待 devenv |
+| B6 | M6 | `worker` crate | 🔧 | Quartz 6 段 cron、task 状态机、dispatcher/runner、Redis `TaskQueue`、PG 仓储（见 7.109）、`tasks-gc`/`session-gc` 服务（见 7.112）；`task.props` = **jsonb transit**；Redis live 已验，live PG 与混合集群待 devenv |
 | B7 | M7 | `ws` crate | ✅ | axum WebSocket + msgbus；RedisBusClient + InMemoryBus；协议/心跳/路由 33 条默认测试 + 7 条 Redis live |
 | B8 | M8 | `rpc` 只读命令承接 | ⛔ | 前置：C3 DDL + C4 OpenAPI + 补齐 `::sm/result` + 可用 devenv。永久排除：`add-file-transient-changes`/binfile/files 写路径/thumbnails/nitrate（`file.data` blob = Fressian v4/v5，JVM 专有） |
 | — | — | `render-native` | ⬜ 暂缓 | `render-wasm` 无 headless-native API（24 处 `cfg(target_arch="wasm32")` + GL `gpu_state`），需先抽 core 且要 file-data 解码 |
@@ -3925,6 +3925,25 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   blob 一并回收）。workspace 395 passed + 21 ignored；fmt/clippy/build/doc 均退出 0。
 - 边界：live PG 未实跑；worker 的 `objects-gc` 任务接线（软删域对象并 touch 存储
   对象）未做；Clojure↔Rust 混合集群未验。M8 不交付。
+- 提交：未提交（等用户明确要求）。
+
+---
+
+### 7.112 本轮（2026-11-25，第一百一十一批：backend-rust M14 worker 的 tasks-gc 与 session-gc）
+
+- 口径不变：只改 `backend-rust/`，不接部署、不改 `backend/`/`common/`/`docker/`/
+  `scripts/ci`。PostgreSQL 5432/5433 与 Docker daemon 仍不可用，live PG 用例保持 `#[ignore]`。
+- 新增 `crates/pg/src/task_services.rs` 的 `PgTasksGc`：实现 `worker::TasksGc`。
+  默认最小年龄 7 天，`run(min_age, rollback)` 在事务内执行 `worker::SQL_TASKS_GC`，
+  `min_age` 用 `PgInterval` 绑定；`rollback?` 为真时执行后回滚，行数照常返回。
+- 新增 `PgSessionGc`：实现 `worker::SessionGc`。按 idle/absolute 两条阈值删除
+  `http_session_v2`；absolute 小于 idle 时在连库前返回 `ServiceError`。时间戳用
+  毫秒参数加 `to_timestamp`，与其它适配器一致。
+- 测试：pg 2 条单测（默认删除延迟、阈值校验）+ 2 条 live `#[ignore]`
+  （`tasks-gc` 删除旧行且 `rollback?` 保留、`session-gc` 删除过期行并保留新行）。
+  workspace 397 passed + 23 ignored；fmt/clippy/build/doc 均退出 0。
+- 边界：live PG 未实跑；`objects-gc`、`run-webhook` 与 `sendmail` 服务仍未接；
+  Clojure↔Rust 混合集群未验。M8 不交付。
 - 提交：未提交（等用户明确要求）。
 
 ---

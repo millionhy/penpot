@@ -19,6 +19,9 @@
 //! verbose Transit stored as JSONB, so the adapter decodes it with the same
 //! reader the RPC layer uses.
 //!
+//! The `tasks-gc` and `session-gc` services delete old task rows and expired
+//! HTTP sessions; the former supports the `rollback?` prop.
+//!
 //! The storage adapter covers `storage_object`: live reads, the dual-encoding
 //! deduplication probe, the write-ahead insert, promotion, touch and soft
 //! delete. New rows use verbose Transit metadata by default.
@@ -41,10 +44,12 @@ use uuid::Uuid;
 mod storage;
 mod storage_gc;
 mod task;
+mod task_services;
 
 pub use storage::PgStorageRepository;
 pub use storage_gc::PgStorageGcRepository;
 pub use task::PgTaskRepository;
+pub use task_services::{PgSessionGc, PgTasksGc};
 
 /// `http_session_v2` reader.
 #[derive(Debug, Clone)]

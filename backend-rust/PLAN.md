@@ -2,8 +2,8 @@
 
 本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干、M9 鉴权接线、
 M10 `db`/`pg` 基础、M11 worker PG 仓储、M12 storage PG 仓储与 M13 storage GC 执行器
-已落地（2026-11-25），live PG 验证与 M8 仍不交付。换机器后的上下文快照见
-`backend-rust/HANDOFF.md`。
+已落地，M14 的 `tasks-gc`/`session-gc` PG 服务也已接上（2026-11-25），live PG 验证与
+M8 仍不交付。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
 
@@ -453,6 +453,23 @@ blob 失败重试与放弃、`run_all`）+ pg 1 条 live `#[ignore]`（pending �
 回收）；workspace 395 passed + 21 ignored；fmt/clippy/build/doc 全绿。live PG、
 worker `objects-gc` 接线与混合集群仍待 devenv。
 
+### M14 — worker 的 `tasks-gc` 与 `session-gc` PG 服务（✅ 2026-11-25，live PG 待 devenv）
+
+`PenpotTaskServices` 的五个 trait 里，先接两个只依赖单表删除的服务；`objects-gc`、
+`run-webhook` 与 `sendmail` 仍留给后续切片。
+
+- T14.1 ✅ `crates/pg/src/task_services.rs` 的 `PgTasksGc`：实现 `worker::TasksGc`；
+  默认最小年龄 7 天，`run(min_age, rollback)` 在事务内执行 `worker::SQL_TASKS_GC`，
+  `rollback?` 为真时执行后回滚。`min_age` 用 `PgInterval` 绑定，不写死天数。
+- T14.2 ✅ `PgSessionGc`：实现 `worker::SessionGc`；按 idle/absolute 两条阈值删除
+  `http_session_v2`，absolute 小于 idle 时在连库前返回错误。时间戳仍用毫秒参数加
+  `to_timestamp`，与其它适配器一致。
+
+DoD ✅：pg 2 条单测（默认删除延迟、阈值校验）+ 2 条 live `#[ignore]`（`tasks-gc`
+删除旧行且 `rollback?` 保留、`session-gc` 删除过期行）；workspace 397 passed +
+23 ignored；fmt/clippy/build/doc 全绿。live PG、`objects-gc` 与 `run-webhook` 服务、
+混合集群仍待 devenv。
+
 ---
 
 ## 5. 顺序与总量
@@ -535,8 +552,12 @@ M13：storage 的 GC 执行器——`StorageGc` 驱动 pending/touched/deleted �
 `GcTransaction` 提供事务边界，`PgStorageGcRepository` 落三组 `FOR UPDATE SKIP LOCKED`
 选择、引用查询、poison 延后与失败重试；storage 7 条 `gc_runner` 单测 + 1 条 live
 `#[ignore]`。
-下一步是 devenv 起来后的 live PG 验证（`PENPOT_TEST_DATABASE_URL`），重点验 M10–M13，
-再接 worker 的 `objects-gc` 与 `PgSessionStore` 示例二进制。C2 真实应答到位后，
+M14：worker 的 `tasks-gc` 与 `session-gc` PG 服务——事务内删除旧 task 行并支持
+`rollback?`，按 idle/absolute 双阈值清理 `http_session_v2`；pg 2 条单测 + 2 条 live
+`#[ignore]`。
+下一步是 `objects-gc`（软删域对象并 touch 存储对象）与 `run-webhook` 服务，再接
+`PgSessionStore` 示例二进制。devenv 起来后先跑 live PG（`PENPOT_TEST_DATABASE_URL`），
+重点验 M10–M14。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。M8 仍不交付。
 
 ## 10. 换机器 / devenv 起来之后的采集清单

@@ -14,8 +14,8 @@ use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use pg::{
-    PgAccessTokenStore, PgSessionStore, PgStorageGcRepository, PgStorageRepository,
-    PgTaskRepository,
+    PgAccessTokenStore, PgSessionGc, PgSessionStore, PgStorageGcRepository, PgStorageRepository,
+    PgTaskRepository, PgTasksGc,
 };
 use rpc::auth::{AccessTokenStore, SessionStore};
 use storage::{
@@ -24,7 +24,7 @@ use storage::{
 };
 use transit::{Map, Value};
 use uuid::Uuid;
-use worker::{HandlerResult, SubmitOptions, Task, TaskRepository, TaskStatus};
+use worker::{HandlerResult, SessionGc, SubmitOptions, Task, TaskRepository, TaskStatus, TasksGc};
 
 fn test_url() -> String {
     std::env::var("PENPOT_TEST_DATABASE_URL")
@@ -248,5 +248,95 @@ async fn a_pending_object_is_reclaimed_with_its_blob() {
     assert!(row.is_none());
 
     std::fs::remove_dir_all(&directory).expect("cleanup directory");
+    database.close().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live PostgreSQL; set PENPOT_TEST_DATABASE_URL"]
+async fn tasks_gc_deletes_old_rows_and_honours_rollback() {
+    let database = database();
+    let repository = PgTaskRepository::new(database.clone());
+    let now = Utc::now();
+    let tenant = format!("rust-gc-{}", Uuid::new_v4());
+    let mut old = Task::new(Uuid::new_v4(), &tenant, SubmitOptions::new("tasks-gc"), now);
+    old.scheduled_at = now - chrono::Duration::days(4000);
+    let fresh = Task::new(Uuid::new_v4(), &tenant, SubmitOptions::new("tasks-gc"), now);
+    repository.insert(&old).await.expect("insert old task");
+    repository.insert(&fresh).await.expect("insert fresh task");
+
+    let service = PgTasksGc::new(database.clone(), Duration::from_hours(24 * 7));
+    let min_age = Duration::from_hours(24 * 3650);
+    assert!(service.run(min_age, true).await.expect("dry run") >= 1);
+    assert!(repository
+        .get(old.id)
+        .await
+        .expect("read old task")
+        .is_some());
+
+    assert!(service.run(min_age, false).await.expect("delete pass") >= 1);
+    assert!(repository
+        .get(old.id)
+        .await
+        .expect("read old task")
+        .is_none());
+    assert!(repository
+        .get(fresh.id)
+        .await
+        .expect("read fresh task")
+        .is_some());
+
+    sqlx::query("DELETE FROM task WHERE id = $1")
+        .bind(fresh.id)
+        .execute(database.pool())
+        .await
+        .expect("cleanup task");
+    database.close().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live PostgreSQL; set PENPOT_TEST_DATABASE_URL"]
+async fn session_gc_deletes_expired_rows() {
+    let database = database();
+    let now = Utc::now();
+    let old_id = Uuid::new_v4();
+    let fresh_id = Uuid::new_v4();
+    let old_at = now - chrono::Duration::days(800);
+
+    for (id, created_at) in [(old_id, old_at), (fresh_id, now)] {
+        sqlx::query(
+            "INSERT INTO http_session_v2 (id, created_at, modified_at, user_agent) \
+             VALUES ($1, \
+                     to_timestamp($2::bigint::double precision / 1000.0), \
+                     to_timestamp($3::bigint::double precision / 1000.0), \
+                     'rust-live')",
+        )
+        .bind(id)
+        .bind(created_at.timestamp_millis())
+        .bind(created_at.timestamp_millis())
+        .execute(database.pool())
+        .await
+        .expect("insert session");
+    }
+
+    let service = PgSessionGc::new(
+        database.clone(),
+        Duration::from_hours(24 * 365),
+        Duration::from_hours(24 * 730),
+    );
+    assert!(service.run().await.expect("session pass") >= 1);
+
+    let remaining: Vec<Uuid> =
+        sqlx::query_scalar("SELECT id FROM http_session_v2 WHERE id = ANY($1::uuid[]) ORDER BY id")
+            .bind(&[old_id, fresh_id][..])
+            .fetch_all(database.pool())
+            .await
+            .expect("read sessions");
+    assert_eq!(remaining, vec![fresh_id]);
+
+    sqlx::query("DELETE FROM http_session_v2 WHERE id = $1")
+        .bind(fresh_id)
+        .execute(database.pool())
+        .await
+        .expect("cleanup session");
     database.close().await;
 }
