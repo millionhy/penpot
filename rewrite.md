@@ -4083,6 +4083,37 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   `subscription` 固定 nil。M8 不交付。
 - 提交：未提交（等用户明确要求）。
 
+### 7.117 本轮（2026-11-26，第一百一十六批：backend-rust M19 仪表盘只读命令）
+
+- 口径不变：只改 `backend-rust/` 与进度文档，不接部署、不改
+  `backend/`/`common/`/`docker/`/`scripts/ci`。
+- `get-team-recent-files`：照搬 `sql:team-recent-files`，按 `project_id` 分区取
+  各项目最近 10 个文件，缩略图按 `file_thumbnail.revn = file.revn` 且未软删
+  连接。`file.revn` 是 `bigint`、`file.vern` 是 `integer`，Rust 各按
+  `i64`/`i32` 读取。
+- `get-font-variants`：team → project → file 的优先级与 Clojure `cond` 一致；
+  file 范围经 `file → project → team` 解析。先做团队成员校验，再读未软删的
+  `team_font_variant`，行里带 `variant_name` 与四个字体文件 id。
+- `get-team-members`：`team_profile_rel` 的角色标志加 profile 的
+  email/fullname/photo/is-active；`id` 取 profile id，与 Clojure 中重复列名
+  后者覆盖的结果一致。
+- `get-unread-comment-threads`：读 profile 的 transit props，把
+  `notifications.dashboard-comments` 映射为 all/partial/off；SQL 复刻
+  `DISTINCT ON (ct.id)` + `first_value` 取首条评论，统计总回复与未读回复。
+  `position` 用 `point[0]/[1]` 取坐标并以 `point` 标签写回，`participants`
+  解 transit，`mentions` 写 uuid 集合。
+- 授权：四条命令都要求会话；非成员回 `not-found/object-not-found`，不泄露
+  对象是否存在。跨团队 share-link 读取未承接，`share-id` 只做参数接收。
+- 测试：rpc 新增 6 条（最近文件、字体范围、缺范围 400、成员、未读线程、
+  非成员 404），dashboard 共 10 条；pg 5 条 props/participants 单测 + 1 条
+  live（建 profile/team/project/file/font/thread/comment → 四类读取 →
+  partial/off 偏好 → 事务内关删除保护清理）。workspace 484 passed +
+  29 ignored；fmt/clippy/build/doc 均退出 0。真实 PG 上 live 用例通过。
+- 真机验证：Chrome 登录后 `/dashboard/recent`、`/dashboard/fonts`、
+  `/dashboard/members` 三条页面均无 404；侧栏、项目、字体页与成员角色正常
+  渲染。`get-builtin-templates` 仍 404，属模板配置切片。
+- 提交：未提交（等用户明确要求）。
+
 ---
 
 ## 8. 开发环境备注（本机）

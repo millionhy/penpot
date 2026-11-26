@@ -9,7 +9,7 @@ M4 `session`、M5 `storage`（离线部分）、M6 `worker`（Redis 队列已验
 M7 `ws`、M9 `rpc` 鉴权接线、M10 `db`/`pg` 基础、M11 worker PG 仓储、
 M12 storage PG 仓储、M13 storage GC 执行器、M14 worker 的 `tasks-gc`/`session-gc`
 PG 服务、M15 worker 的 `run-webhook` 与 `httpclient`、M16 worker 的 `objects-gc`、
-M17 `mailer` 与 M18 登录纵切完成（2026-11-26）。**
+M17 `mailer`、M18 登录纵切与 M19 仪表盘只读命令完成（2026-11-26）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -144,6 +144,18 @@ M17 `mailer` 与 M18 登录纵切完成（2026-11-26）。**
   全绿。本机已用真实 PG 与浏览器跑通 Next `:3450` → Rust `:6061` 的登录、
   `get-profile` 与 `/dashboard/recent`。注册、SSO、邀请接受、订阅查询与登录
   失败计数不在本切片。
+- M19 已有：仪表盘内容读取。`get-team-recent-files` 照 `sql:team-recent-files`
+  取每项目最近 10 个文件并带同版本缩略图；`get-font-variants` 接受
+  team/project/file 三种范围（按此优先级），先查成员资格再读
+  `team_font_variant`；`get-team-members` 回 `team_profile_rel` 的角色标志与
+  profile 身份字段；`get-unread-comment-threads` 按 profile 的
+  `notifications.dashboard-comments`（all/partial/off）过滤，回
+  `DISTINCT ON` 线程、首条评论、未读/总回复数、transit `participants`、
+  uuid 集合 `mentions` 与 `point` 标签的 `position`。非成员统一回
+  `not-found/object-not-found`。跨团队 share-link 访问尚未承接。rpc 新增 6 条
+  测试（dashboard 共 10 条）、pg 5 条单测 + 1 条 live；workspace 484 passed
+  + 29 ignored；真实 PG 与浏览器已验 `/dashboard/recent`、`/dashboard/fonts`、
+  `/dashboard/members` 无 404。`get-builtin-templates` 仍待模板配置切片。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 

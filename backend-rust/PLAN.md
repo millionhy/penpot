@@ -3,8 +3,8 @@
 本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干、M9 鉴权接线、
 M10 `db`/`pg` 基础、M11 worker PG 仓储、M12 storage PG 仓储与 M13 storage GC 执行器
 已落地，M14 的 `tasks-gc`/`session-gc`、M15 的 `run-webhook`、M16 的
-`objects-gc`、M17 的 `mailer` 与 M18 的登录纵切也已接上（2026-11-26），
-live SMTP 验证与 M8 仍不交付。换机器后的上下文快照见
+`objects-gc`、M17 的 `mailer`、M18 的登录纵切与 M19 的仪表盘只读命令也已
+接上（2026-11-26），live SMTP 验证与 M8 仍不交付。换机器后的上下文快照见
 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
@@ -568,6 +568,39 @@ Next `:3450` → Rust `:6061` 登录 200、`set-cookie` 生效、`get-profile` 2
 
 ---
 
+### M19 — 仪表盘只读命令（✅ 2026-11-26，真机 PG 与浏览器验证）
+
+M18 之后仪表盘仍会为四个数据请求得到 404；本切片把它们接到 Rust。
+
+- T19.1 ✅ `get-team-recent-files`：照搬 `sql:team-recent-files`，按
+  `project_id` 分区取最近 10 个文件，缩略图按 `file.revn` 且未软删匹配。
+  `revn` 是 `bigint`、`vern` 是 `integer`，各按其宽度读取。
+- T19.2 ✅ `get-font-variants`：team → project → file 的优先级与 Clojure
+  `cond` 一致；前两种先解析到团队再做成员校验，file 范围经
+  `file → project → team` 解析。只读未软删的 `team_font_variant`，带
+  `variant_name` 与四个字体文件 id。
+- T19.3 ✅ `get-team-members`：`team_profile_rel` 的角色标志加 profile 的
+  email/fullname/photo/is-active；`id` 取 profile id，与重复列名的
+  Clojure 结果一致。
+- T19.4 ✅ `get-unread-comment-threads`：读 profile 的 transit props 决定
+  all/partial/off；SQL 复刻 `DISTINCT ON (ct.id)` + `first_value` 首条评论，
+  统计总回复与未读回复。`position` 用 `point[0]/[1]` 取坐标并以 `point`
+  标签写回，`participants` 解 transit，`mentions` 写 uuid 集合。
+- T19.5 ✅ 授权：四条命令都要求会话；非成员回
+  `not-found/object-not-found`，不泄露对象是否存在。跨团队 share-link
+  读取仍未承接，`share-id` 只做参数接收。
+
+DoD ✅：rpc 新增 6 条（最近文件、字体范围、缺范围 400、成员、未读线程、
+非成员 404），dashboard 共 10 条；pg 5 条 props/participants 单测 + 1 条 live
+（建 profile/team/project/file/font/thread/comment → 四类读取 → partial/off
+偏好 → 事务内关删除保护清理）；workspace 484 passed + 29 ignored；
+fmt/clippy/build/doc 全绿。真实 PG 上 live 用例通过；Chrome 真机登录后
+`/dashboard/recent`、`/dashboard/fonts`、`/dashboard/members` 均无 404，
+侧栏、项目、字体页与成员角色正常渲染。`get-builtin-templates` 仍属模板
+配置切片。
+
+---
+
 ## 5. 顺序与总量
 
 ```
@@ -665,9 +698,12 @@ M18：登录纵切——`password` 校验 buddy 六段 `argon2id`，`login-with-
 写 `http_session_v2` 并签 JWE cookie，`get-profile` 回完整资料，`server` 接
 真实 PG；`get-teams`/`get-projects` 让仪表盘落地。rpc 8 条 + password 6 条 +
 pg 1 条 live，workspace 473 passed + 28 ignored，真机 PG 与浏览器登录已验。
-`PgSessionStore` 示例二进制已由 M18 的 `server` 落地；下一步是模板工厂与更多
-只读命令。本机已跑过 live PG（`PENPOT_TEST_DATABASE_URL`，M18 的 `auth_live`
-通过），M10–M16 的 live 用例仍可继续补验；SMTP 用
+M19：仪表盘只读命令——最近文件、字体变体、团队成员、未读评论线程四条命令接
+真实 PG，偏好 all/partial/off、point 与 transit participants 都按线格式回写；
+rpc 6 条新测 + pg 5 条单测 + 1 条 live，workspace 484 passed + 29 ignored，
+真机 PG 与三个浏览器页面已验。下一步是模板配置与撰写类命令，再往文件打开、
+媒体上传等纵切推进。本机已跑过 live PG（`PENPOT_TEST_DATABASE_URL`，M18 的
+`auth_live` 与 M19 的 `dashboard_live` 通过），M10–M16 的 live 用例仍可继续补验；SMTP 用
 `PENPOT_TEST_SMTP_*` 指向一次性收件箱。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。M8 仍不交付。
 

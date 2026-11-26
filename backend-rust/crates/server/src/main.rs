@@ -1,4 +1,4 @@
-//! Runnable Rust backend for the M18 login vertical slice.
+//! Runnable Rust backend for the M18 login slice and the M19 dashboard reads.
 //!
 //! It wires the generic RPC router to PostgreSQL, reads the same token secret
 //! and cookie settings as the Clojure backend, and serves on port 6061 by
@@ -122,6 +122,10 @@ async fn run() -> Result<(), Box<dyn Error>> {
     println!("  GET  /api/main/methods/get-profile");
     println!("  GET  /api/main/methods/get-teams");
     println!("  GET  /api/main/methods/get-projects");
+    println!("  GET  /api/main/methods/get-team-recent-files");
+    println!("  GET  /api/main/methods/get-font-variants");
+    println!("  GET  /api/main/methods/get-team-members");
+    println!("  GET  /api/main/methods/get-unread-comment-threads");
     println!("  POST /api/main/methods/login-with-password");
 
     let service = app.into_make_service_with_connect_info::<SocketAddr>();

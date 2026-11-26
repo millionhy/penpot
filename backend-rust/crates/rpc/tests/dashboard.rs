@@ -1,4 +1,4 @@
-//! `get-teams` and `get-projects` through the real router.
+//! Dashboard reads through the real router (M18, M19).
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -10,7 +10,10 @@ use http_body_util::BodyExt;
 use rpc::commands::auth::{
     AuthCommands, AuthProfile, CreatedSession, ProfileStore, SessionCreator,
 };
-use rpc::commands::dashboard::{DashboardCommands, DashboardStore, ProjectRow, TeamRow};
+use rpc::commands::dashboard::{
+    CommentThreadRow, DashboardCommands, DashboardStore, FontScope, FontVariantRow, ProjectRow,
+    RecentFileRow, TeamMemberRow, TeamRow,
+};
 use rpc::errors::Cause;
 use rpc::{
     build_router, AppState, AuthOptions, Registry, SessionRecord, SessionStore, TokenResolver,
@@ -27,6 +30,9 @@ const PROFILE: Uuid = Uuid::from_u128(1);
 const SESSION: Uuid = Uuid::from_u128(2);
 const TEAM: Uuid = Uuid::from_u128(3);
 const PROJECT: Uuid = Uuid::from_u128(4);
+const FILE: Uuid = Uuid::from_u128(5);
+const FONT: Uuid = Uuid::from_u128(6);
+const THUMBNAIL: Uuid = Uuid::from_u128(7);
 
 struct Profiles;
 
@@ -113,6 +119,112 @@ impl DashboardStore for Store {
             created_at_ms: NOW,
             modified_at_ms: NOW,
             deleted_at_ms: None,
+        }]))
+    }
+
+    async fn recent_files(
+        &self,
+        profile_id: Uuid,
+        team_id: Uuid,
+    ) -> Result<Option<Vec<RecentFileRow>>, Cause> {
+        if profile_id != PROFILE || team_id != TEAM || !self.can_read {
+            return Ok(None);
+        }
+        Ok(Some(vec![RecentFileRow {
+            id: FILE,
+            revn: 7,
+            vern: 3,
+            project_id: PROJECT,
+            team_id: TEAM,
+            name: "Landing".to_owned(),
+            is_shared: true,
+            thumbnail_id: Some(THUMBNAIL),
+            row_num: 1,
+            created_at_ms: NOW,
+            modified_at_ms: NOW,
+        }]))
+    }
+
+    async fn font_variants(
+        &self,
+        profile_id: Uuid,
+        scope: FontScope,
+    ) -> Result<Option<Vec<FontVariantRow>>, Cause> {
+        if profile_id != PROFILE || !self.can_read || scope != FontScope::Team(TEAM) {
+            return Ok(None);
+        }
+        Ok(Some(vec![FontVariantRow {
+            id: Uuid::from_u128(8),
+            team_id: TEAM,
+            profile_id: Some(PROFILE),
+            font_id: FONT,
+            font_family: "Inter".to_owned(),
+            font_weight: 700,
+            font_style: "normal".to_owned(),
+            variant_name: Some("Bold".to_owned()),
+            otf_file_id: None,
+            ttf_file_id: Some(Uuid::from_u128(9)),
+            woff1_file_id: None,
+            woff2_file_id: Some(Uuid::from_u128(10)),
+            created_at_ms: NOW,
+            modified_at_ms: NOW,
+        }]))
+    }
+
+    async fn team_members(
+        &self,
+        profile_id: Uuid,
+        team_id: Uuid,
+    ) -> Result<Option<Vec<TeamMemberRow>>, Cause> {
+        if profile_id != PROFILE || team_id != TEAM || !self.can_read {
+            return Ok(None);
+        }
+        Ok(Some(vec![TeamMemberRow {
+            id: PROFILE,
+            team_id: TEAM,
+            profile_id: PROFILE,
+            email: EMAIL.to_owned(),
+            fullname: "Test User".to_owned(),
+            photo_id: None,
+            is_active: true,
+            is_owner: true,
+            is_admin: false,
+            can_edit: false,
+            created_at_ms: NOW,
+            modified_at_ms: NOW,
+        }]))
+    }
+
+    async fn unread_comment_threads(
+        &self,
+        profile_id: Uuid,
+        team_id: Uuid,
+    ) -> Result<Option<Vec<CommentThreadRow>>, Cause> {
+        if profile_id != PROFILE || team_id != TEAM || !self.can_read {
+            return Ok(None);
+        }
+        Ok(Some(vec![CommentThreadRow {
+            id: Uuid::from_u128(11),
+            file_id: FILE,
+            owner_id: PROFILE,
+            page_id: Uuid::from_u128(12),
+            seqn: 3,
+            position_x: 10.5,
+            position_y: -20.25,
+            is_resolved: false,
+            participants: Value::Set([Value::Uuid(PROFILE)].into_iter().collect()),
+            mentions: vec![PROFILE],
+            owner_fullname: Some("Test User".to_owned()),
+            owner_email: Some(EMAIL.to_owned()),
+            owner_photo_id: None,
+            team_id: TEAM,
+            file_name: "Landing".to_owned(),
+            project_id: PROJECT,
+            content: "Please review".to_owned(),
+            count_comments: 2,
+            count_unread_comments: 1,
+            created_at_ms: NOW,
+            modified_at_ms: NOW,
         }]))
     }
 }
@@ -301,9 +413,172 @@ async fn dashboard_reads_require_a_session() {
     for uri in [
         "/api/main/methods/get-teams",
         "/api/main/methods/get-projects?team-id=00000000-0000-0000-0000-000000000003",
+        "/api/main/methods/get-team-recent-files?team-id=00000000-0000-0000-0000-000000000003",
+        "/api/main/methods/get-font-variants?team-id=00000000-0000-0000-0000-000000000003",
+        "/api/main/methods/get-team-members?team-id=00000000-0000-0000-0000-000000000003",
+        "/api/main/methods/get-unread-comment-threads?team-id=00000000-0000-0000-0000-000000000003",
     ] {
         let response = send(&router, get(uri, None)).await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(code(&body(response).await), Some("authentication-required"));
+    }
+}
+
+#[tokio::test]
+async fn recent_files_report_revision_thumbnail_and_row_number() {
+    let router = app(true);
+    let cookie = login_cookie(&router).await;
+    let uri = format!("/api/main/methods/get-team-recent-files?team-id={TEAM}");
+    let response = send(&router, get(&uri, Some(&cookie))).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let files = body(response).await;
+    let rows = files.items().expect("file list");
+    assert_eq!(rows.len(), 1);
+    let file = rows[0];
+    assert_eq!(file.get_kw("id").and_then(Value::as_uuid), Some(FILE));
+    assert_eq!(file.get_kw("revn").and_then(Value::as_i64), Some(7));
+    assert_eq!(file.get_kw("vern").and_then(Value::as_i64), Some(3));
+    assert_eq!(
+        file.get_kw("thumbnail-id").and_then(Value::as_uuid),
+        Some(THUMBNAIL)
+    );
+    assert_eq!(file.get_kw("row-num").and_then(Value::as_i64), Some(1));
+    assert_eq!(file.get_kw("is-shared"), Some(&Value::Bool(true)));
+    assert_eq!(
+        file.get_kw("modified-at").and_then(Value::as_i64),
+        Some(NOW)
+    );
+}
+
+#[tokio::test]
+async fn font_variants_use_the_team_scope() {
+    let router = app(true);
+    let cookie = login_cookie(&router).await;
+    let uri = format!("/api/main/methods/get-font-variants?team-id={TEAM}");
+    let response = send(&router, get(&uri, Some(&cookie))).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let variants = body(response).await;
+    let rows = variants.items().expect("font list");
+    assert_eq!(rows.len(), 1);
+    let font = rows[0];
+    assert_eq!(font.get_kw("font-id").and_then(Value::as_uuid), Some(FONT));
+    assert_eq!(
+        font.get_kw("font-family").and_then(Value::as_str),
+        Some("Inter")
+    );
+    assert_eq!(
+        font.get_kw("font-weight").and_then(Value::as_i64),
+        Some(700)
+    );
+    assert_eq!(
+        font.get_kw("variant-name").and_then(Value::as_str),
+        Some("Bold")
+    );
+    assert_eq!(
+        font.get_kw("woff2-file-id").and_then(Value::as_uuid),
+        Some(Uuid::from_u128(10))
+    );
+    assert!(font.get_kw("otf-file-id").is_some_and(Value::is_nil));
+}
+
+#[tokio::test]
+async fn font_variants_need_one_scope() {
+    let router = app(true);
+    let cookie = login_cookie(&router).await;
+    let response = send(
+        &router,
+        get("/api/main/methods/get-font-variants", Some(&cookie)),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(code(&body(response).await), Some("params-validation"));
+}
+
+#[tokio::test]
+async fn team_members_carry_relation_flags_and_profile_identity() {
+    let router = app(true);
+    let cookie = login_cookie(&router).await;
+    let uri = format!("/api/main/methods/get-team-members?team-id={TEAM}");
+    let response = send(&router, get(&uri, Some(&cookie))).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let members = body(response).await;
+    let rows = members.items().expect("member list");
+    assert_eq!(rows.len(), 1);
+    let member = rows[0];
+    assert_eq!(member.get_kw("id").and_then(Value::as_uuid), Some(PROFILE));
+    assert_eq!(
+        member.get_kw("profile-id").and_then(Value::as_uuid),
+        Some(PROFILE)
+    );
+    assert_eq!(member.get_kw("email").and_then(Value::as_str), Some(EMAIL));
+    assert_eq!(
+        member.get_kw("fullname").and_then(Value::as_str),
+        Some("Test User")
+    );
+    assert_eq!(member.get_kw("is-owner"), Some(&Value::Bool(true)));
+    assert_eq!(member.get_kw("is-active"), Some(&Value::Bool(true)));
+}
+
+#[tokio::test]
+async fn unread_threads_carry_point_participants_and_counts() {
+    let router = app(true);
+    let cookie = login_cookie(&router).await;
+    let uri = format!("/api/main/methods/get-unread-comment-threads?team-id={TEAM}");
+    let response = send(&router, get(&uri, Some(&cookie))).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let threads = body(response).await;
+    let rows = threads.items().expect("thread list");
+    assert_eq!(rows.len(), 1);
+    let thread = rows[0];
+    let Some(Value::Tagged { tag, rep }) = thread.get_kw("position") else {
+        panic!("point tag");
+    };
+    assert_eq!(tag, "point");
+    let point = rep.as_map().expect("point map");
+    assert_eq!(point.get_kw("x").and_then(Value::as_f64), Some(10.5));
+    assert_eq!(point.get_kw("y").and_then(Value::as_f64), Some(-20.25));
+    assert_eq!(
+        thread
+            .get_kw("count-unread-comments")
+            .and_then(Value::as_i64),
+        Some(1)
+    );
+    assert_eq!(
+        thread
+            .get_kw("participants")
+            .and_then(Value::items)
+            .map(|items| items.len()),
+        Some(1)
+    );
+    assert_eq!(
+        thread
+            .get_kw("mentions")
+            .and_then(Value::items)
+            .map(|items| items.len()),
+        Some(1)
+    );
+}
+
+#[tokio::test]
+async fn dashboard_content_reads_hide_foreign_teams() {
+    let router = app(false);
+    let cookie = login_cookie(&router).await;
+    for uri in [
+        format!("/api/main/methods/get-team-recent-files?team-id={TEAM}"),
+        format!("/api/main/methods/get-font-variants?team-id={TEAM}"),
+        format!("/api/main/methods/get-team-members?team-id={TEAM}"),
+        format!("/api/main/methods/get-unread-comment-threads?team-id={TEAM}"),
+    ] {
+        let response = send(&router, get(&uri, Some(&cookie))).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
+        assert_eq!(
+            code(&body(response).await),
+            Some("object-not-found"),
+            "{uri}"
+        );
     }
 }
