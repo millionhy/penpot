@@ -74,6 +74,13 @@ tokio-tungstenite = { version = "0.28.0", default-features = false }
 # local devenv/PostgreSQL over the container network.
 sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "postgres", "uuid"] }
 
+# --- M15 webhook client ---
+# Default features are off on purpose: `system-proxy` would route the request
+# through an operator-defined proxy and defeat the pinned-address check, and
+# HTTP/2 adds no value for single POST delivery. rustls is already built for
+# the M5 AWS SDK.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] }
+
 # --- reserved for later milestones (added when the crate that needs them exists) ---
 # tower-http = "0.6.11"
 # tracing = "0.1.44"

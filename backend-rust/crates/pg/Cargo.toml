@@ -9,14 +9,17 @@ publish.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+base64.workspace = true
 chrono.workspace = true
 db = { path = "../db" }
 errors = { path = "../errors" }
+httpclient = { path = "../httpclient" }
 rpc = { path = "../rpc" }
 sqlx.workspace = true
 storage = { path = "../storage" }
 tokio.workspace = true
 transit = { path = "../transit" }
+url.workspace = true
 uuid.workspace = true
 worker = { path = "../worker" }
 

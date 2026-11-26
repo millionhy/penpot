@@ -22,6 +22,9 @@
 //! The `tasks-gc` and `session-gc` services delete old task rows and expired
 //! HTTP sessions; the former supports the `rollback?` prop.
 //!
+//! The webhook adapter posts one event through an injected transport and
+//! records the attempt in `webhook` and `webhook_delivery`.
+//!
 //! The storage adapter covers `storage_object`: live reads, the dual-encoding
 //! deduplication probe, the write-ahead insert, promotion, touch and soft
 //! delete. New rows use verbose Transit metadata by default.
@@ -45,11 +48,13 @@ mod storage;
 mod storage_gc;
 mod task;
 mod task_services;
+mod webhook;
 
 pub use storage::PgStorageRepository;
 pub use storage_gc::PgStorageGcRepository;
 pub use task::PgTaskRepository;
 pub use task_services::{PgSessionGc, PgTasksGc};
+pub use webhook::PgWebhookRunner;
 
 /// `http_session_v2` reader.
 #[derive(Debug, Clone)]

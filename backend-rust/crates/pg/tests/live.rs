@@ -13,18 +13,23 @@
 use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
+use httpclient::{HttpRequest, HttpResponse, Transport, TransportError};
 use pg::{
     PgAccessTokenStore, PgSessionGc, PgSessionStore, PgStorageGcRepository, PgStorageRepository,
-    PgTaskRepository, PgTasksGc,
+    PgTaskRepository, PgTasksGc, PgWebhookRunner,
 };
 use rpc::auth::{AccessTokenStore, SessionStore};
+use sqlx::Row;
 use storage::{
     Bucket, FsStore, ObjectStatus, StorageBackend, StorageGc, StorageMetadata, StorageObject,
     StorageRepository,
 };
 use transit::{Map, Value};
 use uuid::Uuid;
-use worker::{HandlerResult, SessionGc, SubmitOptions, Task, TaskRepository, TaskStatus, TasksGc};
+use worker::{
+    HandlerResult, SessionGc, SubmitOptions, Task, TaskRepository, TaskStatus, TasksGc,
+    WebhookRunner,
+};
 
 fn test_url() -> String {
     std::env::var("PENPOT_TEST_DATABASE_URL")
@@ -338,5 +343,154 @@ async fn session_gc_deletes_expired_rows() {
         .execute(database.pool())
         .await
         .expect("cleanup session");
+    database.close().await;
+}
+
+/// Fake transport for the webhook tests: no socket, fixed status.
+struct FixedStatus {
+    status: u16,
+}
+
+#[async_trait::async_trait]
+impl Transport for FixedStatus {
+    async fn send(&self, _request: HttpRequest) -> Result<HttpResponse, TransportError> {
+        Ok(HttpResponse {
+            status: self.status,
+            headers: Vec::new(),
+            body: String::new(),
+        })
+    }
+}
+
+fn webhook_event() -> Map {
+    let mut props = Map::new();
+    props.insert(Value::Keyword("team-id".into()), Value::Uuid(Uuid::nil()));
+    let mut event = Map::new();
+    event.insert(Value::Keyword("type".into()), Value::Str("command".into()));
+    event.insert(
+        Value::Keyword("name".into()),
+        Value::Str("create-project".into()),
+    );
+    event.insert(Value::Keyword("props".into()), Value::Map(props));
+    event
+}
+
+fn webhook_config(id: Uuid) -> Map {
+    let mut config = Map::new();
+    config.insert(Value::Keyword("id".into()), Value::Uuid(id));
+    config.insert(
+        Value::Keyword("uri".into()),
+        Value::Str(format!("https://example.invalid/{id}")),
+    );
+    config.insert(
+        Value::Keyword("mtype".into()),
+        Value::Str("application/json".into()),
+    );
+    config
+}
+
+async fn insert_webhook(database: &db::Database, id: Uuid) {
+    sqlx::query(
+        "INSERT INTO webhook (id, team_id, uri, mtype) \
+         VALUES ($1, $2, $3, 'application/json')",
+    )
+    .bind(id)
+    .bind(Uuid::nil())
+    .bind(format!("https://example.invalid/{id}"))
+    .execute(database.pool())
+    .await
+    .expect("insert webhook");
+}
+
+#[tokio::test]
+#[ignore = "needs live PostgreSQL; set PENPOT_TEST_DATABASE_URL"]
+async fn webhook_failures_are_recorded_and_disable_the_hook() {
+    let database = database();
+    let id = Uuid::new_v4();
+    insert_webhook(&database, id).await;
+
+    let runner = PgWebhookRunner::new(database.clone(), Arc::new(FixedStatus { status: 400 }));
+    let event = webhook_event();
+    let config = webhook_config(id);
+    for _ in 0..3 {
+        runner.run(&event, &config).await.expect("delivery");
+    }
+
+    let deliveries: Vec<Option<String>> = sqlx::query_scalar(
+        "SELECT error_code FROM webhook_delivery WHERE webhook_id = $1 ORDER BY created_at",
+    )
+    .bind(id)
+    .fetch_all(database.pool())
+    .await
+    .expect("deliveries");
+    assert_eq!(deliveries.len(), 3);
+    assert!(deliveries
+        .iter()
+        .all(|code| code.as_deref() == Some("unexpected-status:400")));
+
+    let row = sqlx::query("SELECT error_code, error_count, is_active FROM webhook WHERE id = $1")
+        .bind(id)
+        .fetch_one(database.pool())
+        .await
+        .expect("webhook row");
+    let error_code: Option<String> = row.try_get("error_code").expect("error code");
+    let error_count: i16 = row.try_get("error_count").expect("error count");
+    let is_active: Option<bool> = row.try_get("is_active").expect("is active");
+    assert_eq!(error_code.as_deref(), Some("unexpected-status:400"));
+    assert_eq!(error_count, 3);
+    assert_eq!(is_active, Some(false));
+
+    sqlx::query("DELETE FROM webhook WHERE id = $1")
+        .bind(id)
+        .execute(database.pool())
+        .await
+        .expect("cleanup webhook");
+    database.close().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live PostgreSQL; set PENPOT_TEST_DATABASE_URL"]
+async fn a_successful_delivery_clears_the_error_state() {
+    let database = database();
+    let id = Uuid::new_v4();
+    insert_webhook(&database, id).await;
+
+    let event = webhook_event();
+    let config = webhook_config(id);
+    PgWebhookRunner::new(database.clone(), Arc::new(FixedStatus { status: 500 }))
+        .run(&event, &config)
+        .await
+        .expect("failed delivery");
+    PgWebhookRunner::new(database.clone(), Arc::new(FixedStatus { status: 204 }))
+        .run(&event, &config)
+        .await
+        .expect("successful delivery");
+
+    let row = sqlx::query("SELECT error_code, error_count FROM webhook WHERE id = $1")
+        .bind(id)
+        .fetch_one(database.pool())
+        .await
+        .expect("webhook row");
+    let error_code: Option<String> = row.try_get("error_code").expect("error code");
+    let error_count: i16 = row.try_get("error_count").expect("error count");
+    assert!(error_code.is_none());
+    assert_eq!(error_count, 0);
+
+    let codes: Vec<Option<String>> = sqlx::query_scalar(
+        "SELECT error_code FROM webhook_delivery WHERE webhook_id = $1 ORDER BY created_at",
+    )
+    .bind(id)
+    .fetch_all(database.pool())
+    .await
+    .expect("deliveries");
+    assert_eq!(codes.len(), 2);
+    assert_eq!(codes[0].as_deref(), Some("unexpected-status:500"));
+    assert!(codes[1].is_none());
+
+    sqlx::query("DELETE FROM webhook WHERE id = $1")
+        .bind(id)
+        .execute(database.pool())
+        .await
+        .expect("cleanup webhook");
     database.close().await;
 }

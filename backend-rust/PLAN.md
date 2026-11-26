@@ -2,8 +2,9 @@
 
 本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干、M9 鉴权接线、
 M10 `db`/`pg` 基础、M11 worker PG 仓储、M12 storage PG 仓储与 M13 storage GC 执行器
-已落地，M14 的 `tasks-gc`/`session-gc` PG 服务也已接上（2026-11-25），live PG 验证与
-M8 仍不交付。换机器后的上下文快照见 `backend-rust/HANDOFF.md`。
+已落地，M14 的 `tasks-gc`/`session-gc` 与 M15 的 `run-webhook` 服务也已接上
+（2026-11-26），live PG 验证与 M8 仍不交付。换机器后的上下文快照见
+`backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
 
@@ -470,6 +471,35 @@ DoD ✅：pg 2 条单测（默认删除延迟、阈值校验）+ 2 条 live `#[i
 23 ignored；fmt/clippy/build/doc 全绿。live PG、`objects-gc` 与 `run-webhook` 服务、
 混合集群仍待 devenv。
 
+### M15 — worker 的 `run-webhook` 服务（✅ 2026-11-26，live PG 待 devenv）
+
+`PenpotTaskServices` 的第三个服务。webhook URI 来自用户，所以先把 Clojure 的
+`app.util.ssrf` 与 `app.http.client` 移植成独立 crate，再接 PostgreSQL 的投递记录。
+
+- T15.1 ✅ `crates/httpclient/src/ssrf.rs` 的 `SsrfPolicy`：只放行 http/https，
+  解析全部地址后逐一检查，支持 `PENPOT_SSRF_ALLOWED_HOSTS` 白名单与
+  `PENPOT_SSRF_EXTRA_BLOCKED_CIDRS` 追加网段；覆盖 loopback、私有、link-local、
+  multicast、CGNAT、文档段、240/4、IPv6 ULA/链路本地、NAT64/6to4/Teredo 与
+  IPv4-mapped。校验返回已解析地址，传输层用 `resolve_to_addrs` 固定，消除
+  DNS rebinding 窗口。
+- T15.2 ✅ `crates/httpclient/src/transport.rs` 的 `Transport` trait 与
+  `ReqwestTransport`：POST、禁止重定向、不用系统代理、4s 超时；错误分到
+  `invalid-uri`/`blocked-request:<hint>`/`timeout`/`connection-error`/
+  `ssl-validation-error`/`unknown`。响应体截到 64 KiB 再落库。
+- T15.3 ✅ `crates/pg/src/webhook.rs` 的 `PgWebhookRunner`：按 mtype 生成 body
+  （JSON 用 camelCase 键加 2 空格缩进、transit 用紧凑编码、legacy form 用表单串），
+  200/204 成功，其余 `unexpected-status:<code>`；每次投递写一条 `webhook_delivery`
+  （verbose Transit JSONB），失败累加 `error_count` 并在第 3 次停用，成功清零。
+- 行为注记：传输失败只记录、不返回错误，任务因此完成而不消耗重试，和 Clojure 一致；
+  只有数据库失败才返回 `ServiceError`。未分类错误统一记 `unknown`，避免 Clojure 的
+  `nil` 把计数器静默清零。
+
+DoD ✅：httpclient 12 条单测（固定网段、白名单、scheme、localhost、真实 loopback
+POST、错误码映射）+ pg 7 条 webhook 单测（三种 body、未知 mtype、缺 id、状态判定、
+camelCase）+ 2 条 live `#[ignore]`（连续失败停用、成功后清零）；workspace 416 passed +
+25 ignored；fmt/clippy/build/doc 全绿。live PG、真实外网投递与 `objects-gc`/`sendmail`
+仍待 devenv。
+
 ---
 
 ## 5. 顺序与总量
@@ -555,9 +585,12 @@ M13：storage 的 GC 执行器——`StorageGc` 驱动 pending/touched/deleted �
 M14：worker 的 `tasks-gc` 与 `session-gc` PG 服务——事务内删除旧 task 行并支持
 `rollback?`，按 idle/absolute 双阈值清理 `http_session_v2`；pg 2 条单测 + 2 条 live
 `#[ignore]`。
-下一步是 `objects-gc`（软删域对象并 touch 存储对象）与 `run-webhook` 服务，再接
+M15：worker 的 `run-webhook` 服务——`httpclient` 移植 SSRF 校验与 4s POST 传输，
+校验地址固定到连接；`PgWebhookRunner` 编码三种 body、写 `webhook_delivery`、累计
+失败并在第 3 次停用。httpclient 12 条 + pg 7 条单测 + 2 条 live `#[ignore]`。
+下一步是 `objects-gc`（软删域对象并 touch 存储对象）与 `sendmail`，再接
 `PgSessionStore` 示例二进制。devenv 起来后先跑 live PG（`PENPOT_TEST_DATABASE_URL`），
-重点验 M10–M14。C2 真实应答到位后，
+重点验 M10–M15。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。M8 仍不交付。
 
 ## 10. 换机器 / devenv 起来之后的采集清单

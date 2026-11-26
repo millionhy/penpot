@@ -8,7 +8,7 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 M4 `session`、M5 `storage`（离线部分）、M6 `worker`（Redis 队列已验、PG 待验）、
 M7 `ws`、M9 `rpc` 鉴权接线、M10 `db`/`pg` 基础、M11 worker PG 仓储、
 M12 storage PG 仓储、M13 storage GC 执行器、M14 worker 的 `tasks-gc`/`session-gc`
-PG 服务完成（2026-11-25）。**
+PG 服务、M15 worker 的 `run-webhook` 与 `httpclient` 完成（2026-11-26）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -100,6 +100,16 @@ PG 服务完成（2026-11-25）。**
   `session-gc` 按 idle/absolute 两条阈值删除 `http_session_v2`，absolute 小于 idle
   时在连库前拒绝。pg 2 条单测 + 2 条 `#[ignore]` live；workspace 397 条通过 +
   23 ignored。`objects-gc`、`run-webhook` 与 live PG 仍待 devenv。
+- M15 已有：`crates/httpclient` 移植 `app.util.ssrf` 与 `app.http.client`。
+  `SsrfPolicy` 只放行 http/https，解析全部地址后逐一检查（私网、loopback、
+  link-local、CGNAT、文档段、IPv6 ULA 与过渡网段），支持
+  `PENPOT_SSRF_ALLOWED_HOSTS`/`PENPOT_SSRF_EXTRA_BLOCKED_CIDRS`，并把校验过的地址
+  固定到 `reqwest` 连接。`ReqwestTransport` 禁止重定向、不用系统代理、4s 超时。
+  `crates/pg/src/webhook.rs` 的 `PgWebhookRunner` 生成 JSON/transit/form body，
+  200/204 算成功，其余记 `unexpected-status:<code>`；每次投递写
+  `webhook_delivery`，失败累计三次后停用，成功清零。httpclient 12 条 + pg 7 条
+  单测，2 条 `#[ignore]` live；workspace 416 条通过 + 25 ignored。真实外网投递、
+  live PG 与 `objects-gc`/`sendmail` 仍待 devenv。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 
@@ -134,14 +144,15 @@ backend-rust/
     ├── worker/           ✅ Quartz cron、task 状态机、dispatcher、runner、Redis 队列
     ├── ws/               ✅ msgbus、消息多态、axum WebSocket、Redis 适配器
     ├── rpc/              ✅ axum 服务：路由 + 中间件管道 + Registry；鉴权接 session（存储走 trait）
+    ├── httpclient/       ✅ SSRF 校验（地址固定）与 4s POST 传输，可替换 Transport
     └── pg/               ✅ PostgreSQL 适配器：鉴权、task、storage_object、GC 与任务服务
 ```
 
 依赖方向：`rpc → {transit, errors, config, session, storage, worker, ws}`；
-`pg → {db, errors, rpc, storage, worker}`；`rpc` 不依赖 sqlx。
+`pg → {db, errors, httpclient, rpc, storage, worker}`；`rpc` 不依赖 sqlx。
 
 顺序（`PLAN.md` §5）：`M0 workspace → M1 transit（关键路径）→ M2 errors+config ∥ M3 rpc(axum) → M4 session
-→ M5 storage → M6 worker → M7 ws`。M0–M7 已落地；M10–M14 的 PG 适配器仍待 live PostgreSQL。
+→ M5 storage → M6 worker → M7 ws`。M0–M7 已落地；M10–M15 的 PG 适配器仍待 live PostgreSQL。
 `transit` 先做，因为 RPC 请求体、应答体、
 `task.props`、session payload 全是 transit。
 
