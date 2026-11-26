@@ -215,6 +215,20 @@ pnpm build        # 生产构建；别在 dev server 运行时执行，原因见
 的 SameSite。
 生产环境沿用既有 nginx 反代，同样的相对 URL 不变即可工作。
 
+**接到 backend-rust？** `backend-rust` 的 `crates/rpc` 是 DB-free 骨架，监听
+`127.0.0.1:6061`。先起服务，再用专用入口（它会先探活，连不上时直接提示）：
+
+```powershell
+cd backend-rust; cargo run -p rpc
+cd frontend-nextjs; pnpm dev:rust
+```
+
+它做的事就是同时设置 `PENPOT_BACKEND_ORIGIN` 与
+`NEXT_PUBLIC_PENPOT_BACKEND_ORIGIN`（默认 `http://127.0.0.1:6061`，可用
+`PENPOT_RUST_ORIGIN` 覆盖），并让 `PENPOT_ASSETS_ORIGIN` 仍指向 nginx。骨架目前只有
+`get-health` 与 `get-echo`，`get-profile` 回 404，`SessionProvider` 按匿名处理，所以
+登录页能正常渲染、表单提交要等后端补齐命令。
+
 **头像/缩略图是坏图？** 存储后端为 `fs` 时（compose 默认
 `PENPOT_OBJECTS_STORAGE_BACKEND: fs`），后端对 `/assets/*` 返回**空 204 +
 `x-accel-redirect`** 响应头（`backend/src/app/http/assets.clj` 的
