@@ -48,14 +48,18 @@ use rpc::auth::{AccessTokenRecord, AccessTokenStore, SessionRecord, SessionStore
 use sqlx::Row;
 use uuid::Uuid;
 
+mod dashboard;
 mod objects_gc;
+mod profile;
 mod storage;
 mod storage_gc;
 mod task;
 mod task_services;
 mod webhook;
 
+pub use dashboard::PgDashboardStore;
 pub use objects_gc::PgObjectsGc;
+pub use profile::{PgProfileStore, PgSessionCreator};
 pub use storage::PgStorageRepository;
 pub use storage_gc::PgStorageGcRepository;
 pub use task::PgTaskRepository;

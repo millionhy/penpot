@@ -52,6 +52,11 @@ rand = "0.8.8"
 subtle = "2.6.1"
 zeroize = { version = "1.8.2", default-features = false }
 
+# --- M18 password hashing ---
+# Buddy writes argon2id rows with a 16-byte salt, memory 32768 KiB,
+# 3 iterations, parallelism 2 and a 32-byte digest (backend/src/app/auth.clj).
+argon2 = { version = "0.5.3", default-features = false, features = ["alloc"] }
+
 # --- M5 storage ---
 async-trait = "0.1.92"
 aws-config = "1.8.14"

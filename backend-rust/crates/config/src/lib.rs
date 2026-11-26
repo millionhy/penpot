@@ -142,6 +142,12 @@ pub struct KeySpec {
 /// The `PENPOT_*` keys this milestone decodes.
 pub const KNOWN_KEYS: &[KeySpec] = &[
     KeySpec {
+        name: "admins",
+        kind: ValueKind::Set,
+        default: None,
+        required: false,
+    },
+    KeySpec {
         name: "auth-token-cookie-max-age",
         kind: ValueKind::Duration,
         default: None,
@@ -157,6 +163,12 @@ pub const KNOWN_KEYS: &[KeySpec] = &[
         name: "auth-token-cookie-name",
         kind: ValueKind::Str,
         default: Some("auth-token"),
+        required: false,
+    },
+    KeySpec {
+        name: "database-uri",
+        kind: ValueKind::Uri,
+        default: None,
         required: false,
     },
     KeySpec {
@@ -467,6 +479,16 @@ impl Config {
     }
 
     #[must_use]
+    pub fn database_uri(&self) -> Option<&str> {
+        self.uri("database-uri")
+    }
+
+    #[must_use]
+    pub fn admins(&self) -> Option<&BTreeSet<String>> {
+        self.set("admins")
+    }
+
+    #[must_use]
     pub fn public_uri(&self) -> &str {
         self.uri("public-uri").unwrap_or("http://localhost:3449")
     }
@@ -681,6 +703,8 @@ mod tests {
         let config = config(&[
             ("PENPOT_TENANT", "acme"),
             ("PENPOT_SECRET_KEY", "super-secret"),
+            ("PENPOT_DATABASE_URI", "postgres://db/penpot"),
+            ("PENPOT_ADMINS", "one@example.com two@example.com"),
             ("PENPOT_IS_SAAS", "true"),
             ("PENPOT_REDIS_URI", "redis://valkey/2"),
             ("PENPOT_AUTH_TOKEN_COOKIE_MAX_AGE", "168h"),
@@ -700,6 +724,13 @@ mod tests {
 
         assert_eq!(config.tenant(), "acme");
         assert_eq!(config.secret_key(), Some("super-secret"));
+        assert_eq!(config.database_uri(), Some("postgres://db/penpot"));
+        assert_eq!(
+            config.admins().unwrap(),
+            &["one@example.com".to_owned(), "two@example.com".to_owned()]
+                .into_iter()
+                .collect()
+        );
         assert!(config.is_saas());
         assert_eq!(config.redis_uri(), "redis://valkey/2");
         assert_eq!(
@@ -779,12 +810,12 @@ mod tests {
     #[test]
     fn pending_and_unrecognized_keys_are_separated() {
         let config = config(&[
-            ("PENPOT_DATABASE_URI", "postgresql://db/penpot"),
+            ("PENPOT_MEDIA_DIRECTORY", "/tmp/media"),
             ("PENPOT_TYPOO", "1"),
         ]);
         assert_eq!(
             config.pending().collect::<Vec<_>>(),
-            vec![("database-uri", "postgresql://db/penpot")]
+            vec![("media-directory", "/tmp/media")]
         );
         assert_eq!(
             config.unrecognized().collect::<Vec<_>>(),

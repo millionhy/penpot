@@ -9,7 +9,7 @@ M4 `session`、M5 `storage`（离线部分）、M6 `worker`（Redis 队列已验
 M7 `ws`、M9 `rpc` 鉴权接线、M10 `db`/`pg` 基础、M11 worker PG 仓储、
 M12 storage PG 仓储、M13 storage GC 执行器、M14 worker 的 `tasks-gc`/`session-gc`
 PG 服务、M15 worker 的 `run-webhook` 与 `httpclient`、M16 worker 的 `objects-gc`、
-M17 `mailer` 完成（2026-11-26）。**
+M17 `mailer` 与 M18 登录纵切完成（2026-11-26）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -129,6 +129,21 @@ M17 `mailer` 完成（2026-11-26）。**
   上限与 30s 超时。`SmtpTransport` 可替换，`SmtpMailer` 实现 `worker::Mailer`。
   mailer 37 条测试 + 1 条 live `#[ignore]`；workspace 459 条通过 + 27 ignored。
   live SMTP 与模板工厂仍待 devenv。
+- M18 已有：登录纵切。`crates/password` 校验 buddy 写的六段 `argon2id`
+  （参数随行读取、常量时间比较，带内存/迭代/并行度/盐长上限）；
+  `crates/rpc/src/commands/auth.rs` 按 active → blocked → no-password → 哈希的
+  顺序处理 `login-with-password`，写 `http_session_v2` 并签发
+  A256KW/A256GCM JWE cookie；`get-profile` 回 `photo-id`、`auth-backend`、
+  `subscription` 等字段，匿名调用回零 UUID。`crates/pg/src/profile.rs` 提供
+  profile 读取与 session 写入；`crates/rpc/src/commands/dashboard.rs` 与
+  `crates/pg/src/dashboard.rs` 补上 `get-teams`/`get-projects`，让登录后的
+  仪表盘能拿到团队与项目；`crates/server` 把 registry、TokenResolver 与真实
+  PG 接起来，默认监听 `127.0.0.1:6061`。`config` 新增 `database-uri` 与
+  `admins`。rpc 8 条测试（login 4 + dashboard 4）、password 6 条、config 23 条、
+  pg 1 条 live 往返；workspace 473 passed + 28 ignored，fmt/clippy/build/doc
+  全绿。本机已用真实 PG 与浏览器跑通 Next `:3450` → Rust `:6061` 的登录、
+  `get-profile` 与 `/dashboard/recent`。注册、SSO、邀请接受、订阅查询与登录
+  失败计数不在本切片。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 
@@ -163,6 +178,8 @@ backend-rust/
     ├── worker/           ✅ Quartz cron、task 状态机、dispatcher、runner、Redis 队列
     ├── ws/               ✅ msgbus、消息多态、axum WebSocket、Redis 适配器
     ├── rpc/              ✅ axum 服务：路由 + 中间件管道 + Registry；鉴权接 session（存储走 trait）
+    ├── password/         ✅ buddy argon2id 六段编码校验与派生（测试/夹具用）
+    ├── server/           ✅ M18 可运行服务：registry + PG + TokenResolver，登录纵切
     ├── httpclient/       ✅ SSRF 校验（地址固定）与 4s POST 传输，可替换 Transport
     ├── mailer/           ✅ SMTP/MIME、TLS/STARTTLS、AUTH PLAIN/LOGIN，可替换 Transport
     └── pg/               ✅ PostgreSQL 适配器：鉴权、task、storage_object、GC、objects-gc 与任务服务
@@ -170,10 +187,12 @@ backend-rust/
 
 依赖方向：`rpc → {transit, errors, config, session, storage, worker, ws}`；
 `pg → {db, errors, httpclient, rpc, storage, worker}`；
-`mailer → {config, transit, worker}`；`rpc` 不依赖 sqlx。
+`mailer → {config, transit, worker}`；`server → {config, db, pg, rpc, session}`；
+`rpc` 不依赖 sqlx。
 
 顺序（`PLAN.md` §5）：`M0 workspace → M1 transit（关键路径）→ M2 errors+config ∥ M3 rpc(axum) → M4 session
-→ M5 storage → M6 worker → M7 ws`。M0–M7 已落地；M10–M16 的 PG 适配器仍待 live PostgreSQL。
+→ M5 storage → M6 worker → M7 ws`。M0–M7 已落地；M10–M17 的 live 用例仍需
+devenv；M18 的登录纵切已在本机 PostgreSQL 上验过。
 `transit` 先做，因为 RPC 请求体、应答体、
 `task.props`、session payload 全是 transit。
 

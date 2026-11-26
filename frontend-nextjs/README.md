@@ -7,8 +7,9 @@ Shadow/Storybook 构建，旧目录只保留少量 JavaScript 包与字体资源
 ## 核心原则
 
 1. **复用现有后端，不改后端**：本外壳通过 Transit RPC 调用既有 Clojure 后端的
-   `/api/main/methods/*`，与 CLJS 前端说同一套协议。在对应页面完成迁移并达到功能
-   对等之前，**不新增 `backend-rust` 实现代码、不改动 `backend/`**。
+   `/api/main/methods/*`，与 CLJS 前端说同一套协议。默认 `pnpm dev` 仍走 Clojure；
+   `backend-rust` 的切片只在本地 `pnpm dev:rust` 下验证，不接部署。任何页面都不
+   改动 `backend/`。
 2. **逐路由迁移**：一次搬一个路由组（auth → settings → dashboard → view → workspace），
    新旧前端可并行运行。
 3. **契约先行**：跨栈调用的类型最终由 `packages/api-types` 从后端 RPC 清单生成，
@@ -215,19 +216,31 @@ pnpm build        # 生产构建；别在 dev server 运行时执行，原因见
 的 SameSite。
 生产环境沿用既有 nginx 反代，同样的相对 URL 不变即可工作。
 
-**接到 backend-rust？** `backend-rust` 的 `crates/rpc` 是 DB-free 骨架，监听
-`127.0.0.1:6061`。先起服务，再用专用入口（它会先探活，连不上时直接提示）：
+**接到 backend-rust？** `backend-rust` 的 `crates/server` 是 M18 登录纵切的可运行
+服务，监听 `127.0.0.1:6061`。先起服务，再用专用入口（它会先探活，连不上时直接提示）：
 
 ```powershell
-cd backend-rust; cargo run -p rpc
+cd backend-rust
+$env:PENPOT_SECRET_KEY = "<与 Clojure 后端相同的 secret>"
+$env:PENPOT_DATABASE_URI = "postgres://penpot:penpot@127.0.0.1:5432/penpot"
+cargo run -p server
+
 cd frontend-nextjs; pnpm dev:rust
 ```
 
 它做的事就是同时设置 `PENPOT_BACKEND_ORIGIN` 与
 `NEXT_PUBLIC_PENPOT_BACKEND_ORIGIN`（默认 `http://127.0.0.1:6061`，可用
-`PENPOT_RUST_ORIGIN` 覆盖），并让 `PENPOT_ASSETS_ORIGIN` 仍指向 nginx。骨架目前只有
-`get-health` 与 `get-echo`，`get-profile` 回 404，`SessionProvider` 按匿名处理，所以
-登录页能正常渲染、表单提交要等后端补齐命令。
+`PENPOT_RUST_ORIGIN` 覆盖），并让 `PENPOT_ASSETS_ORIGIN` 仍指向 nginx。
+
+`server` 目前注册 `get-health`、`get-echo`、`login-with-password`、
+`get-profile`、`get-teams` 与 `get-projects`：登录会校验 `profile` 行的 buddy
+`argon2id` 哈希、写入 `http_session_v2`、签发 `auth-token` JWE cookie；
+`get-profile` 按同一 cookie 回读资料，`get-teams`/`get-projects` 提供
+`/dashboard/recent` 首次渲染所需的团队与项目。它读取与 Clojure 后端相同的
+`PENPOT_SECRET_KEY`、`PENPOT_FLAGS` 与 `PENPOT_DATABASE_URI`，所以两边签出的
+会话可以互换验证。最近文件、字体、成员与模板等命令仍 404，前端按既有分支降级
+为空。`cargo run -p rpc` 仍是 DB-free 示例，只有 `get-health` 与 `get-echo`，
+走它登录会失败。
 
 **头像/缩略图是坏图？** 存储后端为 `fs` 时（compose 默认
 `PENPOT_OBJECTS_STORAGE_BACKEND: fs`），后端对 `/assets/*` 返回**空 204 +

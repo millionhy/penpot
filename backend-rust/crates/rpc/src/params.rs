@@ -17,6 +17,8 @@ use transit::{Map, Set, Value};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParamKind {
     Str,
+    /// A trimmed address with exactly one `@` and no whitespace.
+    Email,
     Uuid,
     Int,
     Bool,
@@ -199,12 +201,35 @@ fn key_name(key: &Value) -> Option<&str> {
     key.as_keyword().or_else(|| key.as_str())
 }
 
+/// `::sm/email`'s shape rules, without the DNS or length corner cases.
+fn is_email(text: &str) -> bool {
+    if text.is_empty() || text.len() > 254 || text.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let mut parts = text.split('@');
+    let (Some(local), Some(domain), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    !local.is_empty() && !domain.is_empty()
+}
+
 fn coerce(kind: &ParamKind, value: &Value) -> Result<Value, String> {
     match kind {
         ParamKind::Any => Ok(value.clone()),
         ParamKind::Str => match value {
             Value::Str(text) => Ok(Value::str(text.clone())),
             _ => Err("expected a string".to_owned()),
+        },
+        ParamKind::Email => match value {
+            Value::Str(text) => {
+                let text = text.trim();
+                if is_email(text) {
+                    Ok(Value::str(text.to_owned()))
+                } else {
+                    Err("expected an email address".to_owned())
+                }
+            }
+            _ => Err("expected an email address".to_owned()),
         },
         ParamKind::Uuid => match value {
             Value::Uuid(uuid) => Ok(Value::Uuid(*uuid)),

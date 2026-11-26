@@ -3,8 +3,8 @@
 本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干、M9 鉴权接线、
 M10 `db`/`pg` 基础、M11 worker PG 仓储、M12 storage PG 仓储与 M13 storage GC 执行器
 已落地，M14 的 `tasks-gc`/`session-gc`、M15 的 `run-webhook`、M16 的
-`objects-gc` 与 M17 的 `mailer` 也已接上（2026-11-26），live PG/SMTP 验证与
-M8 仍不交付。换机器后的上下文快照见
+`objects-gc`、M17 的 `mailer` 与 M18 的登录纵切也已接上（2026-11-26），
+live SMTP 验证与 M8 仍不交付。换机器后的上下文快照见
 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
@@ -532,6 +532,42 @@ fmt/clippy/build/doc 全绿。live PG、`sendmail` 与混合集群仍待 devenv�
 
 ---
 
+### M18 — 登录纵切（✅ 2026-11-26，真机 PG 与浏览器验证）
+
+把 `login-with-password` 与 `get-profile` 接到 Rust，并让 Next 外壳用
+`pnpm dev:rust` 走完整登录。这是第一个需要真实数据库的 RPC 命令切片。
+
+- T18.1 ✅ `crates/password`：解析 buddy 的六段编码
+  `argon2id$salt$memory$iterations$parallelism$hash`，按行内参数重算并做常量时间
+  比较；盐、摘要、内存、迭代与并行度都有上限，只接受 `argon2id`。
+- T18.2 ✅ `crates/rpc/src/commands/auth.rs`：`login-with-password` 按
+  active → blocked → no-password → 哈希 的顺序校验，`clean-email` 对齐
+  `app.rpc.commands.profile`；成功后写 `http_session_v2`、签 A256KW/A256GCM
+  JWE cookie，并在应答里带 `is-admin`。`get-profile` 回 `photo-id`、
+  `auth-backend`、`subscription` 等字段，匿名调用回零 UUID。
+- T18.3 ✅ `crates/pg/src/profile.rs`：`PgProfileStore` 读 profile（带
+  `deleted_at IS NULL`），`PgSessionCreator` 插 `http_session_v2`；时间戳按毫秒。
+- T18.4 ✅ `crates/server`：读 `PENPOT_SECRET_KEY` 与 `PENPOT_DATABASE_URI`，
+  接 registry、`TokenResolver` 与 PG，默认监听 `127.0.0.1:6061`；`config` 新增
+  `database-uri` 与 `admins`。
+- T18.5 ✅ 前端入口：`pnpm dev:rust` 的探活与报错提示改指 `cargo run -p server`，
+  并说明需要的环境变量。
+- T18.6 ✅ 仪表盘落地：`crates/rpc/src/commands/dashboard.rs` 与
+  `crates/pg/src/dashboard.rs` 的 `get-teams`/`get-projects`。团队行把
+  `is-owner`/`is-admin`/`can-edit` 合成 `permissions`，`is-default` 按 profile 的
+  `default-team-id` 判定；项目行带 `is-pinned`、`count`、`total-count` 与时间戳，
+  非成员按 Clojure 回 `not-found/object-not-found`。
+
+DoD ✅：rpc 8 条测试（login 4 + dashboard 4）、password 6 条、config 23 条、
+pg 1 条 live 往返；workspace 473 passed + 28 ignored；fmt/clippy/build/doc 全绿。本机实测
+Next `:3450` → Rust `:6061` 登录 200、`set-cookie` 生效、`get-profile` 200，
+浏览器提交后跳到 `/dashboard/recent` 并渲染侧栏、项目与草稿。
+
+边界：注册、OIDC/SSO、`invitation-token` 的接受、订阅查询与
+`login-lockout` 的失败计数都不在 M18；`get-profile` 的 `subscription` 固定 nil。
+
+---
+
 ## 5. 顺序与总量
 
 ```
@@ -625,8 +661,13 @@ M17：`sendmail` 的 `mailer`——8 个 SMTP 配置键、Transit 邮件校验�
 （mixed/alternative、文本附件、随机边界、25 MiB 上限）、隐式 TLS 与必须成功的
 STARTTLS、AUTH PLAIN/LOGIN、点填充与回复上限；mailer 37 条测试 + 1 条 live
 `#[ignore]`，workspace 459 条通过 + 27 ignored。
-下一步是 `PgSessionStore` 示例二进制与模板工厂。devenv 起来后先跑 live PG
-（`PENPOT_TEST_DATABASE_URL`），重点验 M10–M16；SMTP 用
+M18：登录纵切——`password` 校验 buddy 六段 `argon2id`，`login-with-password`
+写 `http_session_v2` 并签 JWE cookie，`get-profile` 回完整资料，`server` 接
+真实 PG；`get-teams`/`get-projects` 让仪表盘落地。rpc 8 条 + password 6 条 +
+pg 1 条 live，workspace 473 passed + 28 ignored，真机 PG 与浏览器登录已验。
+`PgSessionStore` 示例二进制已由 M18 的 `server` 落地；下一步是模板工厂与更多
+只读命令。本机已跑过 live PG（`PENPOT_TEST_DATABASE_URL`，M18 的 `auth_live`
+通过），M10–M16 的 live 用例仍可继续补验；SMTP 用
 `PENPOT_TEST_SMTP_*` 指向一次性收件箱。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。M8 仍不交付。
 

@@ -2,8 +2,13 @@
 // Start the Next dev server against the backend-rust skeleton instead of the
 // Clojure backend.
 //
-//   cargo run -p rpc          # backend-rust, 127.0.0.1:6061
+//   cargo run -p server       # backend-rust, 127.0.0.1:6061
 //   pnpm dev:rust             # this script
+//
+// `cargo run -p rpc` is still the DB-free demo: it answers get-health and
+// get-echo only. The login slice needs the server binary, plus
+// PENPOT_SECRET_KEY and PENPOT_DATABASE_URI with the same values the Clojure
+// backend uses.
 //
 // Both halves of the wiring must point at the same origin: PENPOT_BACKEND_ORIGIN
 // drives the server-side /api rewrite, NEXT_PUBLIC_PENPOT_BACKEND_ORIGIN drives
@@ -31,7 +36,10 @@ try {
   await probe();
 } catch (error) {
   console.error(`backend-rust is not answering at ${origin}: ${error.message}`);
-  console.error("Start it first: cd backend-rust && cargo run -p rpc");
+  console.error("Start it first: cd backend-rust && cargo run -p server");
+  console.error(
+    "The server needs PENPOT_SECRET_KEY and PENPOT_DATABASE_URI (same values as the Clojure backend).",
+  );
   process.exit(1);
 }
 

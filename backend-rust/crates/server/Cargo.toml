@@ -1,0 +1,22 @@
+[package]
+name = "server"
+description = "Runnable Penpot backend-rust HTTP service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum.workspace = true
+config = { path = "../config" }
+db = { path = "../db" }
+pg = { path = "../pg" }
+rpc = { path = "../rpc" }
+session = { path = "../session" }
+tokio.workspace = true
+transit = { path = "../transit" }
+tracing.workspace = true
+
+[lints]
+workspace = true

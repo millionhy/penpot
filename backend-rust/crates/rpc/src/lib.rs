@@ -45,6 +45,7 @@
 //! * `Accept: application/json` responses. The skeleton always answers transit.
 
 pub mod auth;
+pub mod commands;
 mod context;
 pub mod params;
 mod registry;

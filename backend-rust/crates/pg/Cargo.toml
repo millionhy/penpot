@@ -18,10 +18,14 @@ rpc = { path = "../rpc" }
 sqlx.workspace = true
 storage = { path = "../storage" }
 tokio.workspace = true
+tracing.workspace = true
 transit = { path = "../transit" }
 url.workspace = true
 uuid.workspace = true
 worker = { path = "../worker" }
+
+[dev-dependencies]
+password = { path = "../password" }
 
 [lints]
 workspace = true

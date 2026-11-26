@@ -13,7 +13,6 @@
 pub const PENDING_KEYS: &[&str] = &[
     "admin-console-shared-key",
     "admin-console-uri",
-    "admins",
     "allow-demo-users",
     "allowed-origins",
     "assets-path",
@@ -30,7 +29,6 @@ pub const PENDING_KEYS: &[&str] = &[
     "database-min-pool-size",
     "database-password",
     "database-readonly",
-    "database-uri",
     "database-username",
     "default-blob-version",
     "default-executor-parallelism",
@@ -188,7 +186,8 @@ mod tests {
     #[test]
     fn key_status_separates_the_three_cases() {
         assert_eq!(key_status("tenant"), KeyStatus::Implemented);
-        assert_eq!(key_status("database-uri"), KeyStatus::Pending);
+        assert_eq!(key_status("database-uri"), KeyStatus::Implemented);
+        assert_eq!(key_status("media-directory"), KeyStatus::Pending);
         assert_eq!(key_status("not-a-real-key"), KeyStatus::Unrecognized);
     }
 }

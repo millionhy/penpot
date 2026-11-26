@@ -4037,6 +4037,54 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 
 ---
 
+### 7.116 本轮（2026-11-26，第一百一十五批：backend-rust M18 登录纵切）
+
+- 口径不变：只改 `backend-rust/`、`frontend-nextjs/` 的入口提示与进度文档，
+  不接部署、不改 `backend/`/`common/`/`docker/`/`scripts/ci`。
+- 新增 `crates/password`：解析 buddy 的六段 `argon2id`
+  （`argon2id$salt$memory$iterations$parallelism$hash`），按行内参数重算并做
+  常量时间比较；盐 8–64 B、摘要 ≤64 B、内存 ≤256 MiB、迭代 ≤16、并行度 ≤16，
+  只接受 `argon2id`。`derive` 只给测试与夹具用。
+- 新增 `crates/rpc/src/commands/auth.rs`：`login-with-password` 的校验顺序对齐
+  Clojure（active → blocked → no-password → 哈希），`clean-email` 去空格、
+  转小写、去 `mailto:` 与尖括号；成功后写 `http_session_v2`、签
+  A256KW/A256GCM 会话令牌、写 `auth-token` cookie（HttpOnly、SameSite，
+  Secure/Strict 按 flags），应答带 `is-admin`。`get-profile` 回
+  `photo-id`/`auth-backend`/`subscription` 等字段，匿名回零 UUID 与
+  `subscription: nil`。
+- 新增 `crates/pg/src/profile.rs`：profile 查询带 `deleted_at IS NULL`，
+  列与 `get-profile` 对齐，时间戳换毫秒；session 插入复刻
+  `app.http.session`。
+- 新增 `crates/rpc/src/commands/dashboard.rs` 与 `crates/pg/src/dashboard.rs`：
+  `get-teams` 按 `team_profile_rel` 返回团队，把三个关系标志合成
+  `permissions`，`is-default` 按 profile 的 `default-team-id` 判定；
+  `get-projects` 返回 `is-pinned`、`count`、`total-count` 与时间戳，非成员回
+  `not-found/object-not-found`。仪表盘因此能完成登录后的首次渲染。
+- 新增 `crates/server`：读 `PENPOT_SECRET_KEY` 与 `PENPOT_DATABASE_URI`，接
+  `Config`、`Database`、`TokenResolver` 与 `AuthCommands`，注册
+  `get-health`/`get-echo`/`login-with-password`/`get-profile`/`get-teams`/
+  `get-projects`，默认监听 `127.0.0.1:6061`。`config` 把 `database-uri` 与
+  `admins` 移入 `KNOWN_KEYS`。
+- 前端：`pnpm dev:rust` 的探活失败提示改为 `cargo run -p server`，并列出两个
+  必需环境变量；README 说明 `cargo run -p rpc` 仍是 DB-free 示例。
+- 真机验证：本机 PostgreSQL（`127.0.0.1:5432`，WSL relay）跑通 `auth_live`
+  （插 profile → 校验密码 → 读回 → 写 `http_session_v2` → 清理，清理在事务内
+  关掉删除保护）；Rust `:6061` 直连登录 200、带 cookie 的 `get-profile` 200；
+  `pnpm dev:rust` 后 Next `:3450` 经反代登录 200、`get-profile` 200；Chrome
+  headless 驱动真实登录页，提交后跳到 `/dashboard/recent`，侧栏、项目与草稿
+  正常渲染；其余数据增强请求（最近文件、字体、成员、模板）仍 404，按前端
+  既有分支降级为空。注意 `server` 启动后按 Hikari 默认占 60 条连接，跑 live
+  测试前先停服务，否则会 `PoolTimedOut`。
+- 测试：password 6 条（含已知哈希向量与畸形输入）、config 23 条、rpc login
+  4 条与 dashboard 4 条、pg 1 条 live；workspace 473 passed + 28 ignored；
+  fmt/clippy/build/doc 均退出 0。
+- 边界：注册、OIDC/SSO、`invitation-token` 的接受逻辑、`subscription` 的真实
+  查询与 `login-lockout` 的失败计数/锁定都不在 M18；`get-profile` 的
+  `subscription` 固定 nil。M8 不交付。
+- 提交：未提交（等用户明确要求）。
+
+---
+
 ## 8. 开发环境备注（本机）
 
 | 工具 | 状态 | 备注 |
@@ -4053,8 +4101,10 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
 - `/assets` 反代：`fs` 存储下后端只回空 204 + `x-accel-redirect`，dev 要设
   `PENPOT_ASSETS_ORIGIN=http://localhost:9001`（compose 里的 frontend nginx）才看得到头像与缩略图。
 - exporter 联调：`PENPOT_INTERNAL_URI` 与 `PENPOT_PUBLIC_URI` 都指 `http://localhost:9001`（frontend nginx），字体（`/internal/gfonts/font/*`、`/fonts/*`）与 asset（`/assets/by-id/*`）由它提供；指 `:6060` 后端时导出照旧回 200，但字体全部 404，产物里才会看出来。
-- 本机 docker 端口：backend `:6060`、frontend nginx `:9001`、postgres `:5433`、mailcatch `:1080`；
-  外壳 dev server 默认跑在 `:3450`（早期几轮因端口被占自动落到 `:3451`）。
+- 本机 docker 端口：backend `:6060`、frontend nginx `:9001`、mailcatch `:1080`；
+  postgres 本轮实测在 `127.0.0.1:5432`（WSL relay，`5433` 未监听）。外壳 dev
+  server 默认跑在 `:3450`（早期几轮因端口被占自动落到 `:3451`），Rust `server`
+  跑在 `:6061`。
 - `rewrite.md` 已入库（`git ls-files rewrite.md` 可见），随每轮的 `:books:` 文档提交更新。
 - S2 解锁：装好 Clojure CLI 后用 `enable-backend-openapi-doc` flag 起后端抓
   `GET /api/main/doc/openapi.json`（`/api/openapi` 与 `/api/_doc` 只是重定向），或用 devenv 容器；

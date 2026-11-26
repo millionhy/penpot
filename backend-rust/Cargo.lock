@@ -62,6 +62,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "argon2"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c3610892ee6e0cbce8ae2700349fcf8f98adb0dbfbee85aec3c9179d29cc072"
+dependencies = [
+ "base64ct",
+ "blake2",
+ "cpufeatures 0.2.17",
+ "password-hash",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2090,6 +2102,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "password"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "rand 0.8.8",
+ "subtle",
+ "thiserror",
+]
+
+[[package]]
+name = "password-hash"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "346f04948ba92c43e8469c1ee6736c7563d71012b17d40745260fe106aac2166"
+dependencies = [
+ "base64ct",
+ "rand_core 0.6.4",
+ "subtle",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2105,10 +2138,12 @@ dependencies = [
  "db",
  "errors",
  "httpclient",
+ "password",
  "rpc",
  "sqlx",
  "storage",
  "tokio",
+ "tracing",
  "transit",
  "url",
  "uuid",
@@ -2506,6 +2541,7 @@ dependencies = [
  "axum",
  "errors",
  "http-body-util",
+ "password",
  "session",
  "tokio",
  "tower",
@@ -2782,6 +2818,21 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "config",
+ "db",
+ "pg",
+ "rpc",
+ "session",
+ "tokio",
+ "tracing",
+ "transit",
 ]
 
 [[package]]
