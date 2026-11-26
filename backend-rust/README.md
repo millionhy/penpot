@@ -8,8 +8,8 @@ Penpot 的 Rust 后端，用绞杀者模式逐步承接 `backend/`（Clojure/JVM
 M4 `session`、M5 `storage`（离线部分）、M6 `worker`（Redis 队列已验、PG 待验）、
 M7 `ws`、M9 `rpc` 鉴权接线、M10 `db`/`pg` 基础、M11 worker PG 仓储、
 M12 storage PG 仓储、M13 storage GC 执行器、M14 worker 的 `tasks-gc`/`session-gc`
-PG 服务、M15 worker 的 `run-webhook` 与 `httpclient`、M16 worker 的 `objects-gc`
-完成（2026-11-26）。**
+PG 服务、M15 worker 的 `run-webhook` 与 `httpclient`、M16 worker 的 `objects-gc`、
+M17 `mailer` 完成（2026-11-26）。**
 
 - 工作区：`Cargo.toml`（resolver 3、成员 `crates/*`）、`Cargo.lock`、`rust-toolchain.toml`（stable）、
   `.gitignore`（`target/`、`fixtures/online/`）与本地 `Makefile` 已就位。
@@ -109,15 +109,26 @@ PG 服务、M15 worker 的 `run-webhook` 与 `httpclient`、M16 worker 的 `obje
   `crates/pg/src/webhook.rs` 的 `PgWebhookRunner` 生成 JSON/transit/form body，
   200/204 算成功，其余记 `unexpected-status:<code>`；每次投递写
   `webhook_delivery`，失败累计三次后停用，成功清零。httpclient 12 条 + pg 7 条
-  单测，2 条 `#[ignore]` live；workspace 416 条通过 + 25 ignored。真实外网投递、
-  live PG 与 `sendmail` 仍待 devenv。
+  单测，2 条 `#[ignore]` live；workspace 416 条通过 + 25 ignored。真实外网投递
+  与 live PG 当时仍待 devenv（`sendmail` 见 M17）。
 - M16 已有：`crates/pg/src/objects_gc.rs` 的 `PgObjectsGc`。按 Clojure
   `deletion-proc-vars` 的 11 个 procedure 顺序分块清理软删域对象，每个 procedure
   独立事务并关掉 deletion protection；`skip-delay` 把软删时间戳推到 3650 天后，
   `chunk-size` 默认 100。profile 只级联 owned teams，team/project/file 按 Clojure
   `delete-object` 软删子行；上传会话先删 chunk 映射，所有引用到的 storage object
   用墙钟 touch。pg 6 条单测 + 1 条 `#[ignore]` live（需一次性数据库）；workspace
-  422 条通过 + 26 ignored。live PG 与 `sendmail` 仍待 devenv。
+  422 条通过 + 26 ignored。
+- M17 已有：`crates/mailer` 承接 `app.email/::sendmail` 的投递路径。8 个
+  `PENPOT_SMTP_*` 键进入 `config`（默认发件人/回复地址、host、port、ssl、tls、
+  username、password），`smtp` 关闭时不连网，`log-emails` 开启时只写有界摘要。
+  Transit 邮件 props 先做严格校验：ASCII 地址、显示名、`to`/`cc`/`bcc`、
+  自定义头、`X-Penpot-Data`、`text/plain`+`text/html`、文本附件；头部拒绝 CR/LF
+  注入，Bcc 只进 SMTP envelope、不写消息头。MIME 用随机边界，正文与附件走
+  base64，单封上限 25 MiB。SMTP 客户端支持隐式 TLS 与必须成功的 STARTTLS，
+  证书走平台信任库，认证支持 AUTH PLAIN/LOGIN，命令做点填充，回复有单行/总长
+  上限与 30s 超时。`SmtpTransport` 可替换，`SmtpMailer` 实现 `worker::Mailer`。
+  mailer 37 条测试 + 1 条 live `#[ignore]`；workspace 459 条通过 + 27 ignored。
+  live SMTP 与模板工厂仍待 devenv。
 - 执行计划：`PLAN.md`（里程碑 M0–M8、已核对的契约事实、风险、红线）
 - 上下文快照（换机器续接）：`HANDOFF.md`
 
@@ -153,11 +164,13 @@ backend-rust/
     ├── ws/               ✅ msgbus、消息多态、axum WebSocket、Redis 适配器
     ├── rpc/              ✅ axum 服务：路由 + 中间件管道 + Registry；鉴权接 session（存储走 trait）
     ├── httpclient/       ✅ SSRF 校验（地址固定）与 4s POST 传输，可替换 Transport
+    ├── mailer/           ✅ SMTP/MIME、TLS/STARTTLS、AUTH PLAIN/LOGIN，可替换 Transport
     └── pg/               ✅ PostgreSQL 适配器：鉴权、task、storage_object、GC、objects-gc 与任务服务
 ```
 
 依赖方向：`rpc → {transit, errors, config, session, storage, worker, ws}`；
-`pg → {db, errors, httpclient, rpc, storage, worker}`；`rpc` 不依赖 sqlx。
+`pg → {db, errors, httpclient, rpc, storage, worker}`；
+`mailer → {config, transit, worker}`；`rpc` 不依赖 sqlx。
 
 顺序（`PLAN.md` §5）：`M0 workspace → M1 transit（关键路径）→ M2 errors+config ∥ M3 rpc(axum) → M4 session
 → M5 storage → M6 worker → M7 ws`。M0–M7 已落地；M10–M16 的 PG 适配器仍待 live PostgreSQL。

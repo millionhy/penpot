@@ -226,6 +226,54 @@ pub const KNOWN_KEYS: &[KeySpec] = &[
         required: false,
     },
     KeySpec {
+        name: "smtp-default-from",
+        kind: ValueKind::Str,
+        default: Some("Penpot <no-reply@example.com>"),
+        required: false,
+    },
+    KeySpec {
+        name: "smtp-default-reply-to",
+        kind: ValueKind::Str,
+        default: Some("Penpot <no-reply@example.com>"),
+        required: false,
+    },
+    KeySpec {
+        name: "smtp-host",
+        kind: ValueKind::Str,
+        default: None,
+        required: false,
+    },
+    KeySpec {
+        name: "smtp-password",
+        kind: ValueKind::Str,
+        default: None,
+        required: false,
+    },
+    KeySpec {
+        name: "smtp-port",
+        kind: ValueKind::Int,
+        default: None,
+        required: false,
+    },
+    KeySpec {
+        name: "smtp-ssl",
+        kind: ValueKind::Bool,
+        default: None,
+        required: false,
+    },
+    KeySpec {
+        name: "smtp-tls",
+        kind: ValueKind::Bool,
+        default: None,
+        required: false,
+    },
+    KeySpec {
+        name: "smtp-username",
+        kind: ValueKind::Str,
+        default: None,
+        required: false,
+    },
+    KeySpec {
         name: "telemetry-enabled",
         kind: ValueKind::Bool,
         default: None,
@@ -613,6 +661,14 @@ mod tests {
         assert_eq!(config.objects_storage_backend(), "fs");
         assert_eq!(config.objects_storage_fs_directory(), "assets");
         assert_eq!(config.redis_uri(), "redis://redis/0");
+        assert_eq!(
+            config.str("smtp-default-from"),
+            Some("Penpot <no-reply@example.com>")
+        );
+        assert_eq!(
+            config.str("smtp-default-reply-to"),
+            Some("Penpot <no-reply@example.com>")
+        );
         assert_eq!(config.worker_default_parallelism(), 1);
         assert_eq!(config.worker_webhook_parallelism(), 1);
         assert!(config.flags().contains("registration"));
@@ -635,6 +691,11 @@ mod tests {
             ("PENPOT_OBJECTS_STORAGE_S3_ENDPOINT", "http://minio:9000"),
             ("PENPOT_WORKER_DEFAULT_PARALLELISM", "4"),
             ("PENPOT_WORKER_WEBHOOK_PARALLELISM", "2"),
+            ("PENPOT_SMTP_HOST", "smtp.example.com"),
+            ("PENPOT_SMTP_PORT", "587"),
+            ("PENPOT_SMTP_TLS", "true"),
+            ("PENPOT_SMTP_USERNAME", "mailer"),
+            ("PENPOT_SMTP_PASSWORD", "secret"),
         ]);
 
         assert_eq!(config.tenant(), "acme");
@@ -658,6 +719,11 @@ mod tests {
         );
         assert_eq!(config.worker_default_parallelism(), 4);
         assert_eq!(config.worker_webhook_parallelism(), 2);
+        assert_eq!(config.str("smtp-host"), Some("smtp.example.com"));
+        assert_eq!(config.i64("smtp-port"), Some(587));
+        assert_eq!(config.bool("smtp-tls"), Some(true));
+        assert_eq!(config.str("smtp-username"), Some("mailer"));
+        assert_eq!(config.str("smtp-password"), Some("secret"));
     }
 
     #[test]

@@ -1,0 +1,26 @@
+[package]
+name = "mailer"
+description = "SMTP delivery for the Penpot sendmail task"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+base64.workspace = true
+chrono.workspace = true
+config = { path = "../config" }
+rustls.workspace = true
+rustls-native-certs.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+tracing.workspace = true
+transit = { path = "../transit" }
+uuid.workspace = true
+worker = { path = "../worker" }
+
+[lints]
+workspace = true

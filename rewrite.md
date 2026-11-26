@@ -3999,6 +3999,42 @@ binfile 导入导出、files 写路径、thumbnails 生成、nitrate（`mgmt:nit
   26 ignored；fmt/clippy/build/doc 均退出 0。
 - 提交：未提交（等用户明确要求）。
 
+### 7.115 本轮（2026-11-26，第一百一十四批：backend-rust M17 sendmail）
+
+- 口径不变：只改 `backend-rust/` 与进度文档，不接部署、不改 `backend/`/`common/`/
+  `docker/`/`scripts/ci`。本机没有可用的 live SMTP 收件箱，真实投递用例保持
+  `#[ignore]`。
+- 新增 `crates/mailer`：`SmtpMailer` 实现 `worker::Mailer`，`SmtpClient` 实现可替换的
+  `SmtpTransport`。`smtp` flag 关闭时不连网；`log-emails` 开启时只写 id、收件人、
+  主题与截断后的纯文本正文，不打印附件、自定义头或 `X-Penpot-Data`。
+- 配置：`smtp-default-from`、`smtp-default-reply-to`、`smtp-host`、`smtp-port`、
+  `smtp-ssl`、`smtp-tls`、`smtp-username`、`smtp-password` 从 `PENDING_KEYS` 移入
+  `KNOWN_KEYS`。未配置端口时，隐式 TLS 用 465，明文/STARTTLS 用 25；超时 30s。
+- 邮件解析：Transit props 支持 `to`/`cc`/`bcc` 的单地址或向量、`from`、`reply-to`、
+  `subject`、`headers`、`extra-data`、字符串或 `text/plain`+`text/html` map 的
+  `body`，以及 `map<string,string>` 附件。缺收件人、缺主题、缺正文或类型错误都在
+  连网前失败。
+- 安全边界：地址只接受 ASCII 本地部分与域名（SMTPUTF8 未实现）；本地部分、域名标签
+  与域长按 RFC 5321/5322 限制；显示名支持 RFC 2047；头部名按 token 集校验，值拒绝
+  CR/LF 与控制字符；`Bcc`、`Content-Type` 等结构头不允许由 props 覆盖。
+- MIME：外层固定 `multipart/mixed`，正文可嵌套 `multipart/alternative`，文本附件按
+  `text/plain; charset=…` + base64 + `Content-Disposition` 写入。边界用随机 UUID 并
+  检查不与正文/附件冲突；非 ASCII 附件名走 RFC 2231。单封上限 25 MiB。
+- 语义注记：`Bcc` 只进 SMTP envelope，不写消息头，避免泄露密送人；正文与附件统一
+  base64（Jakarta Mail 会按内容在 7bit/base64 间选择），客户端可正常解码；未设置
+  `extra-data` 时不写空的 `X-Penpot-Data`。
+- SMTP：隐式 TLS 与 `smtp-tls` 的 STARTTLS 都使用 rustls + 平台根证书；
+  `smtp-tls` 开启而服务器未广告 STARTTLS 时直接失败，不做明文降级。认证优先
+  AUTH PLAIN，其次 AUTH LOGIN；密码只进 base64 负载，debug 日志固定打
+  `<redacted>`。回复按 4 KiB 单行、64 KiB 总长截断，错误文本会清掉控制字符。
+- 测试：mailer 37 条（地址与显示名、头部注入、MIME 结构、附件编码、配置默认值、
+  多行回复、能力解析、点填充、完整 AUTH/SMTP 会话、STARTTLS 强制、RCPT 拒绝）
+  + 1 条 live `#[ignore]`（`PENPOT_TEST_SMTP_*` 指向一次性收件箱）；
+  workspace 459 passed + 27 ignored；fmt/clippy/build/doc 均退出 0。
+- 边界：邮件模板工厂（`app/email/*` 资源渲染）与 `send!` 的入队封装不在本切片；
+  真实 SMTP/STARTTLS 握手与投递未验；live PG 仍待 devenv。M8 不交付。
+- 提交：未提交（等用户明确要求）。
+
 ---
 
 ## 8. 开发环境备注（本机）

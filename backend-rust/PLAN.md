@@ -2,8 +2,9 @@
 
 本文件是阶段 B 的执行计划。2026-10-16 决策已定（见 §8）；M0–M7 代码主干、M9 鉴权接线、
 M10 `db`/`pg` 基础、M11 worker PG 仓储、M12 storage PG 仓储与 M13 storage GC 执行器
-已落地，M14 的 `tasks-gc`/`session-gc` 与 M15 的 `run-webhook` 服务也已接上
-（2026-11-26），live PG 验证与 M8 仍不交付。换机器后的上下文快照见
+已落地，M14 的 `tasks-gc`/`session-gc`、M15 的 `run-webhook`、M16 的
+`objects-gc` 与 M17 的 `mailer` 也已接上（2026-11-26），live PG/SMTP 验证与
+M8 仍不交付。换机器后的上下文快照见
 `backend-rust/HANDOFF.md`。
 
 ## 0. 约束（已确认）
@@ -620,8 +621,13 @@ M15：worker 的 `run-webhook` 服务——`httpclient` 移植 SSRF 校验与 4s
 M16：worker 的 `objects-gc` 服务——11 个 procedure 同序清理软删域对象，
 profile/team/project/file 级联、upload-session chunk 映射删除与存储对象 touch；
 pg 6 条单测 + 1 条 live `#[ignore]`。
-下一步是 `sendmail`，再接 `PgSessionStore` 示例二进制。devenv 起来后先跑 live PG
-（`PENPOT_TEST_DATABASE_URL`），重点验 M10–M16。C2 真实应答到位后，
+M17：`sendmail` 的 `mailer`——8 个 SMTP 配置键、Transit 邮件校验、MIME
+（mixed/alternative、文本附件、随机边界、25 MiB 上限）、隐式 TLS 与必须成功的
+STARTTLS、AUTH PLAIN/LOGIN、点填充与回复上限；mailer 37 条测试 + 1 条 live
+`#[ignore]`，workspace 459 条通过 + 27 ignored。
+下一步是 `PgSessionStore` 示例二进制与模板工厂。devenv 起来后先跑 live PG
+（`PENPOT_TEST_DATABASE_URL`），重点验 M10–M16；SMTP 用
+`PENPOT_TEST_SMTP_*` 指向一次性收件箱。C2 真实应答到位后，
 按 `TODO-ONLINE.md` 回填金样本，再把 M1 的「线上形态」标为定案。M8 仍不交付。
 
 ## 10. 换机器 / devenv 起来之后的采集清单
